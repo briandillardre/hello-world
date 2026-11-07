@@ -1,5 +1,6 @@
 import type { AlertEvent, AlertRule } from '../types'
 import { MOCK_ALERTS, MOCK_ALERT_RULES } from '../mock-data'
+import { ROUTINE_ALERT_KINDS } from '@/lib/alerts-engine'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -57,6 +58,10 @@ export async function getAlertEvents(companyId: string): Promise<AlertEvent[]> {
       .eq('asset.active', true)
       .is('acknowledged_at', null)
       .not('kind', 'is', null)
+      // Routine kinds are logged, never handled, so they pile up — left in,
+      // fifty of them pushed an open lost-power alert off the bell
+      // (ship-check, Nov 7). The Log tab still lists them via `recent`.
+      .not('kind', 'in', `(${ROUTINE_ALERT_KINDS.join(',')})`)
       .gte('triggered_at', openSince)
       .order('triggered_at', { ascending: false })
       .limit(50),

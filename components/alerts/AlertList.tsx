@@ -33,6 +33,8 @@ const CRITICAL_TRIGGERS: AlertRule['trigger'][] = ['after_hours_movement', 'left
 const SYSTEM_KINDS: Record<string, { label: string; zone: string; hint?: string }> = {
   fuel_low: { label: 'Fuel low', zone: 'Vehicle health' },
   battery_low: { label: '12V battery weak', zone: 'Vehicle health' },
+  fuel_critical: { label: 'Fuel nearly empty', zone: 'Vehicle health' },
+  battery_critical: { label: 'Battery critical', zone: 'Vehicle health', hint: 'The truck may not start. Charge or replace the battery.' },
   oem_fault: { label: 'OEM fault code', zone: 'Vehicle health' },
   // The OBD plug came out, or the port lost power — the unit is on its own
   // battery and about to go dark (lib/power-loss). Clears itself when power

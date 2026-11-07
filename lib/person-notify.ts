@@ -77,7 +77,11 @@ export function resolvePersonNotify(raw: unknown, role: Role): PersonNotifyPrefs
   const base = defaultPersonNotify(role)
   if (!raw || typeof raw !== 'object') return base
   const p = raw as Record<string, unknown>
-  const out = { ...base }
+  // "Turn all off" stores `_muted` beside the switches: a kind added LATER
+  // (the Morning briefing, Nov 6) defaults off for this person instead of
+  // following the role default back on (ship-check, Nov 7).
+  const muted = Object.prototype.hasOwnProperty.call(p, '_muted') && p._muted === true
+  const out = muted ? (Object.fromEntries(PUSH_KINDS.map((k) => [k, false])) as PersonNotifyPrefs) : { ...base }
   for (const k of PUSH_KINDS) {
     if (Object.prototype.hasOwnProperty.call(p, k) && typeof p[k] === 'boolean') out[k] = p[k] as boolean
   }

@@ -17,6 +17,8 @@ import { shell, smsOptOut, h2, li, none, day } from './weekly-digest'
 import { escapeHtml } from './email'
 import { zoneAssetUsage, type HistoryPoint } from './costs'
 import { rangeWindow } from './dates'
+import { isZoneLogEvent } from './alerts-engine'
+import { isScoredAsset } from './db/driving'
 
 export interface SiteBrief {
   zone: string
@@ -36,6 +38,10 @@ export interface TruckBrief {
   /** Hours since its newest fix — dark past 24. */
   silentH: number | null
   checkEngine: number
+  /** False for a battery unit: it fixes every few minutes and can't see a
+   *  drive, so it has no driving_daily row — 0 there means "unknown", not
+   *  "parked" (ship-check, Nov 7). */
+  milesKnown: boolean
 }
 
 export interface BriefingFacts {
@@ -90,6 +96,9 @@ export interface BriefingAudience {
   seesAsset: (a: { metadata?: unknown; type?: string | null }) => boolean
   /** Dollars on the page: the `costs` view level. */
   money: boolean
+  /** The reader's view levels — sections for pages they can't open are left
+   *  out (alerts, maintenance). Absent = everything (the office copy). */
+  features?: ReadonlySet<string>
 }
 
 /** The company's own alert inbox / phone: the owner's channel, as before. */
@@ -97,7 +106,7 @@ export const OFFICE_AUDIENCE: BriefingAudience = { seesAsset: () => true, money:
 
 type ZoneRow = { id: string; name: string; kind?: string | null; completed_at?: string | null; geometry?: { coordinates?: [number, number][][] } }
 type AssetRow = { id: string; name: string; type?: string | null; tracker_id?: string | null; metadata?: unknown }
-type TruckRaw = { asset: TruckAsset; miles: number; at: string | null; fixMs: number | null; checkEngine: number }
+type TruckRaw = { asset: TruckAsset; miles: number; at: string | null; fixMs: number | null; checkEngine: number; scored: boolean }
 
 /** Everything the briefing reads, once per company — no audience applied. */
 export interface BriefingRaw {
@@ -111,7 +120,7 @@ export interface BriefingRaw {
   milestones: { name: string; target_date: string | null; geofence_id: string | null }[]
   maint: { asset_id: string; description: string; interval_type: string; interval_value: number; last_service_date: string | null }[]
   wos: { status: string; asset_id: string | null }[]
-  alerts: { asset_id: string | null }[]
+  alerts: { asset_id: string | null; kind?: string | null; rule?: { trigger?: string | null } | null }[]
   rows: HistoryPoint[]
   trucks: TruckRaw[]
   insights: import('./insights').InsightRow[]
@@ -138,7 +147,7 @@ export async function loadBriefing(db: SupabaseClient, companyId: string, tz: st
     // live meter readings only day-interval schedules are decidable here.
     g(db.from('maintenance_schedules').select('asset_id, description, interval_type, interval_value, last_service_date').eq('company_id', companyId).limit(200)),
     g(db.from('work_orders').select('id, status, asset_id').eq('company_id', companyId).limit(200)),
-    g(db.from('alert_events').select('id, asset_id').eq('company_id', companyId)
+    g(db.from('alert_events').select('id, asset_id, kind, rule:alert_rules(trigger)').eq('company_id', companyId)
       .gte('triggered_at', new Date(yesterday.from).toISOString())
       .lt('triggered_at', new Date(yesterday.to).toISOString()).limit(200)),
   ])
@@ -206,6 +215,7 @@ export async function loadBriefing(db: SupabaseClient, companyId: string, tz: st
 /** One reader's briefing from the shared load — nothing above their rank,
  *  no dollars without the costs level. */
 export async function shapeBriefing(raw: BriefingRaw, companyName: string, who: BriefingAudience): Promise<BriefingFacts> {
+  const opens = (feature: string) => !who.features || who.features.has(feature)
   const seen = raw.assets.filter((a) => who.seesAsset(a))
   const seenIds = new Set(seen.map((a) => a.id))
   const siteZones = raw.zones
@@ -266,16 +276,19 @@ export async function shapeBriefing(raw: BriefingRaw, companyName: string, who: 
     sites,
     silentUnits,
     maintenanceOverdue: raw.maint
+      .filter(() => opens('maintenance'))
       .filter((m) => seenIds.has(m.asset_id))
       .filter((m) => m.interval_type === 'days' && m.last_service_date && Number(m.interval_value) > 0 &&
         (Date.now() - Date.parse(m.last_service_date)) / 86_400_000 >= Number(m.interval_value))
       .map((m) => `${nameOf.get(m.asset_id) ?? 'Asset'} — ${m.description}`)
       .slice(0, 6),
-    openWorkOrders: raw.wos.filter((w) => (!w.asset_id || seenIds.has(w.asset_id)) && w.status !== 'done' && w.status !== 'canceled').length,
-    alertsYesterday: raw.alerts.filter((a) => !a.asset_id || seenIds.has(a.asset_id)).length,
+    openWorkOrders: !opens('maintenance') ? 0 : raw.wos.filter((w) => (!w.asset_id || seenIds.has(w.asset_id)) && w.status !== 'done' && w.status !== 'canceled').length,
+    // Actionable only — zone crossings and routine fuel/battery rows are a
+    // log, not alerts ("· 143 alerts" on a lock screen, ship-check Nov 7).
+    alertsYesterday: !opens('alerts') ? 0 : raw.alerts.filter((a) => (!a.asset_id || seenIds.has(a.asset_id)) && !isZoneLogEvent(a)).length,
     trucks: raw.trucks
       .filter((t) => seenIds.has(t.asset.id))
-      .map((t) => ({ name: t.asset.name, milesYesterday: t.miles, at: t.at, silentH: t.fixMs == null ? null : (Date.now() - t.fixMs) / 3_600_000, checkEngine: t.checkEngine }))
+      .map((t) => ({ name: t.asset.name, milesYesterday: t.miles, at: t.at, silentH: t.fixMs == null ? null : (Date.now() - t.fixMs) / 3_600_000, checkEngine: t.checkEngine, milesKnown: t.scored }))
       .sort((a, b) => b.milesYesterday - a.milesYesterday),
     noticed: raw.insights
       .filter((r) => (who.money || !r.money) && !hiddenLink(r.link))
@@ -333,6 +346,7 @@ async function gatherTrucks(
       at,
       fixMs: fix ? Date.parse(fix.timestamp) : null,
       checkEngine: codes.get(v.id) ?? 0,
+      scored: isScoredAsset(v),
     })
   }
   return out
@@ -342,7 +356,7 @@ async function gatherTrucks(
 export function truckLine(t: TruckBrief): string {
   if (t.silentH == null) return `${t.name} — never reported`
   if (t.silentH > 24) return `${t.name} — dark ${t.silentH > 48 ? `${Math.round(t.silentH / 24)} days` : `${Math.round(t.silentH)} h`}`
-  const bits = [t.milesYesterday ? `${t.milesYesterday} mi` : 'parked']
+  const bits = [!t.milesKnown ? 'mileage n/a (battery unit)' : t.milesYesterday ? `${t.milesYesterday} mi` : 'parked']
   bits.push(t.at ? `at ${t.at}` : 'off site')
   if (t.checkEngine) bits.push(`check engine (${t.checkEngine})`)
   return `${t.name} — ${bits.join(' · ')}`
@@ -351,16 +365,22 @@ export function truckLine(t: TruckBrief): string {
 /** The push: one line a manager reads on the lock screen. */
 export function briefingPush(f: BriefingFacts): { title: string; body: string } {
   const live = f.trucks.filter((t) => t.silentH != null && t.silentH <= 24)
-  const miles = live.reduce((s, t) => s + t.milesYesterday, 0)
-  const dark = f.trucks.filter((t) => t.silentH == null || t.silentH > 24).length
-  const cel = f.trucks.filter((t) => t.checkEngine && t.silentH != null && t.silentH <= 24).length
-  const top = live.filter((t) => t.milesYesterday > 0).slice(0, 3).map((t) => `${t.name} ${t.milesYesterday} mi`)
+  const measured = live.filter((t) => t.milesKnown)
+  const moved = measured.filter((t) => t.milesYesterday > 0)
+  const miles = moved.reduce((s, t) => s + t.milesYesterday, 0)
+  // Dark = reported once and went quiet; a never-reported unit is mid-setup
+  // (the email's silent list leaves those out too).
+  const dark = f.trucks.filter((t) => t.silentH != null && t.silentH > 24).length
+  const cel = live.filter((t) => t.checkEngine).length
+  const top = moved.slice(0, 3).map((t) => `${t.name} ${t.milesYesterday} mi`)
   const bits: string[] = []
-  if (top.length) bits.push(`Yesterday: ${top.join(', ')}${live.filter((t) => t.milesYesterday > 0).length > 3 ? ` (${Math.round(miles)} mi total)` : ''}`)
-  else bits.push('No truck moved yesterday')
+  if (top.length) bits.push(`Yesterday: ${top.join(', ')}${moved.length > 3 ? ` (${Math.round(miles)} mi total)` : ''}`)
+  // Only say nobody moved when there are trucks that could tell us.
+  else if (measured.length) bits.push('No truck moved yesterday')
   if (dark) bits.push(`${dark} tracker${dark === 1 ? '' : 's'} dark`)
   if (cel) bits.push(`${cel} check engine`)
   if (f.alertsYesterday) bits.push(`${f.alertsYesterday} alert${f.alertsYesterday === 1 ? '' : 's'}`)
+  if (!bits.length) bits.push(f.sites.length ? `${f.sites.length} site${f.sites.length === 1 ? '' : 's'} on today's board` : 'Quiet board this morning')
   return { title: `☀ ${f.company} · ${f.dateLabel}`, body: bits.join(' · ') }
 }
 

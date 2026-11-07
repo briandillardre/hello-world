@@ -95,9 +95,15 @@ export default async function AssetsPage() {
     const today = dayKey(Date.now())
     const weekStart = dayKey(Date.now() - 6 * 86_400_000)
     const ids = assets.filter((a) => a.type === 'vehicle').map((a) => a.id)
-    if (ids.length) {
-      const { data } = await sb.from('driving_daily').select('asset_id, day, miles').in('asset_id', ids).gte('day', weekStart)
-      for (const r of (data ?? []) as { asset_id: string; day: string; miles: number }[]) {
+    // In chunks of 100: 7 day-rows each stays under the 1,000-row reply cap
+    // (one call for a big fleet came back silently short, ship-check Nov 7).
+    const rowsAll: { asset_id: string; day: string; miles: number }[] = []
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data } = await sb.from('driving_daily').select('asset_id, day, miles').in('asset_id', ids.slice(i, i + 100)).gte('day', weekStart)
+      rowsAll.push(...((data ?? []) as { asset_id: string; day: string; miles: number }[]))
+    }
+    {
+      for (const r of rowsAll) {
         const m = miles[r.asset_id] ?? { today: 0, week: 0 }
         m.week += Number(r.miles) || 0
         if (r.day === today) m.today += Number(r.miles) || 0

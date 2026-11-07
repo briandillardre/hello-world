@@ -12,7 +12,12 @@ import type { Asset, AssetLocation, AlertRule, Geofence, Company } from './types
  *  helper; 77 open fuel/battery rows buried the five that matter: theft,
  *  left site, lost truck power, check engine, a tracker gone dark). They
  *  still land in the Log tab and the morning briefing. */
-const ROUTINE_KINDS = new Set(['fuel_low', 'battery_low'])
+/** Logged, never rung: a low tank or a weak battery at the WARNING level
+ *  (Nov 6). The critical level writes its own kind (fuel_critical /
+ *  battery_critical) so it stays actionable — on the bell and in Needs
+ *  attention (ship-check, Nov 7). */
+export const ROUTINE_ALERT_KINDS = ['fuel_low', 'battery_low'] as const
+const ROUTINE_KINDS = new Set<string>(ROUTINE_ALERT_KINDS)
 export function isZoneLogEvent(e: { kind?: string | null; rule?: { trigger?: string | null } | null }): boolean {
   if (e.kind && ROUTINE_KINDS.has(e.kind)) return true
   return !e.kind && (e.rule?.trigger === 'enter' || e.rule?.trigger === 'exit')

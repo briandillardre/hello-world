@@ -95,13 +95,18 @@ export async function GET(req: NextRequest) {
       const views = new Map<string, Promise<BriefingFacts>>()
       for (const p of profs ?? []) {
         const role = notifyRole(p.id as string, co.id, p.role as string | null)
-        if (role !== 'admin' && role !== 'manager') continue
+        // Anyone whose Morning briefing switch is on — on by default for
+        // Admins and Managers; a Foreman who turns it on gets it too (the
+        // switch used to do nothing below Manager, ship-check Nov 7). Never
+        // a Prospective Client. Each copy is shaped for its reader below.
+        if (role === 'prospect') continue
         if (!resolvePersonNotify(p.notify_prefs, role).briefing) continue
         const perms = resolvePermissions(p, p.id === co.id, policy)
-        const key = `${rankOf(perms)}:${perms.canViewCosts ? 1 : 0}`
+        const features = new Set<string>(perms.features)
+        const key = `${rankOf(perms)}:${perms.canViewCosts ? 1 : 0}:${features.has('alerts') ? 1 : 0}${features.has('maintenance') ? 1 : 0}`
         let view = views.get(key)
         if (!view) {
-          view = shapeBriefing(raw, name, { seesAsset: (a) => canSeeAsset(perms, a.metadata, a.type), money: perms.canViewCosts })
+          view = shapeBriefing(raw, name, { seesAsset: (a) => canSeeAsset(perms, a.metadata, a.type), money: perms.canViewCosts, features })
           views.set(key, view)
         }
         const facts = await view

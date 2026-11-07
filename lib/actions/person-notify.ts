@@ -33,6 +33,7 @@ export interface PersonNotifyResult {
 export async function savePersonNotifyAction(
   targetUserId: string,
   patch: Partial<Record<PushKind, boolean>>,
+  opts: { muteAll?: boolean } = {},
 ): Promise<PersonNotifyResult> {
   if (isMock) return { ok: false, error: 'Demo mode — nothing is saved.' }
 
@@ -67,8 +68,13 @@ export async function savePersonNotifyAction(
   // the nag without anyone editing their phone). `_by` / `_at` say who last
   // touched it — an admin may silence a subordinate's theft alerts, but the
   // person sees on their own card that it happened.
-  const stored = sparsePersonNotify((target as { notify_prefs: unknown }).notify_prefs, patch)
-  const blob = { ...stored, _by: user.id, _at: new Date().toISOString() }
+  const prior = (target as { notify_prefs: unknown }).notify_prefs
+  const stored = sparsePersonNotify(prior, patch)
+  // Mute-all is remembered as `_muted` (new kinds default off); it stays
+  // through later single-switch edits until the phone is fully back on.
+  const wasMuted = !!prior && typeof prior === 'object' && (prior as Record<string, unknown>)._muted === true
+  const muted = !!opts.muteAll || (wasMuted && !PUSH_KINDS.every((k) => stored[k] === true))
+  const blob = { ...stored, ...(muted ? { _muted: true } : {}), _by: user.id, _at: new Date().toISOString() }
   const next = resolvePersonNotify(stored, role)
 
   const { error } = await db.from('profiles').update({ notify_prefs: blob }).eq('id', targetUserId).eq('company_id', companyId)
@@ -85,5 +91,5 @@ export async function savePersonNotifyAction(
 /** Mute this phone entirely — every kind off, one tap. */
 export async function mutePersonPushAction(targetUserId: string): Promise<PersonNotifyResult> {
   const off = Object.fromEntries(PUSH_KINDS.map((k) => [k, false])) as Record<PushKind, boolean>
-  return savePersonNotifyAction(targetUserId, off)
+  return savePersonNotifyAction(targetUserId, off, { muteAll: true })
 }
