@@ -20,7 +20,7 @@ import { ZoneWeather, type SiteWeatherRow } from '@/components/zones/ZoneWeather
 import { ZoneNotes } from '@/components/zones/ZoneNotes'
 import { ProjectHub } from '@/components/zones/ProjectHub'
 import { ZoneImagery } from '@/components/zones/ZoneImagery'
-import { ZonePlans } from '@/components/zones/ZonePlans'
+import { PlanRoomCard } from '@/components/plans/PlanRoomCard'
 import { ZoneDirtSection } from '@/components/dirt/ZoneDirtSection'
 import { ZoneSiteTakeoffSection } from '@/components/site-takeoff/ZoneSiteTakeoffSection'
 import { isProspect, rankOf, RANK } from '@/lib/permissions'
@@ -417,8 +417,11 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
               completedAt={fence.completed_at ?? null} activeUntil={fence.active_until ?? null} />
           </Suspense>
         )}
-        {!isBoundary && !isVendor && plansAvailable && (
-          <ZonePlans zoneId={fence.id} initial={zonePlans} canEdit={!isMock} ring={ring ?? null} />
+        {/* The plan room (143): sets, sheets, revisions — the card opens it. */}
+        {!isBoundary && !isVendor && plansAvailable && perms.features.includes('plans') && (
+          <Suspense fallback={null}>
+            <PlanRoomCard zoneId={fence.id} legacy={zonePlans} canEdit={!isMock && perms.canEdit && !perms.viewingAs} ring={ring ?? null} />
+          </Suspense>
         )}
         {!isBoundary && !isVendor && !isMock && !isProspect(perms) && (
           <Suspense fallback={null}>

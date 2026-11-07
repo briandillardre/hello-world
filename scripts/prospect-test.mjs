@@ -14,7 +14,7 @@ const eq = (a, b, msg) => ok(JSON.stringify(a) === JSON.stringify(b), `${msg}: g
 
 // defaults
 const pros = P.resolvePermissions({ role: 'prospect' }, false, null)
-eq(pros.features, ['map','command','alerts','aircraft','assets','zones','measurements','maintenance','reports'], 'prospect default features')
+eq(pros.features, ['map','command','alerts','aircraft','assets','zones','plans','measurements','maintenance','reports'], 'prospect default features')
 ok(!pros.canEdit && !pros.canViewCosts && !pros.canManageBilling && !pros.canManageTeam, 'prospect has no abilities')
 // the table can never widen past the sandbox
 const wide = { prospect: Object.fromEntries(P.FEATURE_KEYS.map((k) => [k, true])) }
@@ -22,7 +22,7 @@ const widened = P.resolvePermissions({ role: 'prospect', can_view_costs: true, c
 eq(widened.features, pros.features, 'all-on policy + person switches change nothing for a prospect')
 // the table CAN narrow
 const narrow = P.resolvePermissions({ role: 'prospect' }, false, { prospect: { command: false, reports: false } })
-eq(narrow.features, ['map','alerts','aircraft','assets','zones','measurements','maintenance'], 'policy narrows a prospect')
+eq(narrow.features, ['map','alerts','aircraft','assets','zones','plans','measurements','maintenance'], 'policy narrows a prospect')
 // sets
 ok(P.PROSPECT_HIDDEN.every((k) => P.PROSPECT_NEVER.includes(k)), 'hidden ⊂ never')
 ok(P.PROSPECT_NEVER.every((k) => !P.ROLE_FEATURE_DEFAULTS.prospect[k]), 'defaults never include a NEVER key')

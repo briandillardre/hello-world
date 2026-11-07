@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Activity, HelpCircle, Sparkles, Cpu, Satellite, Camera, CalendarClock, BellRing, Plane, Lock } from 'lucide-react'
+import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Activity, HelpCircle, Sparkles, Cpu, Satellite, Camera, CalendarClock, BellRing, Plane, Lock, FileStack } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { navStateFor, lockedHref } from '@/lib/permissions'
 import { useUnseenAlertCount } from './unseen-alerts'
@@ -24,6 +24,7 @@ const navSections: { title: string | null; items: { href: string; label: string;
     { href: '/photos', label: 'Photos', icon: Camera },
     { href: '/assets', label: 'Assets', icon: Package },
     { href: '/zones', label: 'Zones', icon: Hexagon },
+    { href: '/plans', label: 'Plans', icon: FileStack },
   ]},
   { title: 'Office', items: [
     { href: '/reports', label: 'Reports', icon: BarChart3 },
