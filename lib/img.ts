@@ -18,6 +18,8 @@ const MARKER = '/storage/v1/object/public/'
  *  cropped — and bounding both sides also keeps extreme-aspect panos at
  *  dimensions phone GPUs will actually paint. */
 export function thumbUrl(url: string, width: number, quality = 75): string {
+  // Plan sheets in the private bucket (144): the route signs a resized copy.
+  if (url.startsWith('/api/plans/image/')) return `${url}?w=${Math.max(40, Math.min(800, Math.round(width)))}`
   if (!url.includes(MARKER)) return url
   return (
     url.replace(MARKER, '/storage/v1/render/image/public/') +

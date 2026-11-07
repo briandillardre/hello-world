@@ -19,35 +19,52 @@ const fmtDay = (d: string) => {
   return Number.isNaN(t) ? d : new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
 }
 
-// One open PDF per file for the life of the tab — flipping between versions
-// of one set never downloads it twice.
-const docCache = new Map<string, Promise<PdfDoc>>()
-function openPdf(fileId: string): Promise<PdfDoc> {
-  let p = docCache.get(fileId)
-  if (!p) {
-    p = (async () => {
-      const r = await planPdfLinkAction(fileId)
-      if (!r?.ok) throw new Error(r && !r.ok ? r.error : 'link')
-      const pdfjs = await loadPdfjs()
-      return await pdfjs.getDocument({ url: r.url }).promise as PdfDoc
-    })()
-    p.catch(() => docCache.delete(fileId))
-    docCache.set(fileId, p)
-  }
+// The PDFs this tab has open, last used last: three at most (a compare needs
+// two), older ones closed — each holds a pdf.js worker. Pages load on demand
+// by range request, so one sheet of a 50 MB set never downloads the set over
+// a phone's data. The signed link lives 10 minutes: an open older than that
+// gets a fresh link when a page it never fetched is asked for.
+const MAX_DOCS = 3
+const LINK_MS = 9 * 60_000
+const docCache = new Map<string, { p: Promise<PdfDoc>; at: number }>()
+function closeDoc(fileId: string) {
+  const e = docCache.get(fileId)
+  if (!e) return
+  docCache.delete(fileId)
+  // A minute's grace: a canvas still drawing from it finishes first.
+  setTimeout(() => { void e.p.then((d) => d.loadingTask.destroy()).catch(() => {}) }, 60_000)
+}
+function openPdf(fileId: string, fresh = false): Promise<PdfDoc> {
+  const hit = docCache.get(fileId)
+  if (hit && !fresh) { docCache.delete(fileId); docCache.set(fileId, hit); return hit.p }
+  if (hit) closeDoc(fileId)
+  const p = (async () => {
+    const r = await planPdfLinkAction(fileId)
+    if (!r?.ok) throw new Error(r && !r.ok ? r.error : 'link')
+    const pdfjs = await loadPdfjs()
+    return await pdfjs.getDocument({ url: r.url, disableAutoFetch: true, disableStream: true }).promise as PdfDoc
+  })()
+  p.catch(() => { if (docCache.get(fileId)?.p === p) docCache.delete(fileId) })
+  docCache.set(fileId, { p, at: Date.now() })
+  while (docCache.size > MAX_DOCS) closeDoc(docCache.keys().next().value as string)
   return p
 }
+const linkStale = (fileId: string) => { const e = docCache.get(fileId); return !!e && Date.now() - e.at > LINK_MS }
 
 interface Resolved { src: PageSource; w: number; h: number; note: string | null }
 
 /** A version's page: the real PDF page when its file is here, else its picture. */
 async function resolve(v: RoomVersion, img: PlanImage | undefined): Promise<Resolved> {
   if (v.fileId && v.page) {
-    try {
-      const doc = await openPdf(v.fileId)
-      const page = await doc.getPage(v.page)
-      const vp = page.getViewport({ scale: 1 })
-      return { src: { kind: 'pdf', doc, page: v.page }, w: vp.width, h: vp.height, note: null }
-    } catch { /* fall back to the picture */ }
+    for (const fresh of [false, true]) {
+      if (fresh && !linkStale(v.fileId)) break
+      try {
+        const doc = await openPdf(v.fileId, fresh)
+        const page = await doc.getPage(v.page)
+        const vp = page.getViewport({ scale: 1 })
+        return { src: { kind: 'pdf', doc, page: v.page }, w: vp.width, h: vp.height, note: null }
+      } catch { /* a stale link gets one fresh try, then the picture */ }
+    }
   }
   if (!img) throw new Error('nothing to show')
   const dims = await new Promise<{ w: number; h: number }>((res, rej) => {
@@ -95,13 +112,17 @@ async function pixelsOf(r: Resolved, pxW: number, pxH: number): Promise<Uint8Cla
  * is placed); Plan up shows it as drawn. Where am I puts the phone's blue dot
  * on a placed sheet.
  */
-export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEdit }: {
+export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEdit, canDelete = false, canPdf = true }: {
   zone: { id: string; name: string }
   sheet: PlanSheetRow
   initialVersionId: string
   images: Record<string, PlanImage>
   sets: { id: string; name: string; kind: string; issuedOn: string }[]
   canEdit: boolean
+  /** Managers and above: delete a version. */
+  canDelete?: boolean
+  /** The original PDF (never for a prospect — pictures only). */
+  canPdf?: boolean
 }) {
   const router = useRouter()
   const versions = useMemo(() => [...sheet.versions].sort(newestFirst), [sheet.versions])
@@ -116,9 +137,9 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
   useEffect(() => {
     let alive = true
     setRes(null); setErr(null)
-    resolve(v, img).then((r) => { if (alive) setRes(r) }).catch(() => { if (alive) setErr('This version has nothing to show.') })
+    resolve(canPdf ? v : { ...v, fileId: null }, img).then((r) => { if (alive) setRes(r) }).catch(() => { if (alive) setErr('This version has nothing to show.') })
     return () => { alive = false }
-  }, [v, img])
+  }, [v, img, canPdf])
 
   // Opening the current version clears its NEW dot.
   useEffect(() => {
@@ -170,9 +191,11 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
         const im = ctx.createImageData(pxW, pxH)
         composite(a, b, im.data)
         ctx.putImageData(im, 0, 0)
-        const unit = rNew.w / pxW
+        // In the units of the page on the stage — the version being viewed,
+        // which may be the older one (a picture in pixels against a PDF in points).
+        const ux = res.w / pxW, uy = res.h / pxH
         const boxes = changeBoxes(a, b, pxW, pxH, Math.max(8, Math.round(pxW / 110)))
-          .map((x) => ({ x0: x.x0 * unit, y0: x.y0 * unit, x1: x.x1 * unit, y1: x.y1 * unit }))
+          .map((x) => ({ x0: x.x0 * ux, y0: x.y0 * uy, x1: x.x1 * ux, y1: x.y1 * uy }))
         setCmpCanvas(out); setClouds(boxes)
       } catch {
         if (alive) setErr('Compare needs both versions to open — one of them didn’t.')
@@ -215,7 +238,9 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
   const checks = useMemo(() => {
     const out: ScaleCheck[] = (v.scaleChecks ?? []).filter((c) => c.key in SCALE_LABEL).map((c) => ({ ...c, key: c.key as ScaleKey }))
     if (!out.length && v.feetPerInch) out.push({ key: 'stated', feetPerInch: v.feetPerInch, detail: `${v.scaleText ?? ''} in the title block`.trim() })
-    if (bounds && v.pageW && v.placement?.source !== 'grid') {
+    // Placement against the page's own size — a PDF page's points; a picture
+    // upload's width is in pixels, which say nothing about inches.
+    if (bounds && v.pageW && v.fileId && v.placement?.source !== 'grid') {
       out.push({ key: 'placement', feetPerInch: placementFeetPerInch(metresPerUnit(bounds, v.pageW)), detail: placementWords(v.placement, true) })
     }
     return out
@@ -359,6 +384,11 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
         </div>
       </div>
 
+      {sheet.voidedAt && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-red-950/60 border-b border-red-900/60 text-[12.5px] text-red-200">
+          VOID — a later set dropped this sheet ({fmtDay(sheet.voidedAt.slice(0, 10))}). Don’t build from it.
+        </div>
+      )}
       {status.kind !== 'current' && (
         <div className="flex items-center gap-2 px-3 py-2 bg-red-950/60 border-b border-red-900/60 text-[12.5px]">
           <span className="flex-1 text-red-200">
@@ -403,14 +433,14 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
             <CropIcon className="h-3.5 w-3.5" /> Map crop{v.crop && v.crop.on !== false ? ' · on' : ''}
           </button>
         )}
-        {v.fileId && <button type="button" onClick={() => void openPdfTab()} className="flex-none inline-flex items-center gap-1 rounded-lg border border-navy-700 text-muted px-2 py-1"><FileDown className="h-3.5 w-3.5" /> PDF</button>}
+        {v.fileId && canPdf && <button type="button" onClick={() => void openPdfTab()} className="flex-none inline-flex items-center gap-1 rounded-lg border border-navy-700 text-muted px-2 py-1"><FileDown className="h-3.5 w-3.5" /> PDF</button>}
         {canEdit && status.kind !== 'current' && (
           <button type="button" onClick={() => void pinIt(v.id)} className="flex-none inline-flex items-center gap-1 rounded-lg border border-navy-700 text-muted px-2 py-1"><Pin className="h-3.5 w-3.5" /> Make current</button>
         )}
         {canEdit && status.kind === 'current' && status.pinned && (
           <button type="button" onClick={() => void pinIt(null)} className="flex-none inline-flex items-center gap-1 rounded-lg border border-navy-700 text-muted px-2 py-1"><PinOff className="h-3.5 w-3.5" /> Back to newest</button>
         )}
-        {canEdit && <button type="button" onClick={() => void deleteIt()} aria-label="Delete this version" className="flex-none ml-auto rounded-lg p-1.5 text-faint hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>}
+        {canDelete && <button type="button" onClick={() => void deleteIt()} aria-label="Delete this version" className="flex-none ml-auto rounded-lg p-1.5 text-faint hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>}
       </div>
 
       {cropEdit && (

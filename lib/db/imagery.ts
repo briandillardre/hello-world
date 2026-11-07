@@ -20,6 +20,10 @@ export interface SiteOverlay {
   sheetId?: string
   issuedOn?: string
   current?: boolean
+  /** A revision newer than a pinned current one — held back, never drawn. */
+  held?: boolean
+  /** When the version was filed — breaks a same-day tie on the timeline. */
+  createdAt?: string
   /** "C-101 · Grading plan" and "Rev 2 · Addendum 1 · Oct 20, 2026". */
   sheetLabel?: string
   versionLabel?: string
@@ -72,11 +76,12 @@ export async function getPlacedSiteOverlays(companyId: string): Promise<SiteOver
           .order('taken_on', { ascending: false })
           .order('created_at', { ascending: false })
           .limit(500),
+        // Every flagged sheet, placed or not: a sheet whose current revision
+        // is not placed yet still plays its placed history on the timeline.
         supabase
           .from('zone_imagery')
           .select(`${base}, kind, map_active`)
           .eq('company_id', companyId)
-          .not('bounds', 'is', null)
           .eq('kind', 'plan')
           .eq('map_active', true)
           .limit(200),
@@ -106,13 +111,11 @@ export async function getPlacedSiteOverlays(companyId: string): Promise<SiteOver
     // Plan-room sheets (143): the map flag sits on each sheet's CURRENT
     // version; bring every placed version of those sheets so the timeline
     // can show the one that was current on a scrubbed day.
-    const versioned = await planVersionsFor(supabase, planRows.map((r) => String(r.id)))
-    if (versioned) {
-      const taken = new Set(versioned.map((v) => v.id))
-      rows = [...rows, ...planRows.filter((r) => !versioned.some((v) => v.fromImage === r.id) && !taken.has(String(r.id)))]
-    } else {
-      rows = [...rows, ...planRows]
-    }
+    const pv = await planVersionsFor(supabase, planRows.map((r) => String(r.id)))
+    const versioned = pv?.frames ?? null
+    // A picture that belongs to ANY plan-room version (a voided sheet's
+    // included) is never drawn as an old-style plan.
+    rows = pv ? [...rows, ...planRows.filter((r) => !pv.known.has(String(r.id)))] : [...rows, ...planRows]
     const photos: SiteOverlay[] = []
     const plans: SiteOverlay[] = []
     for (const row of rows ?? []) {
@@ -141,11 +144,13 @@ export async function getPlacedSiteOverlays(companyId: string): Promise<SiteOver
 type Db = ReturnType<typeof import('../supabase-server')['createClient']>
 
 /** Every placed version of the sheets whose current picture is on the map. */
-async function planVersionsFor(db: Db, activeImageIds: string[]): Promise<(SiteOverlay & { fromImage?: string })[] | null> {
+async function planVersionsFor(db: Db, activeImageIds: string[]): Promise<{ frames: (SiteOverlay & { fromImage?: string })[]; known: Set<string> } | null> {
   if (!activeImageIds.length) return null
   try {
     const { data: hits, error } = await db.from('plan_versions').select('sheet_id, image_id').in('image_id', activeImageIds.slice(0, 200))
-    if (error || !hits?.length) return null
+    if (error) return null
+    const known = new Set((hits ?? []).map((h) => String(h.image_id)))
+    if (!hits?.length) return { frames: [], known }
     const sheetIds = Array.from(new Set(hits.map((h) => String(h.sheet_id))))
     const [{ data: sheets }, { data: vers }] = await Promise.all([
       db.from('plan_sheets').select('id, number, title, current_version_id, voided_at').in('id', sheetIds),
@@ -157,7 +162,7 @@ async function planVersionsFor(db: Db, activeImageIds: string[]): Promise<(SiteO
       imgIds.length ? db.from('zone_imagery').select('id, url, bounds, geofence_id, taken_on').in('id', imgIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
       setIds.length ? db.from('plan_sets').select('id, name').in('id', setIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     ])
-    const { currentOf, revLabel } = await import('../plans/room')
+    const { currentOf, revLabel, statusOf } = await import('../plans/room')
     const { versionFromRow } = await import('./plans')
     const img = new Map((imgs ?? []).map((i) => [String(i.id), i]))
     const setName = new Map((sets ?? []).map((x) => [String(x.id), String(x.name ?? '')]))
@@ -169,7 +174,9 @@ async function planVersionsFor(db: Db, activeImageIds: string[]): Promise<(SiteO
     for (const sh of sheets ?? []) {
       if (sh.voided_at) continue
       const vs = (vers ?? []).filter((v) => v.sheet_id === sh.id).map((v) => ({ row: v, v: versionFromRow(v as Record<string, unknown>) }))
-      const cur = currentOf({ pinnedVersionId: (sh.current_version_id as string | null) ?? null }, vs.map((x) => x.v))
+      const pin = { pinnedVersionId: (sh.current_version_id as string | null) ?? null }
+      const all = vs.map((x) => x.v)
+      const cur = currentOf(pin, all)
       for (const { row, v } of vs) {
         const i = v.imageId ? img.get(v.imageId) : undefined
         if (!i || !validCorners(i.bounds)) continue
@@ -178,6 +185,7 @@ async function planVersionsFor(db: Db, activeImageIds: string[]): Promise<(SiteO
           id: String(i.id), url: String(i.url), coords: i.bounds, zoneId: String(i.geofence_id), takenOn: String(i.taken_on ?? ''),
           kind: 'plan', satellite: false,
           sheetId: String(sh.id), issuedOn: v.issuedOn, current: cur?.id === v.id,
+          held: statusOf(v, pin, all).kind === 'held', createdAt: String(row.created_at ?? ''),
           sheetLabel: `${sh.number}${sh.title ? ` · ${sh.title}` : ''}`,
           versionLabel: `${revLabel(v.rev)}${v.setId && setName.get(v.setId) ? ` · ${setName.get(v.setId)}` : ''} · ${day(v.issuedOn)}`,
           crop,
@@ -185,7 +193,7 @@ async function planVersionsFor(db: Db, activeImageIds: string[]): Promise<(SiteO
         })
       }
     }
-    return out
+    return { frames: out, known }
   } catch {
     return null
   }

@@ -70,8 +70,16 @@ export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, 
     setCam({ s: fitScale({ x0: 0, y0: 0, x1: pageW, y1: pageH }), cx: pageW / 2, cy: pageH / 2 })
   }, [vw, vh, pageW, pageH, fitScale])
 
-  // First fit, and refit when the page or the turn changes.
-  useEffect(() => { fitAll() }, [fitAll, pageW, pageH, rotation])
+  // First fit, and refit when the page or the turn changes — never on a
+  // resize alone (opening the scale card or the crop bar keeps your zoom).
+  const fitFor = useRef('')
+  useEffect(() => {
+    if (!vw || !vh || !pageW || !pageH) return
+    const key = `${pageW}x${pageH}@${rotation}`
+    if (fitFor.current === key) return
+    fitFor.current = key
+    fitAll()
+  }, [fitAll, pageW, pageH, rotation, vw, vh])
 
   useEffect(() => {
     if (!focus || !vw) return
@@ -132,7 +140,9 @@ export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, 
         if (alive) setLoading(false)
       }
     })()
-    return () => { alive = false; task?.cancel() }
+    // A render cut short (Compare started mid-draw) must not leave
+    // "Opening the sheet…" up for good.
+    return () => { alive = false; task?.cancel(); setLoading(false) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src, base])
 

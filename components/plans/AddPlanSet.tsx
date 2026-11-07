@@ -7,9 +7,9 @@ import { createClient } from '@/lib/supabase'
 import { busy as globalBusy } from '@/lib/busy'
 import {
   createPlanSetAction, startPlanFileUploadAction, finishPlanFileUploadAction, addPlanVersionAction,
+  startPlanImageUploadAction, finishPlanImageAction,
   voidPlanSheetsAction, copyPlacementAction, notePlacementAction,
 } from '@/lib/actions/plans'
-import { createImageryUploadAction, finalizeZoneImageryAction } from '@/lib/actions/imagery'
 import {
   SET_KINDS, isFullIssue, verdictFor, numberKey, cleanNumber, commonDate, revLabel, nextRev,
   type PlanSetKind, type PageVerdict, type RoomVersion,
@@ -76,7 +76,9 @@ const today = () => new Date().toLocaleDateString('en-CA')
  * each kept page becomes a picture + a version, and a revision of a placed
  * sheet lands where the old one sat when it is the same plot.
  */
-export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
+export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = false }: {
+  /** Managers and above may void the sheets a full re-issue left out. */
+  canVoid?: boolean
   zoneId: string
   sheets: PlanSheetRow[]
   ring: [number, number][] | null
@@ -98,12 +100,30 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
   const [copyOffer, setCopyOffer] = useState<{ from: Filed; to: Filed[] } | null>(null)
   const srcs = useRef<Src[]>([])
   const cancelled = useRef(false)
+  // A set being filed survives the panel closing (Android Back): the loop
+  // runs to the end under the busy bar, and "File the rest" picks up a run
+  // that stopped, on the same set and the same uploaded PDFs.
+  const importing = useRef(false)
+  const gone = useRef(false)
+  const setRef = useRef<string | null>(null)
+  const fileIdsRef = useRef(new Map<number, string>())
+  const [voidedN, setVoidedN] = useState(0)
+  const closeAll = () => { for (const s of srcs.current) void s.doc?.loadingTask.destroy().catch(() => {}) }
 
-  // Free every open PDF when the panel goes away.
+  // Free every open PDF when the panel goes away — after a set being filed
+  // finishes, never under it.
   useEffect(() => () => {
     cancelled.current = true
-    for (const s of srcs.current) void s.doc?.loadingTask.destroy().catch(() => {})
+    gone.current = true
+    if (!importing.current) closeAll()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  useEffect(() => {
+    if (phase !== 'importing') return
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [phase])
 
   const versionsBySheet = useMemo(() => new Map<string, RoomVersion[]>(sheets.map((s) => [s.id, s.versions])), [sheets])
   const roomSheets = useMemo(() => sheets.map((s) => ({ id: s.id, numberKey: s.numberKey, pinnedVersionId: s.pinnedVersionId })), [sheets])
@@ -137,10 +157,12 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
 
   // A full re-issue that leaves a live sheet out asks about it.
   const leftOut = useMemo(() => {
-    if (!isFullIssue(kind) || phase !== 'review') return []
+    if (!canVoid || !isFullIssue(kind) || phase !== 'review') return []
     const keys = new Set(kept.map((it) => cleanNumber(it.number)).filter((x): x is string => !!x).map(numberKey))
-    return sheets.filter((s) => !s.voidedAt && !keys.has(s.numberKey) && !/^P\d+$/.test(s.numberKey))
-  }, [kind, kept, sheets, phase])
+    // Never a sheet whose current revision is newer than this set.
+    return sheets.filter((s) => !s.voidedAt && !keys.has(s.numberKey) && !/^P\d+$/.test(s.numberKey) &&
+      (s.versions.find((v) => v.id === s.currentId)?.issuedOn ?? '') <= issuedOn)
+  }, [kind, kept, sheets, phase, canVoid, issuedOn])
 
   async function pick(files: FileList | null) {
     if (!files?.length) return
@@ -154,6 +176,7 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
     try {
       const pdfjs = list.some((f) => isPdf(f)) ? await loadPdfjs() : null
       for (let si = 0; si < list.length; si++) {
+        if (cancelled.current) break
         const f = list[si]
         if (isPdf(f) && pdfjs) {
           let doc: PdfDoc
@@ -207,60 +230,72 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
     if (missingNumber) { setError('Every kept page needs a sheet number.'); return }
     if (dupKeys.size) { setError('Two kept pages have the same sheet number — keep one of them.'); return }
     if (!name.trim()) { setError('Name the set.'); return }
+    // A second run files only what the first one didn't.
+    const results: Filed[] = filed.filter((f) => !f.error)
+    const todo = kept.filter((it) => !results.some((f) => f.key === it.key))
+    if (!todo.length) return
     setError(null)
     setPhase('importing')
+    importing.current = true
     const done = globalBusy('Filing the set…')
-    const results: Filed[] = []
+    const problems: string[] = []
     try {
-      const set = await createPlanSetAction({ zoneId, name, kind, issuedOn }).catch(() => null)
-      if (!set?.ok) { setError(set && !set.ok ? set.error : 'Couldn’t start the set — check signal and try again.'); setPhase('review'); return }
-      const setId = set.setId
+      let setId = setRef.current
+      if (!setId) {
+        const set = await createPlanSetAction({ zoneId, name, kind, issuedOn }).catch(() => null)
+        if (!set?.ok) { setError(set && !set.ok ? set.error : 'Couldn’t start the set — check signal and try again.'); setPhase('review'); return }
+        setId = set.setId
+        setRef.current = setId
+      }
       const sb = createClient()
       // The original PDFs, whole, into the private bucket (the viewer reads them).
-      const fileIds = new Map<number, string>()
+      const fileIds = fileIdsRef.current
       for (let i = 0; i < srcs.current.length; i++) {
         const s = srcs.current[i]
-        if (s.kind !== 'pdf' || !kept.some((it) => it.src === i)) continue
-        if (s.file.size > MAX_BYTES) { setError(`${s.file.name} is over 50 MB — its pages file as pictures only.`); continue }
+        if (s.kind !== 'pdf' || fileIds.has(i) || !todo.some((it) => it.src === i)) continue
+        if (s.file.size > MAX_BYTES) { problems.push(`${s.file.name} is over 50 MB — its pages file as pictures only.`); continue }
         setProgress(`Uploading ${s.file.name.slice(0, 40)}…`)
         const st = await startPlanFileUploadAction({ setId, name: s.file.name, size: s.file.size }).catch(() => null)
-        if (!st?.ok) continue
-        const up = await sb.storage.from('plans').uploadToSignedUrl(st.path, st.token, s.file, { contentType: 'application/pdf' })
-        if (up.error) continue
-        const fin = await finishPlanFileUploadAction({ setId, path: st.path, name: s.file.name, pages: s.pages }).catch(() => null)
+        const up = st?.ok ? await sb.storage.from('plans').uploadToSignedUrl(st.path, st.token, s.file, { contentType: 'application/pdf' }) : null
+        const fin = st?.ok && up && !up.error
+          ? await finishPlanFileUploadAction({ setId, path: st.path, name: s.file.name, pages: s.pages }).catch(() => null) : null
         if (fin?.ok) fileIds.set(i, fin.fileId)
+        else problems.push(`${s.file.name} didn’t upload${st && !st.ok ? ` (${st.error})` : ''} — its pages file as pictures; the PDF can be added again later.`)
       }
-      for (let i = 0; i < kept.length; i++) {
-        const it = kept[i]
+      let stopped: string | null = null
+      for (let i = 0; i < todo.length; i++) {
+        const it = todo[i]
         const number = cleanNumber(it.number)!
         const v = verdicts.get(it.key)?.kind ?? 'new'
-        const label = `${number} — sheet ${i + 1} of ${kept.length}`
+        const fail = (error: string) => results.push({ key: it.key, number, verdict: v, width: it.width, height: it.height, error })
+        if (stopped) { fail('not filed yet'); continue }
+        const label = `${number} — sheet ${i + 1} of ${todo.length}`
         setProgress(`${label} · converting…`)
         const s = srcs.current[it.src]
         let blob: Blob
         try {
           blob = s.kind === 'pdf' && s.doc && it.page ? await renderSheetPng(s.doc, it.page) : s.file
         } catch {
-          results.push({ key: it.key, number, verdict: v, width: it.width, height: it.height, error: 'wouldn’t convert' })
-          continue
+          fail('wouldn’t convert'); continue
         }
-        if (blob.size > MAX_BYTES) { results.push({ key: it.key, number, verdict: v, width: it.width, height: it.height, error: 'over 50 MB' }); continue }
+        if (blob.size > MAX_BYTES) { fail('over 50 MB'); continue }
         setProgress(`${label} · uploading…`)
+        // The picture goes to the PRIVATE plans bucket beside its PDF (144).
         const type = blob.type || 'image/png'
-        const pre = await createImageryUploadAction(zoneId, type, blob.size).catch(() => null)
-        if (!pre?.ok || !pre.path || !pre.token) { setError(pre?.error ?? 'Upload didn’t go through — check signal and try again.'); break }
-        const up = await sb.storage.from('field-photos').uploadToSignedUrl(pre.path, pre.token, blob, { contentType: type })
-        if (up.error) { setError('Upload didn’t go through — check signal and try again.'); break }
+        if (!/^image\/(png|jpeg|webp)$/.test(type)) { fail('not a PNG or JPEG picture'); continue }
+        const pre = await startPlanImageUploadAction({ setId, contentType: type, size: blob.size }).catch(() => null)
+        if (!pre?.ok) { stopped = pre && !pre.ok ? pre.error : 'Upload didn’t go through — check signal.'; fail('didn’t upload'); continue }
+        const up = await sb.storage.from('plans').uploadToSignedUrl(pre.path, pre.token, blob, { contentType: type })
+        if (up.error) { stopped = 'Upload didn’t go through — check signal.'; fail('didn’t upload'); continue }
         const title = it.title.trim()
-        const img = await finalizeZoneImageryAction({
-          zoneId, path: pre.path, takenOn: issuedOn, caption: `${number}${title ? ` · ${title}` : ''}`,
-          kind: 'plan', planCategory: categoryFor(title, number),
+        const fin = await finishPlanImageAction({
+          setId, imageId: pre.imageId, caption: `${number}${title ? ` · ${title}` : ''}`, planCategory: categoryFor(title, number),
         }).catch(() => null)
-        if (!img?.ok || !img.image) { setError(img?.error ?? 'Upload didn’t go through — try again.'); break }
+        if (!fin?.ok) { stopped = fin && !fin.ok ? fin.error : 'Upload didn’t go through — check signal.'; fail('didn’t upload'); continue }
         setProgress(`${label} · filing…`)
         const fileId = fileIds.get(it.src) ?? null
         const r = await addPlanVersionAction({
-          setId, fileId, page: fileId ? it.page : null, imageId: img.image.id,
+          setId, fileId, page: fileId ? it.page : null, imageId: fin.id,
           number, title: title || null, rev: it.rev.trim() || null,
           signature: it.signature, pageW: it.width || null, pageH: it.height || null, inkBox: it.ink,
           feetPerInch: it.read?.feetPerInch ?? null, scaleText: it.read?.scaleText ?? null,
@@ -269,17 +304,27 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
           grid: it.grid ? { bounds: it.grid.bounds, worstFt: it.grid.worstFt, n: it.grid.n, what: it.grid.what, assumedUp: it.grid.assumedUp } : null,
           crop: it.crop,
         }).catch(() => null)
-        if (!r?.ok) { results.push({ key: it.key, number, verdict: v, width: it.width, height: it.height, error: r && !r.ok ? r.error : 'didn’t file' }); continue }
+        if (!r?.ok) { fail(r && !r.ok ? r.error : 'didn’t file'); continue }
         results.push({
-          key: it.key, number, verdict: v, versionId: r.versionId, imageId: img.image.id, imageUrl: img.image.url,
+          key: it.key, number, verdict: v, versionId: r.versionId, imageId: fin.id, imageUrl: fin.url,
           carried: r.carried, placed: r.placed, width: it.width, height: it.height,
         })
         setFiled([...results])
       }
-      if (voidIds.size) await voidPlanSheetsAction(setId, Array.from(voidIds)).catch(() => null)
+      if (stopped) problems.unshift(`${stopped} ${results.filter((f) => f.error).length} page${results.filter((f) => f.error).length === 1 ? '' : 's'} not filed — File the rest when you have signal.`)
+      // Left-out sheets are voided only once the whole set is in.
+      const allIn = results.length >= kept.length && results.every((f) => !f.error)
+      if (voidIds.size && allIn && !voidedN) {
+        const r = await voidPlanSheetsAction(setId, Array.from(voidIds)).catch(() => null)
+        if (r?.ok) setVoidedN(r.voided)
+        else problems.push('The set is filed, but voiding the left-out sheets didn’t go through — void them from the plan room.')
+      }
     } finally {
       done()
+      importing.current = false
+      if (gone.current) closeAll()
     }
+    setError(problems.length ? problems.join(' ') : null)
     setFiled(results)
     setPhase('done')
   }
@@ -385,8 +430,8 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
                       <label className="flex flex-col items-center gap-1 cursor-pointer">
                         {it.thumb
                           // eslint-disable-next-line @next/next/no-img-element
-                          ? <img src={it.thumb} alt={`Page ${it.page ?? ''}`} className="w-24 sm:w-32 rounded bg-white border border-navy-700" />
-                          : <div className="w-24 sm:w-32 aspect-[3/2] rounded bg-navy-800 grid place-items-center text-[10px] text-faint">no preview</div>}
+                          ? <img src={it.thumb} alt={`Page ${it.page ?? ''}`} className="w-20 sm:w-32 rounded bg-white border border-navy-700" />
+                          : <div className="w-20 sm:w-32 aspect-[3/2] rounded bg-navy-800 grid place-items-center text-[10px] text-faint">no preview</div>}
                         <span className="flex items-center gap-1 text-[11px] text-muted">
                           <input type="checkbox" checked={it.keep} onChange={(e) => edit(it.key, { keep: e.target.checked, keepTouched: true })} className="accent-amber" />
                           Keep
@@ -398,16 +443,16 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
                           {it.page != null && <span className="text-[10.5px] text-faint">{srcs.current[it.src]?.file.name.slice(0, 32)} · p{it.page}</span>}
                           {it.read && it.read.confidence < 0.4 && it.read.number && <span className="text-[10.5px] text-amber">unsure read — check the number</span>}
                         </div>
-                        <div className="grid grid-cols-[6.5rem_1fr_4rem] gap-1.5">
+                        <div className="grid grid-cols-[1fr_4rem] sm:grid-cols-[6.5rem_1fr_4rem] gap-1.5">
                           <input value={it.number} onChange={(e) => edit(it.key, { number: e.target.value.toUpperCase().slice(0, 24), keep: it.keepTouched ? it.keep : true })}
                             placeholder="C-101" aria-label="Sheet number"
-                            className={'rounded-lg bg-navy-950 border px-2 py-1.5 text-sm font-mono text-ink ' + (dup || (it.keep && !cleanNumber(it.number)) ? 'border-red-500/70' : 'border-navy-700')} />
+                            className={'min-w-0 rounded-lg bg-navy-950 border px-2 py-1.5 text-sm font-mono text-ink ' + (dup || (it.keep && !cleanNumber(it.number)) ? 'border-red-500/70' : 'border-navy-700')} />
                           <input value={it.title} onChange={(e) => edit(it.key, { title: e.target.value.slice(0, 200) })}
                             placeholder="Title" aria-label="Sheet title"
-                            className="rounded-lg bg-navy-950 border border-navy-700 px-2 py-1.5 text-sm text-ink min-w-0" />
+                            className="order-last col-span-2 sm:order-none sm:col-span-1 rounded-lg bg-navy-950 border border-navy-700 px-2 py-1.5 text-sm text-ink min-w-0" />
                           <input value={it.rev} onChange={(e) => edit(it.key, { rev: e.target.value.slice(0, 8) })}
                             placeholder="Rev" aria-label="Revision"
-                            className="rounded-lg bg-navy-950 border border-navy-700 px-2 py-1.5 text-sm font-mono text-ink" />
+                            className="min-w-0 rounded-lg bg-navy-950 border border-navy-700 px-2 py-1.5 text-sm font-mono text-ink" />
                         </div>
                         {dup && <p className="text-[11px] text-red-400">This number is on another kept page too.</p>}
                         {v.kind === 'revises' && !it.rev.trim() && nextRev(v.from.rev) && (
@@ -464,7 +509,7 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
                   {counts.check > 0 && <li className="text-amber">{counts.check} carried their placement but the drawing moved on the paper — check them on the map</li>}
                   {counts.unplaced > 0 && <li>{counts.unplaced} aren’t on the map yet — place one below and the rest can copy it</li>}
                   {counts.failed > 0 && <li className="text-red-400">{counts.failed} didn’t file — see below</li>}
-                  {voidIds.size > 0 && <li>{voidIds.size} voided</li>}
+                  {voidedN > 0 && <li>{voidedN} voided</li>}
                 </ul>
               </div>
               {copyOffer && (
@@ -510,7 +555,12 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
         </div>
       )}
       {phase === 'done' && (
-        <div className="border-t border-navy-800 px-4 py-3 flex justify-end bg-navy-950">
+        <div className="border-t border-navy-800 px-4 py-3 flex items-center justify-end gap-3 bg-navy-950">
+          {counts.failed > 0 && (
+            <button type="button" onClick={() => void fileIt()} className="rounded-xl border border-amber/60 text-amber font-display font-bold px-4 py-2">
+              File the rest ({counts.failed})
+            </button>
+          )}
           <button type="button" onClick={() => { onDone(); onClose() }} className="rounded-xl bg-amber text-[#1a1100] font-display font-bold px-4 py-2">Done</button>
         </div>
       )}
