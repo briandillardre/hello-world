@@ -14,6 +14,17 @@ export interface SiteOverlay {
   /** A satellite picture (source 'satellite') — it yields on the map to a
    *  sharper drone/site photo up to 14 days older (lib/satellite/display.ts). */
   satellite: boolean
+  /** Plan-room versions (143): the sheet this picture is a version of, its
+   *  issue date and whether it is the current version — the map shows the
+   *  current one live and the one current on a scrubbed day in a replay. */
+  sheetId?: string
+  issuedOn?: string
+  current?: boolean
+  /** "C-101 · Grading plan" and "Rev 2 · Addendum 1 · Oct 20, 2026". */
+  sheetLabel?: string
+  versionLabel?: string
+  /** The drawing area to show (page fractions, v down), border + title block off. */
+  crop?: { x0: number; y0: number; x1: number; y1: number; on?: boolean } | null
 }
 
 type Corner = [number, number]
@@ -92,7 +103,16 @@ export async function getPlacedSiteOverlays(companyId: string): Promise<SiteOver
       String(a.taken_on ?? '').localeCompare(String(b.taken_on ?? '')) ||
       satFirst(a) - satFirst(b) ||
       String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')))
-    rows = [...rows, ...planRows]
+    // Plan-room sheets (143): the map flag sits on each sheet's CURRENT
+    // version; bring every placed version of those sheets so the timeline
+    // can show the one that was current on a scrubbed day.
+    const versioned = await planVersionsFor(supabase, planRows.map((r) => String(r.id)))
+    if (versioned) {
+      const taken = new Set(versioned.map((v) => v.id))
+      rows = [...rows, ...planRows.filter((r) => !versioned.some((v) => v.fromImage === r.id) && !taken.has(String(r.id)))]
+    } else {
+      rows = [...rows, ...planRows]
+    }
     const photos: SiteOverlay[] = []
     const plans: SiteOverlay[] = []
     for (const row of rows ?? []) {
@@ -112,8 +132,61 @@ export async function getPlacedSiteOverlays(companyId: string): Promise<SiteOver
         photos.push(item)
       }
     }
-    return [...photos, ...plans]
+    return [...photos, ...plans, ...(versioned ?? []).map((o) => { const c = { ...o }; delete c.fromImage; return c })]
   } catch {
     return []
+  }
+}
+
+type Db = ReturnType<typeof import('../supabase-server')['createClient']>
+
+/** Every placed version of the sheets whose current picture is on the map. */
+async function planVersionsFor(db: Db, activeImageIds: string[]): Promise<(SiteOverlay & { fromImage?: string })[] | null> {
+  if (!activeImageIds.length) return null
+  try {
+    const { data: hits, error } = await db.from('plan_versions').select('sheet_id, image_id').in('image_id', activeImageIds.slice(0, 200))
+    if (error || !hits?.length) return null
+    const sheetIds = Array.from(new Set(hits.map((h) => String(h.sheet_id))))
+    const [{ data: sheets }, { data: vers }] = await Promise.all([
+      db.from('plan_sheets').select('id, number, title, current_version_id, voided_at').in('id', sheetIds),
+      db.from('plan_versions').select('id, sheet_id, set_id, image_id, rev, issued_on, created_at, crop').in('sheet_id', sheetIds).limit(2000),
+    ])
+    const imgIds = Array.from(new Set((vers ?? []).map((v) => v.image_id).filter((x): x is string => !!x)))
+    const setIds = Array.from(new Set((vers ?? []).map((v) => v.set_id).filter((x): x is string => !!x)))
+    const [{ data: imgs }, { data: sets }] = await Promise.all([
+      imgIds.length ? db.from('zone_imagery').select('id, url, bounds, geofence_id, taken_on').in('id', imgIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      setIds.length ? db.from('plan_sets').select('id, name').in('id', setIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    ])
+    const { currentOf, revLabel } = await import('../plans/room')
+    const { versionFromRow } = await import('./plans')
+    const img = new Map((imgs ?? []).map((i) => [String(i.id), i]))
+    const setName = new Map((sets ?? []).map((x) => [String(x.id), String(x.name ?? '')]))
+    const day = (d: string) => {
+      const t = Date.parse(`${d}T12:00:00Z`)
+      return Number.isNaN(t) ? d : new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+    }
+    const out: (SiteOverlay & { fromImage?: string })[] = []
+    for (const sh of sheets ?? []) {
+      if (sh.voided_at) continue
+      const vs = (vers ?? []).filter((v) => v.sheet_id === sh.id).map((v) => ({ row: v, v: versionFromRow(v as Record<string, unknown>) }))
+      const cur = currentOf({ pinnedVersionId: (sh.current_version_id as string | null) ?? null }, vs.map((x) => x.v))
+      for (const { row, v } of vs) {
+        const i = v.imageId ? img.get(v.imageId) : undefined
+        if (!i || !validCorners(i.bounds)) continue
+        const crop = row.crop && typeof row.crop === 'object' ? row.crop as SiteOverlay['crop'] : null
+        out.push({
+          id: String(i.id), url: String(i.url), coords: i.bounds, zoneId: String(i.geofence_id), takenOn: String(i.taken_on ?? ''),
+          kind: 'plan', satellite: false,
+          sheetId: String(sh.id), issuedOn: v.issuedOn, current: cur?.id === v.id,
+          sheetLabel: `${sh.number}${sh.title ? ` · ${sh.title}` : ''}`,
+          versionLabel: `${revLabel(v.rev)}${v.setId && setName.get(v.setId) ? ` · ${setName.get(v.setId)}` : ''} · ${day(v.issuedOn)}`,
+          crop,
+          fromImage: activeImageIds.includes(String(i.id)) ? String(i.id) : undefined,
+        })
+      }
+    }
+    return out
+  } catch {
+    return null
   }
 }

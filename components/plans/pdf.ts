@@ -11,6 +11,9 @@ import { extractVectors, textFromContent, textFromShx } from '@/lib/dirt/pdf-vec
 import { readTitleBlock, type TitleBlock } from '@/lib/plans/title-block'
 import { wordsToViewed, linesToViewed, fingerprintSource, sha256Hex, inkBox, type ViewTransform } from '@/lib/plans/fingerprint'
 import { rasterScale } from '@/lib/dirt/plan-geo'
+import { scaleBar, labelledDistances, type ScaleCheck } from '@/lib/plans/scale'
+import { findGridLabels, fitGrid, type GridFit } from '@/lib/plans/gridfit'
+import { autoCrop, type Crop } from '@/lib/plans/crop'
 
 export type PdfjsModule = typeof import('pdfjs-dist')
 export type PdfDoc = import('pdfjs-dist').PDFDocumentProxy
@@ -32,6 +35,12 @@ export interface PageRead {
   tb: TitleBlock
   signature: string | null
   ink: [number, number, number, number] | null
+  /** The page's own scale evidence (stated · bar · labelled distances · grid). */
+  checks: ScaleCheck[]
+  /** Where its state plane coordinates put it, when it prints enough of them. */
+  grid: GridFit | null
+  /** The drawing area for the map (the border and title block cropped off). */
+  crop: Crop | null
 }
 
 /** A small JPEG of the page for the review grid and the lists. */
@@ -79,7 +88,16 @@ export async function readPage(pdfjs: PdfjsModule, doc: PdfDoc, n: number, names
     const vl = linesToViewed(lines, t, vp.height)
     const src = fingerprintSource(words, vl, pens, size)
     const [signature, thumb] = await Promise.all([src ? sha256Hex(src) : Promise.resolve(null), thumbOf(page, 260)])
-    return { page: n, width: size.width, height: size.height, thumb, tb: readTitleBlock(words, size), signature, ink: inkBox(vl, size) }
+    const tb = readTitleBlock(words, size)
+    const checks: ScaleCheck[] = []
+    if (tb.feetPerInch) checks.push({ key: 'stated', feetPerInch: tb.feetPerInch, detail: `${tb.scaleText ?? ''} in the title block`.trim() })
+    const bar = scaleBar(words)
+    if (bar) checks.push({ key: 'bar', feetPerInch: bar.feetPerInch, detail: bar.detail })
+    const dims = labelledDistances(words, vl)
+    if (dims) checks.push({ key: 'dims', feetPerInch: dims.feetPerInch, detail: dims.detail })
+    const grid = fitGrid(findGridLabels(words), size)
+    if (grid) checks.push({ key: 'grid', feetPerInch: grid.feetPerInch, detail: `${grid.what}, worst ${grid.worstFt} ft` })
+    return { page: n, width: size.width, height: size.height, thumb, tb, signature, ink: inkBox(vl, size), checks, grid, crop: autoCrop(vl, size) }
   } finally {
     page.cleanup()
   }

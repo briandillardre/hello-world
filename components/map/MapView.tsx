@@ -74,6 +74,8 @@ import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
 import { WeatherControl, type BaseStyle } from './WeatherControl'
 import { PhotoCaptureSheet } from '@/components/photos/PhotoCaptureSheet'
+import type { SiteOverlay } from '@/lib/db/imagery'
+import { planFrameIds, subCorners } from '@/lib/plans/crop'
 import { PhotoLightbox } from '@/components/zones/PhotoLightbox'
 
 const SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
@@ -693,7 +695,7 @@ interface MapViewProps {
   /** Placed drone/site imagery (052/053/055): every placed photo (the map
    *  timeline picks the frame) + each zone's active plan sheet. Photos ride
    *  the 'siteimg' toggle, plans ride 'siteplans'. */
-  siteOverlays?: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]]; zoneId: string; takenOn: string; kind?: 'photo' | 'plan'; satellite?: boolean }[]
+  siteOverlays?: (Omit<SiteOverlay, 'kind' | 'satellite'> & { kind?: 'photo' | 'plan'; satellite?: boolean })[]
   /** First-ever fix (ms), for the "All time" window. */
   earliestMs?: number | null
   /** Viewer IANA timezone for local-calendar-day range windows. */
@@ -4620,25 +4622,117 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     return activeSitePhotoIds(photos, cutoff, (d) => new Date(d + 'T00:00:00').getTime()).join(',')
   }, [siteOverlays, range, realWindowEff, pbT])
 
+  // Plan sheets (143) follow time too: live, each sheet's CURRENT version;
+  // scrubbed back, the version that was current on that day — and the plan
+  // picker (layers panel) can hide a sheet or hold one version on screen.
+  const [planPick, setPlanPick] = useState<{ hidden: string[]; picked: Record<string, string> }>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('ht_plan_picker_v1') ?? 'null')
+      if (raw && Array.isArray(raw.hidden) && raw.picked && typeof raw.picked === 'object') return { hidden: raw.hidden.filter((x: unknown) => typeof x === 'string').slice(0, 200), picked: raw.picked }
+    } catch { /* private mode */ }
+    return { hidden: [], picked: {} }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('ht_plan_picker_v1', JSON.stringify(planPick)) } catch { /* private mode */ }
+  }, [planPick])
+  const planDay = useMemo(() => {
+    if (range === 'live' || !realWindowEff) return null
+    const t = realWindowEff.from + pbT * (realWindowEff.to - realWindowEff.from)
+    return new Date(t).toLocaleDateString('en-CA')
+  }, [range, realWindowEff, pbT])
+  const planActiveKey = useMemo(() => {
+    const plans = (siteOverlays ?? []).filter((o) => o.kind === 'plan')
+    if (!plans.length) return ''
+    const picked = new Map(Object.entries(planPick.picked).filter(([, v]) => typeof v === 'string'))
+    return Array.from(planFrameIds(plans, planDay, new Set(planPick.hidden), picked)).sort().join(',')
+  }, [siteOverlays, planDay, planPick])
+  const planPicker = useMemo(() => {
+    const bySheet = new Map<string, { sheetId: string; label: string; zone: string; href: string; versions: { id: string; label: string; current: boolean; issuedOn: string }[] }>()
+    for (const o of siteOverlays ?? []) {
+      if (o.kind !== 'plan' || !o.sheetId) continue
+      let e = bySheet.get(o.sheetId)
+      if (!e) {
+        e = { sheetId: o.sheetId, label: o.sheetLabel ?? 'Sheet', zone: geofences.find((g) => g.id === o.zoneId)?.name ?? '', href: `/plans/${o.zoneId}/${o.sheetId}`, versions: [] }
+        bySheet.set(o.sheetId, e)
+      }
+      e.versions.push({ id: o.id, label: o.versionLabel ?? o.issuedOn ?? '', current: !!o.current, issuedOn: o.issuedOn ?? '' })
+    }
+    const sheets = Array.from(bySheet.values())
+      .map((e) => ({ ...e, versions: e.versions.sort((a, b) => b.issuedOn.localeCompare(a.issuedOn)) }))
+      .sort((a, b) => a.zone.localeCompare(b.zone) || a.label.localeCompare(b.label))
+    return {
+      sheets, hidden: planPick.hidden, picked: planPick.picked, day: planDay,
+      onHide: (sheetId: string, hide: boolean) => setPlanPick((p) => ({ ...p, hidden: hide ? Array.from(new Set([...p.hidden, sheetId])) : p.hidden.filter((x) => x !== sheetId) })),
+      onPick: (sheetId: string, versionId: string | null) => setPlanPick((p) => {
+        const picked = { ...p.picked }
+        if (versionId) picked[sheetId] = versionId
+        else delete picked[sheetId]
+        return { ...p, picked }
+      }),
+    }
+  }, [siteOverlays, geofences, planPick, planDay])
+
+  // Cropped pictures (the border and title block off), made once per crop
+  // on the device: the picture's drawing area, pinned by the matching part of
+  // its corners.
+  const [planCrops, setPlanCrops] = useState<Record<string, { key: string; url: string; coords: SiteOverlay['coords'] }>>({})
+  const cropUrls = useRef<string[]>([])
+  useEffect(() => () => { for (const u of cropUrls.current) URL.revokeObjectURL(u) }, [])
+  useEffect(() => {
+    let alive = true
+    for (const ov of siteOverlays ?? []) {
+      const c = ov.kind === 'plan' ? ov.crop : null
+      if (!c || c.on === false) continue
+      const key = `${c.x0},${c.y0},${c.x1},${c.y1}|${ov.coords.flat().join(',')}`
+      if (planCrops[ov.id]?.key === key) continue
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        if (!alive || !img.naturalWidth) return
+        const sx = Math.round(c.x0 * img.naturalWidth), sy = Math.round(c.y0 * img.naturalHeight)
+        const sw = Math.max(1, Math.round((c.x1 - c.x0) * img.naturalWidth)), sh = Math.max(1, Math.round((c.y1 - c.y0) * img.naturalHeight))
+        const cv = document.createElement('canvas')
+        cv.width = sw; cv.height = sh
+        const ctx = cv.getContext('2d')
+        if (!ctx) return
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
+        cv.toBlob((b) => {
+          cv.width = 0; cv.height = 0
+          if (!b || !alive) return
+          const url = URL.createObjectURL(b)
+          cropUrls.current.push(url)
+          setPlanCrops((prev) => ({ ...prev, [ov.id]: { key, url, coords: subCorners(ov.coords, c) as SiteOverlay['coords'] } }))
+        }, 'image/png')
+      }
+      img.src = ov.url
+    }
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteOverlays])
+
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
     const photoOn = !!overlaysOn.siteimg
     const planOn = !!overlaysOn.siteplans
     const active = new Set(siteImgActiveKey ? siteImgActiveKey.split(',') : [])
+    const planActive = new Set(planActiveKey ? planActiveKey.split(',') : [])
     const known = new Set<string>()
     // Photos and plan sheets go UNDER any cut/fill picture already drawn, so
     // turning Scaled plans on after Cut / fill never buries the cut/fill.
     const firstDirt = (m.getStyle()?.layers ?? []).find((l) => l.id.startsWith('dirt-') && l.id !== 'dirt-labels')?.id
     for (const ov of siteOverlays ?? []) {
       const isPlan = ov.kind === 'plan'
-      const show = isPlan ? planOn : photoOn && active.has(ov.id)
+      const show = isPlan ? planOn && planActive.has(ov.id) : photoOn && active.has(ov.id)
       const srcId = `simg-${ov.id}`
       const lid = `${srcId}-layer`
       known.add(lid)
+      // A plan's drawing area once its crop is made (the whole sheet until then).
+      const crop = isPlan && ov.crop && ov.crop.on !== false ? planCrops[ov.id] : undefined
+      const pic = crop ?? { url: ov.url, coords: ov.coords }
       if (show && !m.getSource(srcId)) {
         try {
-          m.addSource(srcId, { type: 'image', url: ov.url, coordinates: ov.coords })
+          m.addSource(srcId, { type: 'image', url: pic.url, coordinates: pic.coords })
           const beforeId = firstDirt ?? (m.getLayer('geofence-fill') ? 'geofence-fill' : undefined)
           m.addLayer(
             {
@@ -4652,9 +4746,12 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           )
         } catch { /* bad corners or unreachable image — skip this one */ }
       } else if (m.getSource(srcId)) {
-        // Same shot re-placed: nudge the corners in place.
-        const src = m.getSource(srcId) as maplibregl.ImageSource
-        try { src.setCoordinates(ov.coords) } catch { /* ignore */ }
+        // Same shot re-placed (or its crop just arrived): swap in place.
+        const src = m.getSource(srcId) as maplibregl.ImageSource & { url?: string }
+        try {
+          if (isPlan && src.url !== pic.url) src.updateImage({ url: pic.url, coordinates: pic.coords })
+          else src.setCoordinates(pic.coords)
+        } catch { /* ignore */ }
       }
       // Inactive frames stay mounted but hidden — scrubbing swaps instantly.
       if (m.getLayer(lid)) m.setLayoutProperty(lid, 'visibility', show ? 'visible' : 'none')
@@ -4669,7 +4766,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, overlaysOn, siteOverlays, siteImgActiveKey])
+  }, [mapReady, overlaysOn, siteOverlays, siteImgActiveKey, planActiveKey, planCrops])
 
   // ── Dirt takeoffs (127): each saved takeoff's cut/fill picture where its
   // grading plan puts it (red cut · blue fill, lib/dirt/heat.ts), with the
@@ -9287,6 +9384,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         zoom={mapZoom}
         overlayOpacity={overlayOpacity}
         onOverlayOpacity={(key, v) => setOverlayOpacity((prev) => ({ ...prev, [key]: v }))}
+        planPicker={planPicker}
         onResetLayers={resetLayers}
         views={allViews(mapViews)}
         activeViewId={activeViewId}

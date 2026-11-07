@@ -29,6 +29,10 @@ const TB = await import(tbUrl)
 const PV = await import(transpile('../lib/dirt/pdf-vectors.ts'))
 const N = await import(transpile('../lib/plans/north.ts'))
 const C = await import(transpile('../lib/plans/compare.ts'))
+const SP = await import(transpile('../lib/plans/stateplane.ts'))
+const GF = await import(transpile('../lib/plans/gridfit.ts', { './title-block': tbUrl, './stateplane': transpile('../lib/plans/stateplane.ts') }))
+const SC = await import(transpile('../lib/plans/scale.ts', { './title-block': tbUrl }))
+const CR = await import(transpile('../lib/plans/crop.ts'))
 
 let pass = 0, fail = 0
 const ok = (c, msg) => { if (c) pass++; else { fail++; console.log('FAIL', msg) } }
@@ -196,6 +200,127 @@ eq(F.carryRule({ pageW: null, pageH: null, inkBox: null }, { pageW: 1728, pageH:
   ok(tb[0].y0 < tb[1].y0, 'top one first')
 }
 
+// ── SC State Plane (reference values from proj4, EPSG:2273 international feet) ──
+{
+  const near = (a, b, tol) => Math.abs(a - b) <= tol
+  const g = SP.toStatePlane(-82.4, 34.85)
+  ok(near(g[0], 1579943.986, 0.01) && near(g[1], 1100467.230, 0.01), `Greenville → E ${g[0].toFixed(3)} N ${g[1].toFixed(3)}`)
+  const c = SP.toStatePlane(-79.93, 32.78)
+  ok(near(c[0], 2328844.713, 0.01) && near(c[1], 346147.414, 0.01), `Charleston → E ${c[0].toFixed(3)} N ${c[1].toFixed(3)}`)
+  const o = SP.toStatePlane(-81, 31 + 50 / 60)
+  ok(near(o[0], 2000000, 1e-6) && near(o[1], 0, 1e-6), 'origin → 2,000,000 / 0')
+  ok(near(SP.toStatePlane(-81, 34)[1], 788303.868, 0.01), 'on the central meridian')
+  const back = SP.fromStatePlane(1579943.986, 1100467.230)
+  ok(near(back[0], -82.4, 1e-9) && near(back[1], 34.85, 1e-9), `round trip (${back})`)
+  ok(SP.plausibleSC(1579943, 1100467) && !SP.plausibleSC(5000, 5000), 'an assumed grid is not SC')
+}
+
+// ── placing a sheet from its grid ticks ──
+{
+  const W = 2592, H = 1728 // 36 × 24 in
+  const fpi = 30, k = fpi / 72 // feet per point
+  const E0 = 1579000, N0 = 1100000 // grid at the page's bottom-left
+  const turn = (8 * Math.PI) / 180
+  const toGrid = (x, y, t = 0) => [E0 + k * (x * Math.cos(t) - y * Math.sin(t)), N0 + k * (x * Math.sin(t) + y * Math.cos(t))]
+  const w = (str, x, y, angle = 0) => ({ str, x, y, angle, size: 8, len: str.length * 4.8, src: 'text' })
+  // Ticks every 200 ft along the bottom and left borders, labels at the line.
+  const square = []
+  for (let e = 1579200; e <= 1580000; e += 200) square.push(w(`E ${e.toLocaleString('en-US')}`, (e - E0) / k, 30))
+  for (let n = 1100200; n <= 1100600; n += 200) square.push(w(`N ${n.toLocaleString('en-US')}`, 30, (n - N0) / k))
+  const obs = GF.findGridLabels(square)
+  eq(obs.length, 8, 'eight tick labels read')
+  const fit = GF.fitGrid(obs, { width: W, height: H })
+  ok(fit && Math.abs(fit.feetPerInch - 30) < 0.05, `grid ticks imply 1" = 30' (${fit?.feetPerInch})`)
+  ok(fit && fit.worstFt < 0.2, `worst tick within 0.2 ft (${fit?.worstFt})`)
+  ok(fit && fit.assumedUp, 'labels on one border each cannot fix the turn — grid north assumed up, and said so')
+  const want = SP.fromStatePlane(...toGrid(0, H))
+  ok(fit && Math.abs(fit.bounds[0][0] - want[0]) < 1e-6 && Math.abs(fit.bounds[0][1] - want[1]) < 1e-6, 'top-left corner lands on the grid')
+  // A turned sheet with control points (N and E on one line) spread out.
+  const cps = [[300, 300], [2200, 400], [1200, 1500], [600, 1200]].map(([x, y]) => {
+    const [e, n] = toGrid(x, y, turn)
+    return w(`CP N ${n.toFixed(2)} E ${e.toFixed(2)}`, x, y)
+  })
+  const fit2 = GF.fitGrid(GF.findGridLabels(cps), { width: W, height: H })
+  ok(fit2 && Math.abs(fit2.turnDeg - 8) < 0.01 && !fit2.assumedUp, `control points fix the turn (${fit2?.turnDeg}°)`)
+  eq(fit2?.what, '4 control points', 'says what it used')
+  // One mistyped label among good ones is dropped, not averaged in.
+  const bad = [...square, w('E 1,579,900', ((1579500 - E0) / k), 30)]
+  const fit3 = GF.fitGrid(GF.findGridLabels(bad), { width: W, height: H })
+  ok(fit3 && fit3.worstFt < 0.2 && fit3.n === 8, `a bad label is dropped (n ${fit3?.n}, worst ${fit3?.worstFt})`)
+  eq(GF.fitGrid(GF.findGridLabels([w('N 5000', 10, 10), w('E 5000', 20, 20)]), { width: W, height: H }), null, 'an assumed grid never places a sheet')
+  eq(GF.findGridLabels([w('STA 12+50', 100, 100), w('FFE 811.50', 200, 200), w('AREA 1,234,567 SF', 300, 300)]).length, 0, 'stations, elevations and areas are not grid labels')
+}
+
+// ── scale checks ──
+{
+  const w = (str, x, y, size = 8, angle = 0) => ({ str, x, y, angle, size, len: str.length * size * 0.6, src: 'text' })
+  // A scale bar 0 · 15 · 30 · 60 at 1" = 30' (2.4 pt per foot).
+  const bar = [w('0', 2000, 100), w('15', 2036, 100), w('30', 2072, 100), w('60', 2144, 100), w('SCALE: 1" = 30\'', 2070, 120)]
+  const b = SC.scaleBar(bar)
+  ok(b && Math.abs(b.feetPerInch - 30) < 0.05, `scale bar reads 30 ft/in (${b?.feetPerInch})`)
+  eq(SC.scaleBar([w('810', 100, 100), w('812', 130, 100), w('814', 160, 100), w('FEET', 130, 110)]), null, 'contour labels are not a scale bar')
+  eq(SC.scaleBar([w('0', 100, 100), w('15', 136, 100), w('30', 172, 100)]), null, 'no FEET/SCALE word nearby → no bar')
+  // Labelled distances: 245.67' along a 589.6 pt line (1" = 30').
+  const len = 245.67 / 30 * 72
+  const strokes = [
+    { pen: 0, pts: [500, 500, 500 + len, 500], closed: false },
+    { pen: 0, pts: [500, 900, 500 + 120 / 30 * 72, 900], closed: false },
+    { pen: 0, pts: [1500, 300, 1500, 300 + 88.4 / 30 * 72], closed: false },
+  ]
+  const dims = [w("N 89°59'50\" E 245.67'", 500 + len / 2, 510), w("120.00'", 500 + 60 / 30 * 72, 892), w("88.40'", 1510, 300 + 44.2 / 30 * 72, 8, Math.PI / 2)]
+  const d = SC.labelledDistances(dims, strokes)
+  ok(d && Math.abs(d.feetPerInch - 30) < 0.1 && d.agree === 3, `labelled distances agree on 30 (${JSON.stringify(d)})`)
+  // Verdicts.
+  const ck = (key, fpi) => ({ key, feetPerInch: fpi, detail: '' })
+  eq(SC.scaleVerdict([ck('stated', 30), ck('bar', 30.05)]).tone, 'green', 'two within 0.5 % → green')
+  eq(SC.scaleVerdict([ck('stated', 30)]).tone, 'amber', 'one check → amber')
+  eq(SC.scaleVerdict([ck('stated', 30), ck('bar', 30.25)]).tone, 'amber', 'within 1 % but not 0.5 % → amber')
+  const half = SC.scaleVerdict([ck('stated', 30), ck('bar', 60), ck('dims', 60.1)])
+  eq([half.tone, half.suggest], ['red', 60], 'a half-size print is named, 1" = 60\' suggested')
+  ok(/half-size print/.test(half.words), half.words)
+  eq(SC.scaleVerdict([ck('stated', 30), ck('bar', 40)]).tone, 'red', 'disagreement → red')
+  eq(SC.scaleVerdict([]).tone, 'none', 'nothing → none')
+  eq(SC.scaleWords(30), '1" = 30\'', 'scale words')
+  ok(Math.abs(SC.placementFeetPerInch(30 * 0.3048 / 72) - 30) < 0.01, 'placement metres per point → feet per inch')
+}
+
+// ── crop to the drawing + which version the map shows ──
+{
+  const W = 2592, H = 1728
+  const seg = (x0, y0, x1, y1) => ({ pen: 0, pts: [x0, y0, x1, y1], closed: false })
+  // Border inset 36 pt, a title strip divider at x = 2200, some drawing.
+  const strokes = [seg(36, 36, 2556, 36), seg(2556, 36, 2556, 1692), seg(2556, 1692, 36, 1692), seg(36, 1692, 36, 36), seg(2200, 36, 2200, 1692), seg(400, 400, 900, 700)]
+  const c = CR.autoCrop(strokes, { width: W, height: H })
+  ok(c && Math.abs(c.x1 - 2200 / W) < 0.006 && c.x0 > 36 / W && c.y0 > 0 && c.y1 < 1, `crop stops at the title strip (${JSON.stringify(c)})`)
+  const bottom = CR.autoCrop([...strokes.slice(0, 4), seg(36, 300, 2556, 300)], { width: W, height: H })
+  ok(bottom && Math.abs(bottom.y1 - (1 - 300 / H)) < 0.006, `a bottom title strip trims the bottom (${JSON.stringify(bottom)})`)
+  eq(CR.autoCrop([seg(10, 10, 20, 20)], { width: W, height: H }), null, 'no border → no crop')
+  eq(CR.cleanCrop({ x0: 0.1, y0: 0.1, x1: 0.8, y1: 0.9 })?.on, true, 'a crop is on unless said off')
+  eq(CR.cleanCrop({ x0: 0.5, y0: 0.1, x1: 0.55, y1: 0.9 }), null, 'a sliver is refused')
+  eq(CR.cleanCrop({ x0: -1, y0: 0, x1: 1, y1: 1 }), null, 'out of range refused')
+  // subCorners: the whole box gives the corners back; a half box splits the width.
+  const lat = 34.85, lng = -82.4
+  const corners = [[lng, lat + 0.002], [lng + 0.003, lat + 0.002], [lng + 0.003, lat], [lng, lat]]
+  const same = CR.subCorners(corners, { x0: 0, y0: 0, x1: 1, y1: 1 })
+  ok(same.every((p, i) => Math.abs(p[0] - corners[i][0]) < 1e-9 && Math.abs(p[1] - corners[i][1]) < 1e-9), 'full crop = the same corners')
+  const half = CR.subCorners(corners, { x0: 0, y0: 0, x1: 0.5, y1: 1 })
+  ok(Math.abs(half[1][0] - (lng + 0.0015)) < 1e-9, 'half crop ends halfway across')
+  // planFrameIds
+  const frames = [
+    { id: 'a0', sheetId: 's1', issuedOn: '2026-08-12', current: false },
+    { id: 'a1', sheetId: 's1', issuedOn: '2026-10-20', current: true },
+    { id: 'b0', sheetId: 's2', issuedOn: '2026-09-30', current: true },
+    { id: 'legacy' },
+  ]
+  const ids = (day, hidden = new Set(), picked = new Map()) => [...CR.planFrameIds(frames, day, hidden, picked)].sort().join(',')
+  eq(ids(null), 'a1,b0,legacy', 'live: current versions')
+  eq(ids('2026-09-01'), 'a0,legacy', 'Sep 1: Rev 0 of s1, s2 not issued yet')
+  eq(ids('2026-10-01'), 'a0,b0,legacy', 'Oct 1: s2 issued, s1 still Rev 0')
+  eq(ids('2026-12-01'), 'a1,b0,legacy', 'Dec 1: the newest of each')
+  eq(ids(null, new Set(['s2'])), 'a1,legacy', 'a hidden sheet leaves the map')
+  eq(ids(null, new Set(), new Map([['s1', 'a0']])), 'a0,b0,legacy', 'a picked version replaces the automatic one')
+}
+
 // ── the fingerprint on the real fixture PDF ──
 {
   const pdfjs = await import(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs'))
@@ -235,6 +360,35 @@ eq(F.carryRule({ pageW: null, pageH: null, inkBox: null }, { pageW: 1728, pageH:
   eq(turned2.sig, turned.sig, 'rotated re-issue keeps its fingerprint too')
   eq(F.carryRule({ pageW: base.size.width, pageH: base.size.height, inkBox: base.ink }, { pageW: turned.size.width, pageH: turned.size.height, inkBox: turned.ink }), 'none', 'rotated paper never carries')
   eq(F.fingerprintSource([], [], [], base.size), null, 'a scan has no fingerprint')
+
+  // The scale card + grid line-up on a real PDF: stated 1" = 30', a bar,
+  // labelled boundary distances and SC State Plane ticks on the border.
+  {
+    const e0 = 1579000, n0 = 1100000
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(buildPlanPdf(pr.chainLines, { scaleKit: { e0, n0 } }).bytes), verbosity: 0 }).promise
+    const page = await doc.getPage(1)
+    const vp = page.getViewport({ scale: 1 })
+    const [ops, tc, annots] = await Promise.all([page.getOperatorList({ annotationMode: pdfjs.AnnotationMode.DISABLE }), page.getTextContent(), page.getAnnotations()])
+    const t = Array.from(vp.transform)
+    const words = F.wordsToViewed([...PV.textFromContent(tc.items), ...PV.textFromShx(annots)], t, vp.height)
+    const { lines } = PV.extractVectors(ops, pdfjs.OPS)
+    const vl = F.linesToViewed(lines, t, vp.height)
+    const size = { width: vp.width, height: vp.height }
+    const tb = TB.readTitleBlock(words, size)
+    eq(tb.feetPerInch, 30, 'fixture: stated scale read')
+    const bar = SC.scaleBar(words)
+    ok(bar && Math.abs(bar.feetPerInch - 30) < 0.3, `fixture: scale bar measured (${bar?.feetPerInch})`)
+    const dims = SC.labelledDistances(words, vl)
+    ok(dims && Math.abs(dims.feetPerInch - 30) < 0.3 && dims.agree >= 2, `fixture: labelled distances measured (${JSON.stringify(dims)})`)
+    const fit = GF.fitGrid(GF.findGridLabels(words), size)
+    ok(fit && Math.abs(fit.feetPerInch - 30) < 0.3, `fixture: grid ticks imply 30 ft/in (${fit?.feetPerInch})`)
+    ok(fit && fit.worstFt < 4, `fixture: ticks agree within a few feet (${fit?.worstFt} ft over ${fit?.n})`)
+    const bl = fit ? SP.toStatePlane(...fit.bounds[3]) : [0, 0]
+    ok(fit && Math.abs(bl[0] - e0) < 5 && Math.abs(bl[1] - n0) < 5, `fixture: the page's bottom-left lands at the grid origin (${bl.map((v) => v.toFixed(1))})`)
+    const v = SC.scaleVerdict([{ key: 'stated', feetPerInch: tb.feetPerInch, detail: '' }, { key: 'bar', feetPerInch: bar.feetPerInch, detail: '' }, { key: 'dims', feetPerInch: dims.feetPerInch, detail: '' }, { key: 'grid', feetPerInch: fit.feetPerInch, detail: '' }])
+    ok(v.tone === 'green' || v.tone === 'amber', `fixture: four checks agree (${v.tone}: ${v.words})`)
+    await doc.loadingTask?.destroy?.()
+  }
 }
 
 console.log(`\nplan-room: ${pass} passed, ${fail} failed`)

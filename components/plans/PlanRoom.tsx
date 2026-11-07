@@ -6,8 +6,10 @@ import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, FileStack, Plus, MapPin, Pencil, Trash2, RotateCcw, Map as MapIcon, Layers } from 'lucide-react'
 import {
-  groupSheets, revLabel, setKindLabel, SET_KINDS, type PlanSetKind,
+  groupSheets, revLabel, setKindLabel, SET_KINDS, placementWords, type PlanSetKind,
 } from '@/lib/plans/room'
+import { roughBounds } from '@/lib/plans/north'
+import { scaleWords } from '@/lib/plans/scale'
 import type { PlanRoomData, PlanSheetRow, PlanSetRow } from '@/lib/db/plans'
 import {
   setSheetOnMapAction, notePlacementAction, updatePlanSetAction, deletePlanSetAction, unvoidPlanSheetAction, updatePlanSheetAction,
@@ -45,7 +47,9 @@ export function PlanRoom({ zone, data, canEdit, ring, demo }: {
   const [tab, setTab] = useState<'sheets' | 'sets'>('sheets')
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [placing, setPlacing] = useState<{ sheet: PlanSheetRow; versionId: string; imageId: string; url: string; bounds: Corners | null } | null>(null)
+  const [placing, setPlacing] = useState<{ sheet: PlanSheetRow; versionId: string; imageId: string; url: string; bounds: Corners | null; rough: string | null } | null>(null)
+  const centre: [number, number] | null = ring && ring.length >= 3
+    ? [ring.reduce((t, p) => t + p[0], 0) / ring.length, ring.reduce((t, p) => t + p[1], 0) / ring.length] : null
   const [pending, setPending] = useState<string | null>(null)
 
   const live = data.sheets.filter((s) => !s.voidedAt)
@@ -116,7 +120,13 @@ export function PlanRoom({ zone, data, canEdit, ring, demo }: {
                     {g.sheets.map((s) => (
                       <SheetRow key={s.id} zoneId={zone.id} sheet={s} data={data} canEdit={canEdit} busy={pending === s.id}
                         onMap={(on) => void toggleMap(s, on)}
-                        onPlace={(versionId, imageId, url, bounds) => setPlacing({ sheet: s, versionId, imageId, url, bounds })} />
+                        onPlace={(versionId, imageId, url, bounds) => {
+                          // An unplaced sheet starts centred on the site, north up, at the size its scale says.
+                          const v = s.versions.find((x) => x.id === versionId)
+                          const fpi = v?.scaleChecks?.find((c) => c.key === 'grid' || c.key === 'bar' || c.key === 'dims')?.feetPerInch ?? v?.feetPerInch ?? null
+                          const rough = !bounds && centre && v?.pageW && v.pageH && fpi ? roughBounds(centre, v.pageW, v.pageH, fpi) : null
+                          setPlacing({ sheet: s, versionId, imageId, url, bounds: bounds ?? (rough as Corners | null), rough: rough && fpi ? scaleWords(fpi) : null })
+                        }} />
                     ))}
                   </div>
                 </section>
@@ -163,7 +173,9 @@ export function PlanRoom({ zone, data, canEdit, ring, demo }: {
           imageUrl={placing.url}
           ring={ring}
           initialBounds={placing.bounds}
-          hint={`Line ${placing.sheet.number}’s property corners up with the satellite view — the drawn scale carries over.`}
+          hint={placing.rough
+            ? `${placing.sheet.number} starts at its own scale (${placing.rough}), north up, on the site — slide and turn it until the property corners sit on the satellite view.`
+            : `Line ${placing.sheet.number}’s property corners up with the satellite view — the drawn scale carries over.`}
           onClose={() => setPlacing(null)}
           onSaved={async (b) => {
             const p = placing
@@ -245,6 +257,7 @@ function SheetRow({ zoneId, sheet, data, canEdit, busy, onMap, onPlace }: {
               {sheet.versions.length > 1 && <span>· {sheet.versions.length} versions</span>}
               {pinned && <span className="text-amber">· pinned{newer ? ` — ${newer} newer held back` : ''}</span>}
               {sheet.isNew && <span className="text-amber font-semibold">· NEW</span>}
+              {placed && cur?.placement?.source === 'grid' && <span className="text-teal" title={placementWords(cur.placement, true)}>· placed from its grid</span>}
             </span>
           </span>
         </Link>

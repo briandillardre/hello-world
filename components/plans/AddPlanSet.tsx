@@ -16,6 +16,9 @@ import {
 } from '@/lib/plans/room'
 import type { PlanSheetRow } from '@/lib/db/plans'
 import type { TitleBlock } from '@/lib/plans/title-block'
+import { scaleVerdict, scaleWords, type ScaleCheck } from '@/lib/plans/scale'
+import type { GridFit } from '@/lib/plans/gridfit'
+import type { Crop } from '@/lib/plans/crop'
 import { loadPdfjs, readPage, layerNames, renderSheetPng, readImageFile, categoryFor, type PdfDoc } from './pdf'
 import type { Corners } from '@/components/zones/OverlayPlacer'
 
@@ -38,6 +41,9 @@ interface Item {
   read: TitleBlock | null
   signature: string | null
   ink: [number, number, number, number] | null
+  checks: ScaleCheck[]
+  grid: GridFit | null
+  crop: Crop | null
   number: string
   title: string
   rev: string
@@ -164,9 +170,9 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
             setProgress(`${f.name.slice(0, 40)} · page ${p} of ${doc.numPages}`)
             try {
               const r = await readPage(pdfjs, doc, p, names)
-              out.push(toItem(`${idx}:${p}`, idx, p, r.thumb, r.width, r.height, r.tb, r.signature, r.ink))
+              out.push(toItem(`${idx}:${p}`, idx, p, r.thumb, r.width, r.height, r.tb, r.signature, r.ink, r.checks, r.grid, r.crop))
             } catch {
-              out.push(toItem(`${idx}:${p}`, idx, p, '', 0, 0, null, null, null))
+              out.push(toItem(`${idx}:${p}`, idx, p, '', 0, 0, null, null, null, [], null, null))
             }
             setItems([...out])
             await new Promise((res) => setTimeout(res, 0))
@@ -175,7 +181,7 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
           try {
             const r = await readImageFile(f)
             const idx = srcs.current.push({ file: f, kind: 'image', doc: null, pages: 1 }) - 1
-            out.push(toItem(`${idx}:img`, idx, null, r.thumb, r.width, r.height, null, null, null))
+            out.push(toItem(`${idx}:img`, idx, null, r.thumb, r.width, r.height, null, null, null, [], null, null))
             setItems([...out])
           } catch {
             setError(`${f.name} isn’t a picture we can read — skipped.`)
@@ -259,6 +265,9 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
           signature: it.signature, pageW: it.width || null, pageH: it.height || null, inkBox: it.ink,
           feetPerInch: it.read?.feetPerInch ?? null, scaleText: it.read?.scaleText ?? null,
           titleRead: it.read ? { ...it.read } : null,
+          scaleChecks: it.checks.length ? it.checks : null,
+          grid: it.grid ? { bounds: it.grid.bounds, worstFt: it.grid.worstFt, n: it.grid.n, what: it.grid.what, assumedUp: it.grid.assumedUp } : null,
+          crop: it.crop,
         }).catch(() => null)
         if (!r?.ok) { results.push({ key: it.key, number, verdict: v, width: it.width, height: it.height, error: r && !r.ok ? r.error : 'didn’t file' }); continue }
         results.push({
@@ -406,7 +415,7 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
                             No revision mark read — call it {revLabel(nextRev(v.from.rev))}?
                           </button>
                         )}
-                        {it.read?.scaleText && <p className="text-[10.5px] text-faint">Scale read: {it.read.scaleText}</p>}
+                        <ScaleLine checks={it.checks} grid={it.grid} />
                       </div>
                     </div>
                   )
@@ -525,9 +534,10 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone }: {
 function isPdf(f: File) { return f.type === 'application/pdf' || /\.pdf$/i.test(f.name) }
 
 function toItem(key: string, src: number, page: number | null, thumb: string, width: number, height: number,
-  read: TitleBlock | null, signature: string | null, ink: [number, number, number, number] | null): Item {
+  read: TitleBlock | null, signature: string | null, ink: [number, number, number, number] | null,
+  checks: ScaleCheck[], grid: GridFit | null, crop: Crop | null): Item {
   return {
-    key, src, page, thumb, width, height, read, signature, ink,
+    key, src, page, thumb, width, height, read, signature, ink, checks, grid, crop,
     number: read?.number ?? '', title: read?.title ?? '', rev: read?.rev ?? '',
     keep: !!read?.number, keepTouched: false,
   }
@@ -550,4 +560,19 @@ function Tally({ items, verdicts }: { items: Item[]; verdicts: Map<string, PageV
     [n('new'), 'new'], [n('revises'), 'revised'], [n('unchanged'), 'unchanged'], [n('older'), 'older'], [n('not-sheet'), 'not sheets'],
   ].filter(([c]) => (c as number) > 0).map(([c, w]) => `${c} ${w}`)
   return <p className="text-[12.5px] text-muted">{items.length} page{items.length === 1 ? '' : 's'}: {parts.join(' · ')}</p>
+}
+
+/** The page's scale evidence in one line, coloured like the scale card. */
+function ScaleLine({ checks, grid }: { checks: ScaleCheck[]; grid: GridFit | null }) {
+  if (!checks.length && !grid) return <p className="text-[10.5px] text-faint">No scale found on the page — place it on the map to measure it.</p>
+  const v = scaleVerdict(checks)
+  const tone = v.tone === 'green' ? 'text-emerald-300' : v.tone === 'red' ? 'text-red-400' : 'text-amber'
+  return (
+    <div className="text-[10.5px] space-y-0.5">
+      <p className={tone}>Scale: {v.words}{checks.length > 1 && v.tone !== 'red' ? ` (${checks.map((c) => c.key === 'stated' ? 'stated' : c.key === 'dims' ? 'labelled distances' : c.key === 'bar' ? 'scale bar' : 'grid').join(' · ')})` : ''}</p>
+      {grid && (
+        <p className="text-teal">Places itself from its state plane {grid.what} · worst {grid.worstFt} ft{grid.assumedUp ? ' (grid north assumed up)' : ''} · {scaleWords(grid.feetPerInch)}</p>
+      )}
+    </div>
+  )
 }

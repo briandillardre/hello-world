@@ -82,10 +82,11 @@ export function versionFromRow(r: Record<string, unknown>): RoomVersion {
     scaleText: (r.scale_text as string | null) ?? null,
     placement: r.placement && typeof r.placement === 'object' ? r.placement as RoomVersion['placement'] : null,
     crop,
+    scaleChecks: Array.isArray(r.scale_checks) ? (r.scale_checks as RoomVersion['scaleChecks']) : null,
   }
 }
 
-export const VERSION_COLS = 'id, sheet_id, set_id, file_id, image_id, page, rev, issued_on, created_at, created_by, signature, page_w, page_h, ink_box, feet_per_inch, scale_text, placement, crop'
+export const VERSION_COLS = 'id, sheet_id, set_id, file_id, image_id, page, rev, issued_on, created_at, created_by, signature, page_w, page_h, ink_box, feet_per_inch, scale_text, placement, crop, scale_checks'
 
 export function sheetFromRow(r: Record<string, unknown>): RoomSheet {
   return {

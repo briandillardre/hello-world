@@ -89,3 +89,16 @@ export function convergenceWords(deg: number): string {
   if (a < 0.05) return 'the same as true north'
   return `${a.toFixed(1)}° ${deg < 0 ? 'west' : 'east'} of true north`
 }
+
+/** A first guess at where an unplaced sheet goes: centred on the site, north
+ *  up, sized by its scale — page width in inches × feet per inch. The person
+ *  slides and turns it from there (TL, TR, BR, BL as [lng, lat]). */
+export function roughBounds(center: LngLat, pageWpt: number, pageHpt: number, feetPerInch: number): Corners4 | null {
+  if (!(pageWpt > 0 && pageHpt > 0 && feetPerInch > 0)) return null
+  const wM = (pageWpt / 72) * feetPerInch * 0.3048
+  const hM = wM * (pageHpt / pageWpt)
+  if (!(wM > 5 && wM < 20000)) return null
+  const kx = mPerDegLng(center[1]), ky = M_PER_DEG_LAT
+  const dx = wM / 2 / kx, dy = hM / 2 / ky
+  return [[center[0] - dx, center[1] + dy], [center[0] + dx, center[1] + dy], [center[0] + dx, center[1] - dy], [center[0] - dx, center[1] - dy]]
+}

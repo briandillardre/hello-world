@@ -30,8 +30,10 @@ export interface RoomVersion {
   inkBox: number[] | null
   feetPerInch: number | null
   scaleText: string | null
-  placement: { source?: string; check?: boolean; from?: string; errorFt?: number } | null
-  crop: { x0: number; y0: number; x1: number; y1: number } | null
+  placement: { source?: string; check?: boolean; from?: string; errorFt?: number; n?: number; what?: string; assumedUp?: boolean } | null
+  crop: { x0: number; y0: number; x1: number; y1: number; on?: boolean } | null
+  /** The page's own scale evidence read at upload (lib/plans/scale.ts). */
+  scaleChecks?: { key: string; feetPerInch: number; detail: string }[] | null
 }
 
 export interface RoomSheet {
@@ -260,4 +262,15 @@ export function commonDate(dates: (string | null)[]): string | null {
   let best: string | null = null, bestN = 0
   for (const [d, c] of Array.from(n)) if (c > bestN || (c === bestN && best !== null && d > best)) { best = d; bestN = c }
   return best
+}
+
+/** How a version got onto the map, in words (the evidence travels with it). */
+export function placementWords(p: RoomVersion['placement'], placed: boolean): string {
+  if (!placed) return 'Not on the map yet'
+  switch (p?.source) {
+    case 'grid': return `Placed from its state plane ${p.what ?? 'grid ticks'} · worst ${p.errorFt ?? '?'} ft${p.assumedUp ? ' · grid north assumed up' : ''}`
+    case 'carried': return p.check ? 'Placed where the last version sat — the drawing moved on the paper, check it' : 'Placed where the last version sat (same plot)'
+    case 'manual': return 'Placed by hand'
+    default: return 'Placed'
+  }
 }
