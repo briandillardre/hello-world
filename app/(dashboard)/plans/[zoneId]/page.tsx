@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { requireFeature, getRealPermissions } from '@/lib/permissions-server'
+import { rankOf, RANK } from '@/lib/permissions'
 import { getGeofence } from '@/lib/db/zones'
 import { getPlanRoom } from '@/lib/db/plans'
 import { PlanRoom } from '@/components/plans/PlanRoom'
@@ -24,6 +25,7 @@ export default async function Page({ params }: { params: { zoneId: string } }) {
   const ring = (fence.geometry?.coordinates?.[0] as [number, number][] | undefined) ?? null
   return (
     <PlanRoom zone={{ id: fence.id, name: fence.name }} data={data}
-      canEdit={perms.canEdit && !perms.viewingAs && !isMock} ring={ring} demo={isMock} />
+      canEdit={perms.canEdit && !perms.viewingAs && !isMock} ring={ring} demo={isMock}
+      canDelete={perms.canEdit && !perms.viewingAs && !isMock && rankOf(perms) >= RANK.manager} />
   )
 }

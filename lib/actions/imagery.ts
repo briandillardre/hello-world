@@ -111,6 +111,11 @@ export async function finalizeZoneImageryAction(input: {
 
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
+  // The zone must be one this login can read (its company — or its own
+  // personal zone); the write itself runs on the service client after the
+  // edit check, because members hold no write on zone_imagery.
+  const { data: zone } = await supabase.from('geofences').select('id').eq('id', zoneId).maybeSingle()
+  if (!zone) return { ok: false, error: 'Zone not found' }
   const base = {
     company_id: companyId,
     geofence_id: zoneId,
@@ -123,9 +128,9 @@ export async function finalizeZoneImageryAction(input: {
   // Plans need the 055 columns; the photo insert stays column-compatible with
   // 052 so pre-055 installs keep their working timeline.
   const { data, error } = isPlan
-    ? await supabase.from('zone_imagery').insert({ ...base, kind: 'plan', plan_category: planCategory })
+    ? await svc.from('zone_imagery').insert({ ...base, kind: 'plan', plan_category: planCategory })
         .select('id, url, taken_on, caption, source, created_at, kind, plan_category, map_active').single()
-    : await supabase.from('zone_imagery').insert(base)
+    : await svc.from('zone_imagery').insert(base)
         .select('id, url, taken_on, caption, source, created_at').single()
   if (error) {
     return {
@@ -150,8 +155,10 @@ export async function setActivePlanAction(zoneId: string, imageId: string | null
   if (!/^[0-9a-f-]{36}$/i.test(zoneId)) return { ok: false, error: 'Bad zone' }
   if (imageId !== null && !/^[0-9a-f-]{36}$/i.test(imageId)) return { ok: false, error: 'Bad plan' }
   const companyId = await getCurrentCompanyId()
-  const { createClient } = await import('@/lib/supabase-server')
-  const supabase = createClient()
+  const { createClient, createServiceClient } = await import('@/lib/supabase-server')
+  const { data: zone } = await createClient().from('geofences').select('id').eq('id', zoneId).maybeSingle()
+  if (!zone) return { ok: false, error: 'Zone not found' }
+  const supabase = createServiceClient()
   const { error: clearErr } = await supabase.from('zone_imagery')
     .update({ map_active: false })
     .eq('geofence_id', zoneId).eq('company_id', companyId).eq('kind', 'plan')
@@ -188,8 +195,11 @@ export async function saveOverlayBoundsAction(
     if (!sane) return { ok: false, error: 'Bad placement — try again.' }
   }
   const companyId = await getCurrentCompanyId()
-  const { createClient } = await import('@/lib/supabase-server')
-  const supabase = createClient()
+  const { createClient, createServiceClient } = await import('@/lib/supabase-server')
+  // Readable by this login (its company), then written by the service client.
+  const { data: row } = await createClient().from('zone_imagery').select('id').eq('id', imageId).maybeSingle()
+  if (!row) return { ok: false, error: 'Picture not found' }
+  const supabase = createServiceClient()
   const { error } = await supabase.from('zone_imagery')
     .update({ bounds })
     .eq('id', imageId).eq('company_id', companyId)
@@ -203,9 +213,10 @@ export async function deleteZoneImageryAction(zoneId: string, imageId: string): 
   await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const companyId = await getCurrentCompanyId()
-  const { createClient } = await import('@/lib/supabase-server')
-  const supabase = createClient()
-  const { error } = await supabase.from('zone_imagery')
+  const { createClient, createServiceClient } = await import('@/lib/supabase-server')
+  const { data: row } = await createClient().from('zone_imagery').select('id').eq('id', imageId).maybeSingle()
+  if (!row) return { ok: false, error: 'Picture not found' }
+  const { error } = await createServiceClient().from('zone_imagery')
     .delete().eq('id', imageId).eq('company_id', companyId)
   if (error) return { ok: false, error: 'Delete failed' }
   revalidatePath(`/zones/${zoneId}`)

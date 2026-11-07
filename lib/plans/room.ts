@@ -238,7 +238,17 @@ export function verdictFor(
   const versions = versionsBySheet.get(sheet.id) ?? []
   const cur = currentOf(sheet, versions)
   if (!cur) return { kind: 'new' }
-  if (page.signature && cur.signature && page.signature === cur.signature) return { kind: 'unchanged', sheetId: sheet.id, same: cur }
+  // The same drawing we already have: the current one, a revision held back
+  // behind a pin, or the very version this set's date already filed (the same
+  // set uploaded twice). A match to an OLDER revision under a new date is a
+  // revert — a real revision, kept.
+  if (page.signature) {
+    const same = versions.filter((v) => v.signature === page.signature)
+    const hit = same.find((v) => v.id === cur.id) ??
+      same.find((v) => statusOf(v, sheet, versions).kind === 'held') ??
+      same.find((v) => v.issuedOn === issuedOn)
+    if (hit) return { kind: 'unchanged', sheetId: sheet.id, same: hit }
+  }
   if (issuedOn < cur.issuedOn) return { kind: 'older', sheetId: sheet.id, current: cur }
   return { kind: 'revises', sheetId: sheet.id, from: cur }
 }

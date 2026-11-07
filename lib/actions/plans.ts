@@ -11,6 +11,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireEditOrThrow, getMyPermissions } from '@/lib/permissions-server'
+import { isProspect, rankOf, RANK } from '@/lib/permissions'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import {
   cleanNumber, numberKey, currentOf, newestFirst, disciplineOf, SET_KINDS,
@@ -33,8 +34,13 @@ type Res<T = object> = ({ ok: true } & T) | { ok: false; error: string }
 const clip = (s: unknown, n: number): string => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
 const realDay = (d: string) => DAY.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && d >= '1980-01-01' && d <= '2100-12-31'
 
-async function writer() {
-  await requireEditOrThrow()
+async function writer(opts: { managers?: boolean } = {}) {
+  const perms = await requireEditOrThrow()
+  // The plans view level gates the writes too (a Foreman with Plans switched
+  // off must not reach a delete by calling the action directly).
+  if (!perms.features.includes('plans')) throw new Error('Plans aren’t open for your login.')
+  // Throwing a set or a version away is a Manager's call, not a crew edit.
+  if (opts.managers && rankOf(perms) < RANK.manager) throw new Error('Deleting plans is for Managers and above.')
   const companyId = await getCurrentCompanyId()
   const { createClient, createServiceClient } = await import('@/lib/supabase-server')
   const { data: { user } } = await createClient().auth.getUser()
@@ -52,8 +58,10 @@ function refresh(zoneId: string) {
 /** A site zone of the caller's company that can hold plans. */
 async function ownZone(svc: Svc, companyId: string, zoneId: string): Promise<boolean> {
   if (!UUID.test(zoneId)) return false
-  const { data } = await svc.from('geofences').select('id, kind').eq('id', zoneId).eq('company_id', companyId).maybeSingle()
-  return !!data && data.kind !== 'boundary' && data.kind !== 'vendor'
+  const { data } = await svc.from('geofences').select('id, kind, owner_id').eq('id', zoneId).eq('company_id', companyId).maybeSingle()
+  // A personal zone is one person's; its plans would be the company's (the
+  // dirt and site takeoffs refuse them the same way).
+  return !!data && data.kind !== 'boundary' && data.kind !== 'vendor' && !data.owner_id
 }
 
 async function ownSet(svc: Svc, companyId: string, setId: string) {
@@ -65,9 +73,9 @@ async function ownSet(svc: Svc, companyId: string, setId: string) {
 
 async function ownSheet(svc: Svc, companyId: string, sheetId: string) {
   if (!UUID.test(sheetId)) return null
-  const { data } = await svc.from('plan_sheets').select('id, geofence_id, current_version_id, number')
+  const { data } = await svc.from('plan_sheets').select('id, geofence_id, current_version_id, number, voided_at')
     .eq('id', sheetId).eq('company_id', companyId).is('deleted_at', null).maybeSingle()
-  return data as { id: string; geofence_id: string; current_version_id: string | null; number: string } | null
+  return data as { id: string; geofence_id: string; current_version_id: string | null; number: string; voided_at: string | null } | null
 }
 
 /** Does a placement land on (or beside) the site? Its centre within 2 km of
@@ -76,10 +84,37 @@ async function nearZone(svc: Svc, zoneId: string, b: [number, number][]): Promis
   const { data } = await svc.from('geofences_json').select('geometry').eq('id', zoneId).maybeSingle()
   const ring = (data?.geometry as { coordinates?: [number, number][][] } | null)?.coordinates?.[0]
   if (!ring?.length) return false
+  const kx = 111_320 * Math.cos(((ring[0]?.[1] ?? 0) * Math.PI) / 180), ky = 110_574
   const cx = (b[0][0] + b[2][0]) / 2, cy = (b[0][1] + b[2][1]) / 2
   const zx = ring.reduce((t, p) => t + p[0], 0) / ring.length, zy = ring.reduce((t, p) => t + p[1], 0) / ring.length
-  const m = Math.hypot((cx - zx) * 111_320 * Math.cos((zy * Math.PI) / 180), (cy - zy) * 110_574)
-  return m < 2000
+  const m = Math.hypot((cx - zx) * kx, (cy - zy) * ky)
+  // A sheet is a few hundred feet to a mile across — never a continent.
+  const diag = Math.hypot((b[2][0] - b[0][0]) * kx, (b[2][1] - b[0][1]) * ky)
+  return m < 2000 && diag > 10 && diag < 5000
+}
+
+/** Pictures leave with their versions: the row and the file (private plans
+ *  bucket for new uploads, the public field-photos bucket for older ones). */
+async function removePictures(svc: Svc, companyId: string, imageIds: string[]) {
+  if (!imageIds.length) return
+  const { data: rows } = await svc.from('zone_imagery').select('id, url').in('id', imageIds).eq('company_id', companyId).eq('kind', 'plan')
+  const priv = (rows ?? []).filter((r) => String(r.url).startsWith('/api/plans/image/')).map((r) => `${companyId}/img/${r.id}`)
+  const marker = '/storage/v1/object/public/field-photos/'
+  const pub = (rows ?? []).map((r) => String(r.url)).filter((u) => u.includes(marker)).map((u) => decodeURIComponent(u.slice(u.indexOf(marker) + marker.length)))
+    .filter((p) => p.startsWith(`${companyId}/`))
+  if (priv.length) await svc.storage.from('plans').remove(priv)
+  if (pub.length) await svc.storage.from('field-photos').remove(pub)
+  await svc.from('zone_imagery').delete().in('id', (rows ?? []).map((r) => String(r.id))).eq('company_id', companyId)
+}
+
+/** At most 300 plan uploads (PDFs and pictures) per company per day. */
+async function overDailyUploads(svc: Svc, companyId: string): Promise<boolean> {
+  const since = new Date(Date.now() - 86_400_000).toISOString()
+  const [{ count: files }, { count: pics }] = await Promise.all([
+    svc.from('plan_files').select('id', { count: 'exact', head: true }).eq('company_id', companyId).gte('created_at', since),
+    svc.from('zone_imagery').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('kind', 'plan').gte('created_at', since),
+  ])
+  return (files ?? 0) + (pics ?? 0) >= 300
 }
 
 async function liveVersions(svc: Svc, sheetId: string): Promise<RoomVersion[]> {
@@ -88,24 +123,29 @@ async function liveVersions(svc: Svc, sheetId: string): Promise<RoomVersion[]> {
 }
 
 /**
- * After the sheet's versions changed: the map shows the CURRENT version.
- * If any version of this sheet was on the map, the flag moves to the current
- * one's picture (when it is placed) and leaves every other picture.
+ * The map flag means "this sheet is wanted on the map": it sits on the
+ * CURRENT version's picture whether or not that picture is placed yet — the
+ * map draws only placed pictures, so a revision that could not carry its
+ * corners appears the moment somebody places it. (Moving the flag only onto
+ * placed pictures dropped such a sheet off the map for good: nothing ever
+ * set it again.)
  */
 async function followCurrentOnMap(svc: Svc, companyId: string, sheetId: string, pinned: string | null) {
   const vs = await liveVersions(svc, sheetId)
   const imgIds = vs.map((v) => v.imageId).filter((x): x is string => !!x)
   if (!imgIds.length) return
-  const { data: imgs } = await svc.from('zone_imagery').select('id, bounds, map_active').in('id', imgIds).eq('company_id', companyId)
+  const { data: imgs } = await svc.from('zone_imagery').select('id, map_active').in('id', imgIds).eq('company_id', companyId)
   const wasOn = (imgs ?? []).some((i) => i.map_active)
   if (!wasOn) return
   const cur = currentOf({ pinnedVersionId: pinned }, vs)
-  const curImg = (imgs ?? []).find((i) => i.id === cur?.imageId)
-  const others = imgIds.filter((id) => id !== curImg?.id)
+  await flagOnly(svc, companyId, imgIds, cur?.imageId ?? null)
+}
+
+/** The map flag on exactly one of these pictures (or none). */
+async function flagOnly(svc: Svc, companyId: string, imgIds: string[], keep: string | null) {
+  const others = imgIds.filter((id) => id !== keep)
   if (others.length) await svc.from('zone_imagery').update({ map_active: false }).in('id', others).eq('company_id', companyId)
-  if (curImg && curImg.bounds && !curImg.map_active) {
-    await svc.from('zone_imagery').update({ map_active: true }).eq('id', curImg.id).eq('company_id', companyId)
-  }
+  if (keep) await svc.from('zone_imagery').update({ map_active: true }).eq('id', keep).eq('company_id', companyId)
 }
 
 // ── Sets ────────────────────────────────────────────────────────────────────
@@ -162,7 +202,7 @@ export async function updatePlanSetAction(setId: string, patch: { name?: string;
  *  version goes too) and its PDFs leave storage. */
 export async function deletePlanSetAction(setId: string): Promise<Res> {
   if (isMock) return { ok: false, error: 'Demo mode' }
-  const { companyId, svc } = await writer()
+  const { companyId, svc } = await writer({ managers: true })
   const set = await ownSet(svc, companyId, setId)
   if (!set) return { ok: false, error: 'Set not found' }
   const now = new Date().toISOString()
@@ -191,16 +231,16 @@ export async function deletePlanSetAction(setId: string): Promise<Res> {
     }
     if (wasOnMap.has(sid)) {
       const cur = currentOf({ pinnedVersionId: pin }, left)
-      if (cur?.imageId) {
-        const { data: img } = await svc.from('zone_imagery').select('bounds').eq('id', cur.imageId).maybeSingle()
-        if (img?.bounds) await svc.from('zone_imagery').update({ map_active: true }).eq('id', cur.imageId).eq('company_id', companyId)
-      }
+      await flagOnly(svc, companyId, left.map((v) => v.imageId).filter((x): x is string => !!x), cur?.imageId ?? null)
     }
   }
   await svc.from('plan_sheets').update({ voided_at: null, voided_by_set: null }).eq('voided_by_set', setId).eq('company_id', companyId)
-  const { data: files } = await svc.from('plan_files').select('path').eq('set_id', setId).eq('company_id', companyId)
-  const paths = (files ?? []).map((f) => String(f.path)).filter((p) => p.startsWith(`${companyId}/`))
+  // Everything under the set's folder goes — registered PDFs and any upload
+  // that never finished — and the set's pictures with their rows.
+  const { data: objs } = await svc.storage.from('plans').list(`${companyId}/${setId}`, { limit: 1000 })
+  const paths = (objs ?? []).map((o) => `${companyId}/${setId}/${o.name}`)
   if (paths.length) await svc.storage.from('plans').remove(paths)
+  await removePictures(svc, companyId, imgIds)
   await svc.from('plan_files').update({ deleted_at: now }).eq('set_id', setId).eq('company_id', companyId)
   await svc.from('plan_sets').update({ deleted_at: now }).eq('id', setId).eq('company_id', companyId)
   refresh(set.geofence_id)
@@ -216,6 +256,7 @@ export async function startPlanFileUploadAction(input: { setId: string; name: st
   const set = await ownSet(svc, companyId, input.setId)
   if (!set) return { ok: false, error: 'Set not found' }
   if (!input.size || input.size > PDF_MAX_BYTES) return { ok: false, error: 'That PDF is over 50 MB — split it, or upload the sheets as pictures.' }
+  if (await overDailyUploads(svc, companyId)) return { ok: false, error: 'That’s a lot of plan uploads for one day — try again tomorrow, or ask us to raise it.' }
   const path = `${companyId}/${set.id}/${crypto.randomUUID()}.pdf`
   const { data, error } = await svc.storage.from('plans').createSignedUploadUrl(path)
   if (error || !data) return { ok: false, error: 'Couldn’t start the upload — try again.' }
@@ -248,6 +289,50 @@ export async function finishPlanFileUploadAction(input: { setId: string; path: s
   return { ok: true, fileId: String(data.id) }
 }
 
+/** A sheet's picture, step 1: a signed upload into the PRIVATE plans bucket
+ *  (`<company>/img/<id>`), its id chosen here so the map's link to it
+ *  (/api/plans/image/<id>) is known before the file lands. */
+export async function startPlanImageUploadAction(input: { setId: string; contentType: string; size: number }): Promise<Res<{ imageId: string; path: string; token: string }>> {
+  if (isMock) return { ok: false, error: 'Demo mode' }
+  const { companyId, svc } = await writer()
+  const set = await ownSet(svc, companyId, input.setId)
+  if (!set) return { ok: false, error: 'Set not found' }
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(input.contentType)) return { ok: false, error: 'That picture type isn’t supported — PNG or JPEG.' }
+  if (!input.size || input.size > PDF_MAX_BYTES) return { ok: false, error: 'That sheet is over 50 MB.' }
+  if (await overDailyUploads(svc, companyId)) return { ok: false, error: 'That’s a lot of plan uploads for one day — try again tomorrow, or ask us to raise it.' }
+  const imageId = crypto.randomUUID()
+  const path = `${companyId}/img/${imageId}`
+  const { data, error } = await svc.storage.from('plans').createSignedUploadUrl(path)
+  if (error || !data) return { ok: false, error: 'Couldn’t start the upload — try again.' }
+  return { ok: true, imageId, path: data.path, token: data.token }
+}
+
+/** Step 2: the picture landed — file it as the set's site picture (kind plan). */
+export async function finishPlanImageAction(input: { setId: string; imageId: string; caption: string; planCategory: string }): Promise<Res<{ id: string; url: string }>> {
+  if (isMock) return { ok: false, error: 'Demo mode' }
+  const { companyId, userId, svc } = await writer()
+  const set = await ownSet(svc, companyId, input.setId)
+  if (!set) return { ok: false, error: 'Set not found' }
+  if (!UUID.test(input.imageId)) return { ok: false, error: 'Bad picture' }
+  const { data: objs } = await svc.storage.from('plans').list(`${companyId}/img`, { search: input.imageId })
+  const obj = objs?.find((o) => o.name === input.imageId)
+  if (!obj) return { ok: false, error: 'The picture didn’t finish uploading — try again.' }
+  const meta = (obj.metadata ?? {}) as { size?: number; mimetype?: string }
+  if ((meta.size ?? 0) > PDF_MAX_BYTES || (meta.mimetype && !/^image\/(png|jpeg|webp)$/.test(meta.mimetype))) {
+    await svc.storage.from('plans').remove([`${companyId}/img/${input.imageId}`])
+    return { ok: false, error: 'That file isn’t a picture under 50 MB.' }
+  }
+  const CATEGORIES = ['Existing', 'Site plan', 'Utilities', 'Grading', 'Landscape', 'Erosion control', 'Other']
+  const url = `/api/plans/image/${input.imageId}`
+  const { error } = await svc.from('zone_imagery').insert({
+    id: input.imageId, company_id: companyId, geofence_id: set.geofence_id, url, taken_on: set.issued_on,
+    caption: clip(input.caption, 200) || null, source: 'ground', kind: 'plan',
+    plan_category: CATEGORIES.includes(input.planCategory) ? input.planCategory : 'Other', created_by: userId,
+  })
+  if (error) return { ok: false, error: 'Couldn’t file the picture — try again.' }
+  return { ok: true, id: input.imageId, url }
+}
+
 /** A short signed link to a sheet's original PDF, for the viewer. Anyone who
  *  may open the plan room may read it; the row read runs under RLS. */
 export async function planPdfLinkAction(fileId: string): Promise<Res<{ url: string }>> {
@@ -255,6 +340,9 @@ export async function planPdfLinkAction(fileId: string): Promise<Res<{ url: stri
   if (!UUID.test(fileId)) return { ok: false, error: 'Bad file' }
   const perms = await getMyPermissions()
   if (!perms.features.includes('plans')) return { ok: false, error: 'Plans aren’t open for your login.' }
+  // Bid sets are usually someone else's documents under bid confidentiality:
+  // a prospect sees the sheets' pictures, never the original file.
+  if (isProspect(perms)) return { ok: false, error: 'The original PDF isn’t shared with this login.' }
   const { createClient, createServiceClient } = await import('@/lib/supabase-server')
   const { data: f } = await createClient().from('plan_files').select('path').eq('id', fileId).maybeSingle()
   if (!f?.path) return { ok: false, error: 'That PDF is gone.' }
@@ -337,7 +425,7 @@ export async function addPlanVersionAction(input: AddVersionInput): Promise<Res<
   const key = numberKey(number)
   const title = clip(input.title, 200) || null
   let { data: sheet } = await svc.from('plan_sheets').select('id, current_version_id, voided_at')
-    .eq('geofence_id', zoneId).eq('number_key', key).is('deleted_at', null).maybeSingle()
+    .eq('geofence_id', zoneId).eq('company_id', companyId).eq('number_key', key).is('deleted_at', null).maybeSingle()
   if (!sheet) {
     const ins = await svc.from('plan_sheets').insert({
       company_id: companyId, geofence_id: zoneId, number, number_key: key, title, discipline: disciplineOf(number),
@@ -345,7 +433,7 @@ export async function addPlanVersionAction(input: AddVersionInput): Promise<Res<
     if (ins.error) {
       // Two pages of one upload racing for the same new number.
       const again = await svc.from('plan_sheets').select('id, current_version_id, voided_at')
-        .eq('geofence_id', zoneId).eq('number_key', key).is('deleted_at', null).maybeSingle()
+        .eq('geofence_id', zoneId).eq('company_id', companyId).eq('number_key', key).is('deleted_at', null).maybeSingle()
       sheet = again.data
     } else sheet = ins.data
   }
@@ -378,7 +466,9 @@ export async function addPlanVersionAction(input: AddVersionInput): Promise<Res<
   const isCurrent = current?.id === v.id
   const sheetPatch: Record<string, unknown> = {}
   if (pin !== sheet.current_version_id) sheetPatch.current_version_id = pin
-  if (sheet.voided_at) { sheetPatch.voided_at = null; sheetPatch.voided_by_set = null }
+  // A void sheet comes back only with a revision newer than everything it
+  // had — re-filing an older set leaves it void.
+  if (sheet.voided_at && isCurrent) { sheetPatch.voided_at = null; sheetPatch.voided_by_set = null }
   if (isCurrent && title) sheetPatch.title = title
   if (Object.keys(sheetPatch).length) await svc.from('plan_sheets').update(sheetPatch).eq('id', sheet.id).eq('company_id', companyId)
 
@@ -443,7 +533,7 @@ export async function updatePlanSheetAction(sheetId: string, patch: { number?: s
     const n = cleanNumber(patch.number)
     if (!n) return { ok: false, error: 'Sheet numbers are letters and numbers, like C-101.' }
     const key = numberKey(n)
-    const { data: clash } = await svc.from('plan_sheets').select('id').eq('geofence_id', sheet.geofence_id)
+    const { data: clash } = await svc.from('plan_sheets').select('id').eq('geofence_id', sheet.geofence_id).eq('company_id', companyId)
       .eq('number_key', key).is('deleted_at', null).neq('id', sheetId).limit(1)
     if (clash?.length) return { ok: false, error: `${n} is already a sheet on this site.` }
     Object.assign(upd, { number: n, number_key: key, discipline: disciplineOf(n) })
@@ -459,7 +549,7 @@ export async function updatePlanSheetAction(sheetId: string, patch: { number?: s
 /** Remove one version (an upload mistake). The last version takes its sheet with it. */
 export async function deletePlanVersionAction(versionId: string): Promise<Res> {
   if (isMock) return { ok: false, error: 'Demo mode' }
-  const { companyId, svc } = await writer()
+  const { companyId, svc } = await writer({ managers: true })
   if (!UUID.test(versionId)) return { ok: false, error: 'Bad version' }
   const { data: v } = await svc.from('plan_versions').select('id, sheet_id, image_id').eq('id', versionId).eq('company_id', companyId).is('deleted_at', null).maybeSingle()
   if (!v) return { ok: false, error: 'Version not found' }
@@ -473,6 +563,7 @@ export async function deletePlanVersionAction(versionId: string): Promise<Res> {
   }
   const now = new Date().toISOString()
   await svc.from('plan_versions').update({ deleted_at: now }).eq('id', versionId).eq('company_id', companyId)
+  if (v.image_id) await removePictures(svc, companyId, [String(v.image_id)])
   const left = await liveVersions(svc, sheet.id)
   if (!left.length) {
     await svc.from('plan_sheets').update({ deleted_at: now, current_version_id: null }).eq('id', sheet.id).eq('company_id', companyId)
@@ -481,10 +572,7 @@ export async function deletePlanVersionAction(versionId: string): Promise<Res> {
     if (pin !== sheet.current_version_id) await svc.from('plan_sheets').update({ current_version_id: null }).eq('id', sheet.id).eq('company_id', companyId)
     if (wasOnMap) {
       const cur = currentOf({ pinnedVersionId: pin }, left)
-      if (cur?.imageId) {
-        const { data: img } = await svc.from('zone_imagery').select('bounds').eq('id', cur.imageId).maybeSingle()
-        if (img?.bounds) await svc.from('zone_imagery').update({ map_active: true }).eq('id', cur.imageId).eq('company_id', companyId)
-      }
+      await flagOnly(svc, companyId, left.map((v) => v.imageId).filter((x): x is string => !!x), cur?.imageId ?? null)
     }
   }
   refresh(sheet.geofence_id)
@@ -498,6 +586,7 @@ export async function setSheetOnMapAction(sheetId: string, on: boolean): Promise
   const { companyId, svc } = await writer()
   const sheet = await ownSheet(svc, companyId, sheetId)
   if (!sheet) return { ok: false, error: 'Sheet not found' }
+  if (on && sheet.voided_at) return { ok: false, error: 'This sheet is void — restore it first.' }
   const vs = await liveVersions(svc, sheetId)
   const imgIds = vs.map((v) => v.imageId).filter((x): x is string => !!x)
   if (imgIds.length) await svc.from('zone_imagery').update({ map_active: false }).in('id', imgIds).eq('company_id', companyId)
@@ -517,6 +606,10 @@ export async function notePlacementAction(versionId: string, source: 'manual' | 
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { companyId, svc } = await writer()
   if (!UUID.test(versionId) || (fromVersionId && !UUID.test(fromVersionId))) return { ok: false, error: 'Bad version' }
+  if (fromVersionId) {
+    const { data: from } = await svc.from('plan_versions').select('id').eq('id', fromVersionId).eq('company_id', companyId).is('deleted_at', null).maybeSingle()
+    if (!from) return { ok: false, error: 'Bad version' }
+  }
   const placement = source === 'copied' ? { source: 'carried', from: fromVersionId ?? null, check: true } : { source: 'manual' }
   const { error } = await svc.from('plan_versions').update({ placement }).eq('id', versionId).eq('company_id', companyId)
   if (error) return { ok: false, error: 'Couldn’t save — try again.' }
@@ -529,7 +622,7 @@ export async function copyPlacementAction(fromVersionId: string, toVersionIds: s
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { companyId, svc } = await writer()
   if (!UUID.test(fromVersionId) || !Array.isArray(toVersionIds) || toVersionIds.length > 500 || !toVersionIds.every((x) => UUID.test(x))) return { ok: false, error: 'Bad version' }
-  const { data: from } = await svc.from('plan_versions').select('id, image_id, sheet_id').eq('id', fromVersionId).eq('company_id', companyId).maybeSingle()
+  const { data: from } = await svc.from('plan_versions').select('id, image_id, sheet_id').eq('id', fromVersionId).eq('company_id', companyId).is('deleted_at', null).maybeSingle()
   if (!from?.image_id) return { ok: false, error: 'Nothing to copy from' }
   const { data: src } = await svc.from('zone_imagery').select('bounds, geofence_id').eq('id', from.image_id).eq('company_id', companyId).maybeSingle()
   if (!src?.bounds) return { ok: false, error: 'Place that sheet first.' }
@@ -537,9 +630,9 @@ export async function copyPlacementAction(fromVersionId: string, toVersionIds: s
   let copied = 0
   for (const t of targets ?? []) {
     if (!t.image_id) continue
-    const { error } = await svc.from('zone_imagery').update({ bounds: src.bounds })
-      .eq('id', t.image_id).eq('company_id', companyId).eq('geofence_id', src.geofence_id)
-    if (error) continue
+    const { data: hit, error } = await svc.from('zone_imagery').update({ bounds: src.bounds })
+      .eq('id', t.image_id).eq('company_id', companyId).eq('geofence_id', src.geofence_id).select('id')
+    if (error || !hit?.length) continue
     await svc.from('plan_versions').update({ placement: { source: 'carried', from: fromVersionId, check: true } }).eq('id', t.id)
     copied++
   }
@@ -548,23 +641,33 @@ export async function copyPlacementAction(fromVersionId: string, toVersionIds: s
 }
 
 /** A full re-issue left these sheets out and the person said void them. */
-export async function voidPlanSheetsAction(setId: string, sheetIds: string[]): Promise<Res> {
+export async function voidPlanSheetsAction(setId: string, sheetIds: string[]): Promise<Res<{ voided: number }>> {
   if (isMock) return { ok: false, error: 'Demo mode' }
-  const { companyId, svc } = await writer()
+  const { companyId, svc } = await writer({ managers: true })
   const set = await ownSet(svc, companyId, setId)
   if (!set) return { ok: false, error: 'Set not found' }
   if (!Array.isArray(sheetIds) || sheetIds.length > 500 || !sheetIds.every((x) => UUID.test(x))) return { ok: false, error: 'Bad sheets' }
-  if (!sheetIds.length) return { ok: true }
-  await svc.from('plan_sheets').update({ voided_at: new Date().toISOString(), voided_by_set: set.id })
-    .in('id', sheetIds).eq('company_id', companyId).eq('geofence_id', set.geofence_id)
-  // A void sheet leaves the map.
+  if (!sheetIds.length) return { ok: true, voided: 0 }
+  // Only sheets this set really re-issues over: one whose current revision is
+  // newer than the set stays.
+  const eligible: string[] = []
   for (const sid of sheetIds) {
+    const sh = await ownSheet(svc, companyId, sid)
+    if (!sh || sh.geofence_id !== set.geofence_id) continue
+    const cur = currentOf({ pinnedVersionId: sh.current_version_id }, await liveVersions(svc, sid))
+    if (!cur || cur.issuedOn <= set.issued_on) eligible.push(sid)
+  }
+  if (!eligible.length) return { ok: true, voided: 0 }
+  const { data: voided } = await svc.from('plan_sheets').update({ voided_at: new Date().toISOString(), voided_by_set: set.id })
+    .in('id', eligible).eq('company_id', companyId).eq('geofence_id', set.geofence_id).select('id')
+  // A void sheet leaves the map (only the sheets that really were voided).
+  for (const sid of (voided ?? []).map((r) => String(r.id))) {
     const vs = await liveVersions(svc, sid)
     const imgIds = vs.map((v) => v.imageId).filter((x): x is string => !!x)
     if (imgIds.length) await svc.from('zone_imagery').update({ map_active: false }).in('id', imgIds).eq('company_id', companyId)
   }
   refresh(set.geofence_id)
-  return { ok: true }
+  return { ok: true, voided: voided?.length ?? 0 }
 }
 
 /** Un-void a sheet. */

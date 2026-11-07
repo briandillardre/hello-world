@@ -38,6 +38,8 @@ export interface PlanSheetRow extends RoomSheet {
 
 export interface PlanRoomData {
   available: boolean
+  /** The read failed for a reason other than the tables not existing yet. */
+  failed?: boolean
   sets: PlanSetRow[]
   sheets: PlanSheetRow[]
   images: Record<string, PlanImage>
@@ -116,7 +118,14 @@ export async function getPlanRoom(zoneId: string, me: string | null): Promise<Pl
         .eq('geofence_id', zoneId).limit(2000),
       db.from('zone_imagery').select('id, url, bounds, map_active').eq('geofence_id', zoneId).eq('kind', 'plan').limit(5000),
     ])
-    if (setsQ.error || sheetsQ.error) return EMPTY
+    if (setsQ.error || sheetsQ.error) {
+      // Pre-143 (no table) is "not available"; anything else is a failed read
+      // — never a reason to show the old Scaled plans card, whose radio would
+      // clear every sheet's map flag.
+      const e = setsQ.error ?? sheetsQ.error
+      const missing = e?.code === '42P01' || e?.code === 'PGRST205' || /does not exist|could not find the table/i.test(e?.message ?? '')
+      return missing ? EMPTY : { ...EMPTY, failed: true }
+    }
     const sheetIds = (sheetsQ.data ?? []).map((r) => String(r.id))
     const versions: RoomVersion[] = []
     const seen = new Map<string, string>()

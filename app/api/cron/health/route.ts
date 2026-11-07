@@ -526,5 +526,69 @@ export async function GET(req: NextRequest) {
     out.ai = now.ok ? `ok (${now.model})` : now.why
   } catch (err) { out.ai = err instanceof Error ? err.message : 'failed' }
 
+  // 11 — plan uploads nobody filed (143/144; sec-check Nov 7): a PDF under a
+  // set's folder with no plan_files row, or a sheet picture under img/ with
+  // no zone_imagery row, two hours after it landed, goes — and a picture
+  // filed a day ago that no version ever took (an import that stopped before
+  // its page filed) goes with its row. Bounded: 50 company folders per run,
+  // 1000 objects per folder, only paths of our own shape are ever handed to
+  // remove(), and a check that fails deletes nothing.
+  try {
+    const { createServiceClient: svcClient } = await import('@/lib/supabase-server')
+    const svc = svcClient()
+    const U = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+    const PDF_PATH = new RegExp(`^${U}/${U}/${U}\\.pdf$`)
+    const IMG_PATH = new RegExp(`^${U}/img/${U}$`)
+    const old = (o: { created_at?: string | null }) => Date.parse(o.created_at ?? '') < Date.now() - 2 * 3_600_000
+    let swept = 0
+    const { data: cos } = await svc.storage.from('plans').list('', { limit: 50 })
+    for (const co of cos ?? []) {
+      if (co.id || !new RegExp(`^${U}$`).test(co.name)) continue
+      const { data: kids } = await svc.storage.from('plans').list(co.name, { limit: 1000 })
+      for (const k of kids ?? []) {
+        if (k.id) continue // only folders
+        const folder = `${co.name}/${k.name}`
+        const { data: objs } = await svc.storage.from('plans').list(folder, { limit: 1000 })
+        const stale = (objs ?? []).filter((o) => o.id && o.name && old(o)).map((o) => `${folder}/${o.name}`)
+        if (!stale.length) continue
+        let live: Set<string> | null = new Set<string>()
+        const unversioned: string[] = []
+        for (let i = 0; i < stale.length && live; i += 200) {
+          const slice = stale.slice(i, i + 200)
+          if (k.name === 'img') {
+            const ids = slice.map((p) => p.slice(p.lastIndexOf('/') + 1))
+            const [{ data, error }, { data: used, error: usedErr }] = await Promise.all([
+              svc.from('zone_imagery').select('id, created_at').in('id', ids),
+              svc.from('plan_versions').select('image_id').in('image_id', ids),
+            ])
+            if (error || usedErr) live = null
+            else {
+              const taken = new Set((used ?? []).map((u) => String(u.image_id)))
+              for (const r of data ?? []) {
+                if (taken.has(String(r.id)) || !(Date.parse(String(r.created_at ?? '')) < Date.now() - 24 * 3_600_000)) live.add(`${folder}/${r.id}`)
+                else unversioned.push(String(r.id))
+              }
+            }
+          } else {
+            const { data, error } = await svc.from('plan_files').select('path').in('path', slice)
+            if (error) live = null
+            else for (const r of data ?? []) live.add(String(r.path))
+          }
+        }
+        if (!live) continue
+        const gone = stale.filter((p) => !live!.has(p) && (k.name === 'img' ? IMG_PATH.test(p) : PDF_PATH.test(p))).slice(0, 200)
+        if (gone.length) {
+          const { error } = await svc.storage.from('plans').remove(gone)
+          if (!error) {
+            swept += gone.length
+            const rowIds = unversioned.filter((id) => gone.includes(`${folder}/${id}`))
+            if (rowIds.length) await svc.from('zone_imagery').delete().in('id', rowIds).eq('kind', 'plan').like('url', '/api/plans/image/%')
+          }
+        }
+      }
+    }
+    out.planOrphansSwept = swept
+  } catch (err) { out.planSweep = err instanceof Error ? err.message : 'failed' }
+
   return NextResponse.json({ ok: true, at: new Date().toISOString(), ...out })
 }

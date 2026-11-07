@@ -457,15 +457,17 @@ export function WeatherControl({ planPicker = null, base, onBase, threeD, onThre
             const pick = planPicker.picked[sh.sheetId] ?? ''
             return (
               <div key={sh.sheetId} className={'rounded-lg border border-navy-800 px-2 py-1.5 ' + (off ? 'opacity-60' : '')}>
-                <label className="flex items-center gap-2 text-[11.5px] text-ink cursor-pointer">
-                  <input type="checkbox" className="accent-teal" checked={!off} onChange={(e) => planPicker.onHide(sh.sheetId, !e.target.checked)} />
-                  <span className="truncate flex-1">{sh.label}</span>
-                  <a href={sh.href} className="text-[10px] text-teal hover:underline flex-none" onClick={(e) => e.stopPropagation()}>open</a>
-                </label>
-                <p className="text-[10px] text-faint truncate pl-5">{sh.zone}</p>
+                <div className="flex items-center gap-1">
+                  <label className="flex items-center gap-2 text-[11.5px] text-ink cursor-pointer flex-1 min-w-0 min-h-[36px]">
+                    <input type="checkbox" className="accent-teal h-4 w-4 flex-none" checked={!off} onChange={(e) => planPicker.onHide(sh.sheetId, !e.target.checked)} />
+                    <span className="truncate">{sh.label}</span>
+                  </label>
+                  <a href={sh.href} className="flex-none rounded-md px-2.5 py-2 text-[11px] font-semibold text-teal hover:bg-teal/10">Open</a>
+                </div>
+                <p className="text-[10px] text-faint truncate pl-6 -mt-1.5">{sh.zone}</p>
                 {!off && sh.versions.length > 1 && (
                   <select value={pick} onChange={(e) => planPicker.onPick(sh.sheetId, e.target.value || null)} aria-label={`Version of ${sh.label}`}
-                    className="mt-1 ml-5 w-[calc(100%-1.25rem)] rounded bg-navy-950 border border-navy-700 px-1.5 py-1 text-[10.5px] text-ink">
+                    className="mt-1 ml-6 w-[calc(100%-1.5rem)] rounded bg-navy-950 border border-navy-700 px-1.5 py-1.5 text-[11px] text-ink">
                     <option value="">{planPicker.day ? 'Follow the timeline' : 'Current version'}</option>
                     {sh.versions.map((v) => <option key={v.id} value={v.id}>{v.label}{v.current ? ' (current)' : ''}</option>)}
                   </select>

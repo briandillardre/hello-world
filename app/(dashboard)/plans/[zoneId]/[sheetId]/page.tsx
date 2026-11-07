@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { requireFeature, getRealPermissions } from '@/lib/permissions-server'
+import { isProspect, rankOf, RANK } from '@/lib/permissions'
 import { getGeofence } from '@/lib/db/zones'
 import { getPlanRoom } from '@/lib/db/plans'
 import { SheetViewer } from '@/components/plans/SheetViewer'
@@ -30,6 +31,8 @@ export default async function Page({ params, searchParams }: { params: { zoneId:
       images={room.images}
       sets={room.sets.map((s) => ({ id: s.id, name: s.name, kind: s.kind, issuedOn: s.issuedOn }))}
       canEdit={perms.canEdit && !perms.viewingAs && !isMock}
+      canDelete={perms.canEdit && !perms.viewingAs && !isMock && rankOf(perms) >= RANK.manager}
+      canPdf={!isProspect(perms)}
     />
   )
 }

@@ -76,6 +76,7 @@ import { WeatherControl, type BaseStyle } from './WeatherControl'
 import { PhotoCaptureSheet } from '@/components/photos/PhotoCaptureSheet'
 import type { SiteOverlay } from '@/lib/db/imagery'
 import { planFrameIds, subCorners } from '@/lib/plans/crop'
+import { cropKey, cropMade, cropWanted, makeCrop } from './plan-crops'
 import { PhotoLightbox } from '@/components/zones/PhotoLightbox'
 
 const SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
@@ -4625,16 +4626,40 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   // Plan sheets (143) follow time too: live, each sheet's CURRENT version;
   // scrubbed back, the version that was current on that day — and the plan
   // picker (layers panel) can hide a sheet or hold one version on screen.
-  const [planPick, setPlanPick] = useState<{ hidden: string[]; picked: Record<string, string> }>(() => {
+  // Hidden sheets are remembered on this device; a version held on screen
+  // lasts this visit only and lapses the moment the sheet's current version
+  // changes — a pick kept forever drew an old revision on a phone's live map
+  // after the next addendum landed, the exact failure the room exists for.
+  const [planHidden, setPlanHidden] = useState<string[]>(() => {
     try {
-      const raw = JSON.parse(localStorage.getItem('ht_plan_picker_v1') ?? 'null')
-      if (raw && Array.isArray(raw.hidden) && raw.picked && typeof raw.picked === 'object') return { hidden: raw.hidden.filter((x: unknown) => typeof x === 'string').slice(0, 200), picked: raw.picked }
+      const raw = JSON.parse(localStorage.getItem('ht_plan_hidden_v2') ?? localStorage.getItem('ht_plan_picker_v1') ?? 'null')
+      if (raw && Array.isArray(raw.hidden)) return raw.hidden.filter((x: unknown): x is string => typeof x === 'string').slice(0, 200)
     } catch { /* private mode */ }
-    return { hidden: [], picked: {} }
+    return []
   })
   useEffect(() => {
-    try { localStorage.setItem('ht_plan_picker_v1', JSON.stringify(planPick)) } catch { /* private mode */ }
-  }, [planPick])
+    try {
+      localStorage.setItem('ht_plan_hidden_v2', JSON.stringify({ hidden: planHidden }))
+      localStorage.removeItem('ht_plan_picker_v1')
+    } catch { /* private mode */ }
+  }, [planHidden])
+  const [planHeld, setPlanHeld] = useState<Record<string, { v: string; cur: string | null }>>({})
+  const planCurrent = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const o of siteOverlays ?? []) if (o.kind === 'plan' && o.sheetId && o.current) m.set(o.sheetId, o.id)
+    return m
+  }, [siteOverlays])
+  useEffect(() => {
+    setPlanHeld((p) => {
+      const keep = Object.entries(p).filter(([sheetId, h]) => (planCurrent.get(sheetId) ?? null) === h.cur)
+      return keep.length === Object.keys(p).length ? p : Object.fromEntries(keep)
+    })
+  }, [planCurrent])
+  const planPicked = useMemo(() => {
+    const out = new Map<string, string>()
+    for (const [sheetId, h] of Object.entries(planHeld)) if ((planCurrent.get(sheetId) ?? null) === h.cur) out.set(sheetId, h.v)
+    return out
+  }, [planHeld, planCurrent])
   const planDay = useMemo(() => {
     if (range === 'live' || !realWindowEff) return null
     const t = realWindowEff.from + pbT * (realWindowEff.to - realWindowEff.from)
@@ -4643,9 +4668,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   const planActiveKey = useMemo(() => {
     const plans = (siteOverlays ?? []).filter((o) => o.kind === 'plan')
     if (!plans.length) return ''
-    const picked = new Map(Object.entries(planPick.picked).filter(([, v]) => typeof v === 'string'))
-    return Array.from(planFrameIds(plans, planDay, new Set(planPick.hidden), picked)).sort().join(',')
-  }, [siteOverlays, planDay, planPick])
+    const today = new Date().toLocaleDateString('en-CA')
+    return Array.from(planFrameIds(plans, planDay, new Set(planHidden), planPicked, today)).sort().join(',')
+  }, [siteOverlays, planDay, planHidden, planPicked])
   const planPicker = useMemo(() => {
     const bySheet = new Map<string, { sheetId: string; label: string; zone: string; href: string; versions: { id: string; label: string; current: boolean; issuedOn: string }[] }>()
     for (const o of siteOverlays ?? []) {
@@ -4655,60 +4680,43 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         e = { sheetId: o.sheetId, label: o.sheetLabel ?? 'Sheet', zone: geofences.find((g) => g.id === o.zoneId)?.name ?? '', href: `/plans/${o.zoneId}/${o.sheetId}`, versions: [] }
         bySheet.set(o.sheetId, e)
       }
-      e.versions.push({ id: o.id, label: o.versionLabel ?? o.issuedOn ?? '', current: !!o.current, issuedOn: o.issuedOn ?? '' })
+      e.versions.push({ id: o.id, label: `${o.versionLabel ?? o.issuedOn ?? ''}${o.held ? ' · held back' : ''}`, current: !!o.current, issuedOn: o.issuedOn ?? '' })
     }
     const sheets = Array.from(bySheet.values())
       .map((e) => ({ ...e, versions: e.versions.sort((a, b) => b.issuedOn.localeCompare(a.issuedOn)) }))
       .sort((a, b) => a.zone.localeCompare(b.zone) || a.label.localeCompare(b.label))
     return {
-      sheets, hidden: planPick.hidden, picked: planPick.picked, day: planDay,
-      onHide: (sheetId: string, hide: boolean) => setPlanPick((p) => ({ ...p, hidden: hide ? Array.from(new Set([...p.hidden, sheetId])) : p.hidden.filter((x) => x !== sheetId) })),
-      onPick: (sheetId: string, versionId: string | null) => setPlanPick((p) => {
-        const picked = { ...p.picked }
-        if (versionId) picked[sheetId] = versionId
-        else delete picked[sheetId]
-        return { ...p, picked }
+      sheets, hidden: planHidden, picked: Object.fromEntries(Array.from(planPicked)), day: planDay,
+      onHide: (sheetId: string, hide: boolean) => setPlanHidden((h) => (hide ? Array.from(new Set([...h, sheetId])) : h.filter((x) => x !== sheetId))),
+      onPick: (sheetId: string, versionId: string | null) => setPlanHeld((p) => {
+        const next = { ...p }
+        const cur = planCurrent.get(sheetId) ?? null
+        // Live, picking the current version is just following it.
+        if (!versionId || (planDay === null && versionId === cur)) delete next[sheetId]
+        else next[sheetId] = { v: versionId, cur }
+        return next
       }),
     }
-  }, [siteOverlays, geofences, planPick, planDay])
+  }, [siteOverlays, geofences, planHidden, planPicked, planCurrent, planDay])
 
-  // Cropped pictures (the border and title block off), made once per crop
-  // on the device: the picture's drawing area, pinned by the matching part of
-  // its corners.
-  const [planCrops, setPlanCrops] = useState<Record<string, { key: string; url: string; coords: SiteOverlay['coords'] }>>({})
-  const cropUrls = useRef<string[]>([])
-  useEffect(() => () => { for (const u of cropUrls.current) URL.revokeObjectURL(u) }, [])
+  // Cropped pictures (components/map/plan-crops.ts): one at a time, only for
+  // sheets on screen, kept for the life of the app.
+  const [cropTick, setCropTick] = useState(0)
+  const cropBusy = useRef(false)
+  const mapMounted = useRef(true)
+  useEffect(() => { mapMounted.current = true; return () => { mapMounted.current = false } }, [])
+  const plansOn = !!overlaysOn.siteplans
   useEffect(() => {
-    let alive = true
-    for (const ov of siteOverlays ?? []) {
-      const c = ov.kind === 'plan' ? ov.crop : null
-      if (!c || c.on === false) continue
-      const key = `${c.x0},${c.y0},${c.x1},${c.y1}|${ov.coords.flat().join(',')}`
-      if (planCrops[ov.id]?.key === key) continue
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = () => {
-        if (!alive || !img.naturalWidth) return
-        const sx = Math.round(c.x0 * img.naturalWidth), sy = Math.round(c.y0 * img.naturalHeight)
-        const sw = Math.max(1, Math.round((c.x1 - c.x0) * img.naturalWidth)), sh = Math.max(1, Math.round((c.y1 - c.y0) * img.naturalHeight))
-        const cv = document.createElement('canvas')
-        cv.width = sw; cv.height = sh
-        const ctx = cv.getContext('2d')
-        if (!ctx) return
-        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
-        cv.toBlob((b) => {
-          cv.width = 0; cv.height = 0
-          if (!b || !alive) return
-          const url = URL.createObjectURL(b)
-          cropUrls.current.push(url)
-          setPlanCrops((prev) => ({ ...prev, [ov.id]: { key, url, coords: subCorners(ov.coords, c) as SiteOverlay['coords'] } }))
-        }, 'image/png')
-      }
-      img.src = ov.url
-    }
-    return () => { alive = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [siteOverlays])
+    if (!plansOn || cropBusy.current) return
+    const active = new Set(planActiveKey ? planActiveKey.split(',') : [])
+    const next = (siteOverlays ?? []).find((o) => o.kind === 'plan' && active.has(o.id) && o.crop && o.crop.on !== false && cropWanted(cropKey(o.url, o.crop)))
+    if (!next?.crop) return
+    cropBusy.current = true
+    void makeCrop(next.url, next.crop).finally(() => {
+      cropBusy.current = false
+      if (mapMounted.current) setCropTick((t) => t + 1)
+    })
+  }, [plansOn, siteOverlays, planActiveKey, cropTick])
 
   useEffect(() => {
     const m = map.current
@@ -4727,9 +4735,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       const srcId = `simg-${ov.id}`
       const lid = `${srcId}-layer`
       known.add(lid)
-      // A plan's drawing area once its crop is made (the whole sheet until then).
-      const crop = isPlan && ov.crop && ov.crop.on !== false ? planCrops[ov.id] : undefined
-      const pic = crop ?? { url: ov.url, coords: ov.coords }
+      // A plan's drawing area once its crop is made (the whole sheet until
+      // then) — the corners always from the sheet's placement as it is now.
+      const cropUrl = isPlan && ov.crop && ov.crop.on !== false ? cropMade(cropKey(ov.url, ov.crop)) : undefined
+      const pic = cropUrl && ov.crop ? { url: cropUrl, coords: subCorners(ov.coords, ov.crop) as SiteOverlay['coords'] } : { url: ov.url, coords: ov.coords }
       if (show && !m.getSource(srcId)) {
         try {
           m.addSource(srcId, { type: 'image', url: pic.url, coordinates: pic.coords })
@@ -4766,7 +4775,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, overlaysOn, siteOverlays, siteImgActiveKey, planActiveKey, planCrops])
+  }, [mapReady, overlaysOn, siteOverlays, siteImgActiveKey, planActiveKey, cropTick])
 
   // ── Dirt takeoffs (127): each saved takeoff's cut/fill picture where its
   // grading plan puts it (red cut · blue fill, lib/dirt/heat.ts), with the

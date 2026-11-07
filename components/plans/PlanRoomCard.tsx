@@ -24,6 +24,16 @@ export async function PlanRoomCard({ zoneId, legacy, canEdit, ring }: {
 }) {
   const real = await getRealPermissions()
   const room = await getPlanRoom(zoneId, real.userId)
+  if (room.failed) {
+    return (
+      <section>
+        <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint flex items-center gap-1.5 mb-2"><FileStack className="h-3.5 w-3.5" /> Plans</h2>
+        <p className="text-sm text-faint rounded-xl border border-navy-800 bg-navy-900 p-4">
+          Couldn’t load the plans just now — refresh the page, or <Link href={`/plans/${zoneId}`} className="text-teal underline">open the plan room</Link>.
+        </p>
+      </section>
+    )
+  }
   if (!room.available) {
     return <ZonePlans zoneId={zoneId} initial={legacy} canEdit={canEdit} ring={ring} />
   }

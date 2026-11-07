@@ -89,16 +89,20 @@ export function subCorners(c: [LngLat, LngLat, LngLat, LngLat], crop: Crop): [Ln
   return [at(crop.x0, crop.y0), at(crop.x1, crop.y0), at(crop.x1, crop.y1), at(crop.x0, crop.y1)]
 }
 
-export interface PlanFrame { id: string; sheetId?: string; issuedOn?: string; current?: boolean }
+export interface PlanFrame { id: string; sheetId?: string; issuedOn?: string; current?: boolean; held?: boolean; createdAt?: string }
 
 /**
- * Which plan pictures the map shows. Live: each sheet's CURRENT version. A
- * replay at day D: each sheet's version issued last on or before D (nothing
- * for a sheet not issued yet) — the doc's "the map follows time". A sheet the
- * person hid is gone; a version they picked replaces the automatic one.
- * Pictures that are not plan-room versions (pre-143) always show.
+ * Which plan pictures the map shows. Live (and a replay of today or later):
+ * each sheet's CURRENT version. A replay at an earlier day D: each sheet's
+ * version issued last on or before D — the doc's "the map follows time" — and
+ * before the sheet's first issue its earliest version, as plans always showed
+ * before the plan room. A revision held back behind a pinned one is never
+ * drawn: held means not for use. A sheet the person hid is gone; a version
+ * they picked replaces the automatic one. Pictures that are not plan-room
+ * versions (pre-143) always show. Same-day versions: the current one, else
+ * the one filed last.
  */
-export function planFrameIds(frames: PlanFrame[], day: string | null, hidden: Set<string>, picked: Map<string, string>): Set<string> {
+export function planFrameIds(frames: PlanFrame[], day: string | null, hidden: Set<string>, picked: Map<string, string>, today: string | null = null): Set<string> {
   const out = new Set<string>()
   const bySheet = new Map<string, PlanFrame[]>()
   for (const f of frames) {
@@ -106,21 +110,30 @@ export function planFrameIds(frames: PlanFrame[], day: string | null, hidden: Se
     if (!bySheet.has(f.sheetId)) bySheet.set(f.sheetId, [])
     bySheet.get(f.sheetId)!.push(f)
   }
-  bySheet.forEach((fs, sheetId) => {
+  const later = (a: PlanFrame, b: PlanFrame) =>
+    (a.issuedOn ?? '') > (b.issuedOn ?? '') ||
+    ((a.issuedOn ?? '') === (b.issuedOn ?? '') && (a.current ? !b.current : !b.current && (a.createdAt ?? '') > (b.createdAt ?? '')))
+  bySheet.forEach((all, sheetId) => {
     if (hidden.has(sheetId)) return
     const pick = picked.get(sheetId)
-    if (pick && fs.some((f) => f.id === pick)) { out.add(pick); return }
-    if (day === null) {
+    if (pick && all.some((f) => f.id === pick)) { out.add(pick); return }
+    const fs = all.filter((f) => !f.held)
+    if (day === null || (today !== null && day >= today)) {
       const cur = fs.find((f) => f.current)
       if (cur) out.add(cur.id)
       return
     }
     let best: PlanFrame | null = null
+    let first: PlanFrame | null = null
     for (const f of fs) {
-      if (!f.issuedOn || f.issuedOn > day) continue
-      if (!best || f.issuedOn > best.issuedOn! || (f.issuedOn === best.issuedOn && f.current)) best = f
+      if (!f.issuedOn) continue
+      // The earliest day; on that day the same one the replay would show.
+      if (!first || f.issuedOn < first.issuedOn! || (f.issuedOn === first.issuedOn && later(f, first))) first = f
+      if (f.issuedOn > day) continue
+      if (!best || later(f, best)) best = f
     }
-    if (best) out.add(best.id)
+    const show = best ?? first
+    if (show) out.add(show.id)
   })
   return out
 }

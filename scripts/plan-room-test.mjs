@@ -131,6 +131,19 @@ ok(R.isFullIssue('ifc') && !R.isFullIssue('addendum'), 'IFC is a full issue, an 
   eq(R.verdictFor({ number: 'C-101', signature: null }, '2026-08-20', sheets, bySheet).kind, 'revises', 'a scan (no fingerprint) is never unchanged')
   eq(R.verdictFor({ number: 'C-102', signature: 'old' }, '2026-08-01', sheets, bySheet).kind, 'older', 'issued before the current → files behind it')
   eq(R.verdictFor({ number: null, signature: 'z' }, '2026-08-20', sheets, bySheet).kind, 'not-sheet', 'no number → not a sheet')
+  // Rev 1 pinned, Rev 2 held: the Addendum 2 PDF uploaded again is the held
+  // drawing — unchanged, never a third copy that would release the pin.
+  const pinSheets = [{ id: 's3', numberKey: 'C103', pinnedVersionId: 'c1' }]
+  const pinVs = new Map([['s3', [
+    V('c0', '2026-08-01', '2026-08-01T00:00:00Z', { signature: 'sig0', rev: '0', sheetId: 's3' }),
+    V('c1', '2026-09-01', '2026-09-01T00:00:00Z', { signature: 'sig1', rev: '1', sheetId: 's3' }),
+    V('c2', '2026-10-01', '2026-10-01T00:00:00Z', { signature: 'sig2', rev: '2', sheetId: 's3' }),
+  ]]])
+  const held = R.verdictFor({ number: 'C-103', signature: 'sig2' }, '2026-10-01', pinSheets, pinVs)
+  eq([held.kind, held.same?.id], ['unchanged', 'c2'], 'the held revision again → unchanged')
+  const again = R.verdictFor({ number: 'C-103', signature: 'sig0' }, '2026-08-01', pinSheets, pinVs)
+  eq([again.kind, again.same?.id], ['unchanged', 'c0'], 'an old set uploaded again → unchanged, no duplicate in the history')
+  eq(R.verdictFor({ number: 'C-103', signature: 'sig0' }, '2026-11-01', pinSheets, pinVs).kind, 'revises', 'Rev 0’s drawing under a new date is a revert — a real revision')
 }
 
 // ── carry rule ──
@@ -314,11 +327,36 @@ eq(F.carryRule({ pageW: null, pageH: null, inkBox: null }, { pageW: 1728, pageH:
   ]
   const ids = (day, hidden = new Set(), picked = new Map()) => [...CR.planFrameIds(frames, day, hidden, picked)].sort().join(',')
   eq(ids(null), 'a1,b0,legacy', 'live: current versions')
-  eq(ids('2026-09-01'), 'a0,legacy', 'Sep 1: Rev 0 of s1, s2 not issued yet')
+  eq(ids('2026-09-01'), 'a0,b0,legacy', 'Sep 1: Rev 0 of s1; s2 not issued yet shows its first version (as plans always did)')
   eq(ids('2026-10-01'), 'a0,b0,legacy', 'Oct 1: s2 issued, s1 still Rev 0')
   eq(ids('2026-12-01'), 'a1,b0,legacy', 'Dec 1: the newest of each')
   eq(ids(null, new Set(['s2'])), 'a1,legacy', 'a hidden sheet leaves the map')
   eq(ids(null, new Set(), new Map([['s1', 'a0']])), 'a0,b0,legacy', 'a picked version replaces the automatic one')
+  // A pinned Rev 1 with Rev 2 held back: held is never drawn, and a replay
+  // of today is the live map (the pin), not the held revision.
+  const pinned = [
+    { id: 'p0', sheetId: 's3', issuedOn: '2026-08-01' },
+    { id: 'p1', sheetId: 's3', issuedOn: '2026-09-01', current: true },
+    { id: 'p2', sheetId: 's3', issuedOn: '2026-10-01', held: true },
+  ]
+  const pid = (day, today = null, picked = new Map()) => [...CR.planFrameIds(pinned, day, new Set(), picked, today)].join(',')
+  eq(pid(null), 'p1', 'live: the pinned version')
+  eq(pid('2026-11-07', '2026-11-07'), 'p1', 'a replay of today shows the pin, not the held revision')
+  eq(pid('2026-10-15', '2026-11-07'), 'p1', 'a past day after the held revision still shows the pin (held = not for use)')
+  eq(pid('2026-08-15', '2026-11-07'), 'p0', 'mid-August: Rev 0')
+  eq(pid('2026-07-01', '2026-11-07'), 'p0', 'before the first issue: the earliest version')
+  eq(pid(null, null, new Map([['s3', 'p2']])), 'p2', 'picking the held revision shows it')
+  // Same-day versions: the current one, else the one filed last.
+  const sameDay = [
+    { id: 't0', sheetId: 's4', issuedOn: '2026-10-01', createdAt: '2026-10-01T10:00:00Z' },
+    { id: 't1', sheetId: 's4', issuedOn: '2026-10-01', createdAt: '2026-10-01T12:00:00Z' },
+    { id: 't2', sheetId: 's4', issuedOn: '2026-10-05', current: true, createdAt: '2026-10-05T09:00:00Z' },
+    { id: 'u0', sheetId: 's5', issuedOn: '2026-10-01', current: true, createdAt: '2026-10-01T08:00:00Z' },
+    { id: 'u1', sheetId: 's5', issuedOn: '2026-10-01', createdAt: '2026-10-01T09:00:00Z' },
+  ]
+  const sid = (day) => [...CR.planFrameIds(sameDay, day, new Set(), new Map(), '2026-11-07')].sort().join(',')
+  eq(sid('2026-10-02'), 't1,u0', 'same day: filed last, unless one is current')
+  eq(sid('2026-09-01'), 't1,u0', 'before the first issue: what that first day shows')
 }
 
 // ── the fingerprint on the real fixture PDF ──

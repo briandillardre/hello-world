@@ -36,12 +36,14 @@ export const fmtDay = (d: string) => {
  * (grading and utilities side by side); the map always shows the current
  * version, so a revision can never hide behind an old picture.
  */
-export function PlanRoom({ zone, data, canEdit, ring, demo }: {
+export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false }: {
   zone: { id: string; name: string }
   data: PlanRoomData
   canEdit: boolean
   ring: [number, number][] | null
   demo: boolean
+  /** Managers and above: delete a set, void sheets. */
+  canDelete?: boolean
 }) {
   const router = useRouter()
   const [tab, setTab] = useState<'sheets' | 'sets'>('sheets')
@@ -58,7 +60,8 @@ export function PlanRoom({ zone, data, canEdit, ring, demo }: {
   const newCount = live.filter((s) => s.isNew).length
   const onMapCount = live.filter((s) => {
     const cur = s.versions.find((v) => v.id === s.currentId)
-    return !!(cur?.imageId && data.images[cur.imageId]?.mapActive)
+    const img = cur?.imageId ? data.images[cur.imageId] : undefined
+    return !!(img?.mapActive && img.bounds)
   }).length
 
   async function toggleMap(s: PlanSheetRow, on: boolean) {
@@ -141,7 +144,11 @@ export function PlanRoom({ zone, data, canEdit, ring, demo }: {
                         <span className="text-[12px] text-faint flex-1 truncate">{s.title}</span>
                         <span className="text-[10px] font-bold text-red-400 border border-red-500/40 rounded px-1.5">VOID</span>
                         {canEdit && (
-                          <button type="button" onClick={async () => { await unvoidPlanSheetAction(s.id).catch(() => null); router.refresh() }}
+                          <button type="button" onClick={async () => {
+                            const r = await unvoidPlanSheetAction(s.id).catch(() => null)
+                            if (!r?.ok) setError(r && !r.ok ? r.error : 'Couldn’t restore it — try again.')
+                            router.refresh()
+                          }}
                             className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-ink"><RotateCcw className="h-3 w-3" /> Restore</button>
                         )}
                       </div>
@@ -156,14 +163,14 @@ export function PlanRoom({ zone, data, canEdit, ring, demo }: {
         {tab === 'sets' && (
           data.sets.length === 0 ? <Empty canEdit={canEdit} onAdd={() => setAdding(true)} demo={demo} /> : (
             <div className="rounded-xl border border-navy-800 bg-navy-900 divide-y divide-navy-800">
-              {data.sets.map((s, i) => <SetRow key={s.id} set={s} newest={i === 0} canEdit={canEdit} onChanged={() => router.refresh()} />)}
+              {data.sets.map((s, i) => <SetRow key={s.id} set={s} newest={i === 0} canEdit={canEdit} canDelete={canDelete} onChanged={() => router.refresh()} />)}
             </div>
           )
         )}
       </div>
 
       {adding && (
-        <AddPlanSet zoneId={zone.id} sheets={data.sheets} ring={ring}
+        <AddPlanSet zoneId={zone.id} sheets={data.sheets} ring={ring} canVoid={canDelete}
           onClose={() => setAdding(false)} onDone={() => router.refresh()} />
       )}
       {placing && (
@@ -258,6 +265,7 @@ function SheetRow({ zoneId, sheet, data, canEdit, busy, onMap, onPlace }: {
               {pinned && <span className="text-amber">· pinned{newer ? ` — ${newer} newer held back` : ''}</span>}
               {sheet.isNew && <span className="text-amber font-semibold">· NEW</span>}
               {placed && cur?.placement?.source === 'grid' && <span className="text-teal" title={placementWords(cur.placement, true)}>· placed from its grid</span>}
+              {!placed && img?.mapActive && <span className="text-amber">· place it to put it back on the map</span>}
             </span>
           </span>
         </Link>
@@ -296,7 +304,7 @@ function SheetRow({ zoneId, sheet, data, canEdit, busy, onMap, onPlace }: {
   )
 }
 
-function SetRow({ set, newest, canEdit, onChanged }: { set: PlanSetRow; newest: boolean; canEdit: boolean; onChanged: () => void }) {
+function SetRow({ set, newest, canEdit, canDelete, onChanged }: { set: PlanSetRow; newest: boolean; canEdit: boolean; canDelete: boolean; onChanged: () => void }) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(set.name)
   const [kind, setKind] = useState<PlanSetKind>(set.kind)
@@ -332,7 +340,7 @@ function SetRow({ set, newest, canEdit, onChanged }: { set: PlanSetRow; newest: 
         {canEdit && (
           <>
             <button type="button" onClick={() => setEditing((x) => !x)} aria-label="Edit set" className="rounded-lg p-1.5 text-faint hover:text-ink"><Pencil className="h-3.5 w-3.5" /></button>
-            <button type="button" onClick={() => void remove()} aria-label="Delete set" className="rounded-lg p-1.5 text-faint hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
+            {canDelete && <button type="button" onClick={() => void remove()} aria-label="Delete set" className="rounded-lg p-1.5 text-faint hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>}
           </>
         )}
       </div>
