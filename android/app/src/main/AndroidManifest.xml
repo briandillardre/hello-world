@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -83,15 +84,24 @@
          on Android 14+, so the system offers "Select photos" and most people
          never grant the whole library.
 
-         NOTE: declaring READ_MEDIA_IMAGES puts the release through Play's
-         Photo and Video Permissions declaration (Play Console → App content),
-         same shape as the Foreground-service one. The justification is the
-         feature itself: reading the coordinates stored in a job-site photo so
-         it files under the right job. -->
+         Nov 7 (v1.5.6): READ_MEDIA_IMAGES and READ_MEDIA_VISUAL_USER_SELECTED
+         are OUT. Declaring them sends every release through Play's Photo and
+         Video Permissions declaration, and that one form held back every app
+         update from Sep 12 to Nov 7: talking to the app, the Back button, crash
+         recovery, the no-signal screen (board #140). Brian, Nov 7: "fix why the
+         voice talk mode isn't working". So Android 10–12 keep the original-photo
+         door (READ_EXTERNAL_STORAGE below), and on Android 13+ the plugin reports
+         itself unavailable and the page uses the WebView's own file input —
+         exactly what installed phones have done since Sep 12: a gallery photo
+         with no readable GPS asks where it was taken; photos taken in the app
+         carry the live fix. To bring originals back on 13+: re-add the two
+         lines, file the declaration (wording in docs/APP-STORE-PLAYBOOK.md),
+         release. The removes below make sure no library merges them back in. -->
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" tools:node="remove" />
 </manifest>
