@@ -3,14 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Compass, LocateFixed, FileDown, Pin, PinOff, Trash2, ChevronRight, X } from 'lucide-react'
+import { ArrowLeft, Compass, LocateFixed, Ruler, Crop as CropIcon, FileDown, Pin, PinOff, Trash2, ChevronRight, X } from 'lucide-react'
 import { PageCanvas, type PageSource, type Box, type Camera } from './PageCanvas'
 import { loadPdfjs, type PdfDoc } from './pdf'
-import { statusOf, revLabel, newestFirst, type RoomVersion } from '@/lib/plans/room'
+import { statusOf, revLabel, newestFirst, placementWords, type RoomVersion } from '@/lib/plans/room'
+import { scaleVerdict, scaleWords, placementFeetPerInch, SCALE_LABEL, type ScaleCheck, type ScaleKey } from '@/lib/plans/scale'
 import { pageUpBearing, uvOf, metresPerUnit, scGridConvergence, convergenceWords, type Corners4 } from '@/lib/plans/north'
 import { composite, changeBoxes } from '@/lib/plans/compare'
 import type { PlanImage, PlanSheetRow } from '@/lib/db/plans'
-import { planPdfLinkAction, markPlanSeenAction, setSheetPinAction, deletePlanVersionAction } from '@/lib/actions/plans'
+import { planPdfLinkAction, markPlanSeenAction, setSheetPinAction, deletePlanVersionAction, setVersionCropAction } from '@/lib/actions/plans'
+import type { Crop } from '@/lib/plans/crop'
 
 const fmtDay = (d: string) => {
   const t = Date.parse(`${d}T12:00:00Z`)
@@ -208,6 +210,56 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
     return { x: u * res.w, y: vv * res.h, r: mpu > 0 ? me.acc / mpu : 0, on: u >= 0 && u <= 1 && vv >= 0 && vv <= 1 }
   }, [me, bounds, res])
 
+  // ── The scale card: the page's own evidence + where it sits on the map ──
+  const [scaleOpen, setScaleOpen] = useState(false)
+  const checks = useMemo(() => {
+    const out: ScaleCheck[] = (v.scaleChecks ?? []).filter((c) => c.key in SCALE_LABEL).map((c) => ({ ...c, key: c.key as ScaleKey }))
+    if (!out.length && v.feetPerInch) out.push({ key: 'stated', feetPerInch: v.feetPerInch, detail: `${v.scaleText ?? ''} in the title block`.trim() })
+    if (bounds && v.pageW && v.placement?.source !== 'grid') {
+      out.push({ key: 'placement', feetPerInch: placementFeetPerInch(metresPerUnit(bounds, v.pageW)), detail: placementWords(v.placement, true) })
+    }
+    return out
+  }, [v, bounds])
+  const verdict = scaleVerdict(checks)
+  const toneDot = verdict.tone === 'green' ? 'bg-emerald-400' : verdict.tone === 'red' ? 'bg-red-500' : verdict.tone === 'amber' ? 'bg-amber' : 'bg-navy-600'
+
+  // ── Crop for the map: the drawing area that shows on the aerial ──
+  const [cropEdit, setCropEdit] = useState(false)
+  const [draft, setDraft] = useState<Crop>({ x0: 0, y0: 0, x1: 1, y1: 1 })
+  const camRef = useRef<Camera | null>(null)
+  const dragEdge = useRef<{ edge: 'x0' | 'y0' | 'x1' | 'y1'; sx: number; sy: number; start: Crop } | null>(null)
+  function openCrop() {
+    setDraft(v.crop && v.crop.on !== false ? { x0: v.crop.x0, y0: v.crop.y0, x1: v.crop.x1, y1: v.crop.y1 } : { x0: 0.02, y0: 0.02, x1: 0.98, y1: 0.98 })
+    setCropEdit(true); setCmp(null)
+  }
+  async function saveCrop(on: boolean) {
+    const r = await setVersionCropAction(v.id, { ...draft, on }).catch(() => null)
+    if (!r?.ok) { setErr(r && !r.ok ? r.error : 'Couldn’t save — try again.'); return }
+    setCropEdit(false)
+    router.refresh()
+  }
+  const edgeDown = (edge: 'x0' | 'y0' | 'x1' | 'y1') => (e: React.PointerEvent) => {
+    e.stopPropagation()
+    ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
+    dragEdge.current = { edge, sx: e.clientX, sy: e.clientY, start: draft }
+  }
+  const edgeMove = (e: React.PointerEvent) => {
+    const d = dragEdge.current, cam = camRef.current
+    if (!d || !cam?.s || !res) return
+    e.stopPropagation()
+    const a = (rotation * Math.PI) / 180
+    const dx = e.clientX - d.sx, dy = e.clientY - d.sy
+    const du = ((dx * Math.cos(a) + dy * Math.sin(a)) / cam.s) / res.w
+    const dv = ((-dx * Math.sin(a) + dy * Math.cos(a)) / cam.s) / res.h
+    const n = { ...d.start }
+    if (d.edge === 'x0') n.x0 = Math.min(n.x1 - 0.1, Math.max(0, d.start.x0 + du))
+    if (d.edge === 'x1') n.x1 = Math.max(n.x0 + 0.1, Math.min(1, d.start.x1 + du))
+    if (d.edge === 'y0') n.y0 = Math.min(n.y1 - 0.1, Math.max(0, d.start.y0 + dv))
+    if (d.edge === 'y1') n.y1 = Math.max(n.y0 + 0.1, Math.min(1, d.start.y1 + dv))
+    setDraft(n)
+  }
+  const edgeUp = (e: React.PointerEvent) => { e.stopPropagation(); dragEdge.current = null }
+
   const focus = ci >= 0 ? clouds[ci] ?? null : null
   const src = useMemo(() => res?.src ?? null, [res])
 
@@ -232,8 +284,26 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
 
   const overlay = (cam: Camera) => {
     if (!res) return null
+    camRef.current = cam
+    const W = res.w, H = res.h
+    const hs = 14 / cam.s // handle size, constant on screen
     return (
       <>
+        {cropEdit && (
+          <svg className="absolute inset-0 overflow-visible" width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+            <path fillRule="evenodd" fill="rgba(0,21,35,0.55)" pointerEvents="none"
+              d={`M0,0H${W}V${H}H0Z M${draft.x0 * W},${draft.y0 * H}V${draft.y1 * H}H${draft.x1 * W}V${draft.y0 * H}Z`} />
+            <rect x={draft.x0 * W} y={draft.y0 * H} width={(draft.x1 - draft.x0) * W} height={(draft.y1 - draft.y0) * H}
+              fill="none" stroke="#2dd4bf" strokeWidth={2} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+            {([['x0', draft.x0 * W, (draft.y0 + draft.y1) / 2 * H], ['x1', draft.x1 * W, (draft.y0 + draft.y1) / 2 * H],
+              ['y0', (draft.x0 + draft.x1) / 2 * W, draft.y0 * H], ['y1', (draft.x0 + draft.x1) / 2 * W, draft.y1 * H]] as const).map(([edge, x, y]) => (
+              <rect key={edge} x={x - hs} y={y - hs} width={hs * 2} height={hs * 2} rx={hs * 0.4}
+                fill="#2dd4bf" stroke="#001523" strokeWidth={2} vectorEffect="non-scaling-stroke"
+                style={{ cursor: edge === 'x0' || edge === 'x1' ? 'ew-resize' : 'ns-resize', touchAction: 'none' }}
+                onPointerDown={edgeDown(edge)} onPointerMove={edgeMove} onPointerUp={edgeUp} onPointerCancel={edgeUp} />
+            ))}
+          </svg>
+        )}
         {status.kind !== 'current' && !cmp && (
           <div className="absolute inset-0 grid place-items-center pointer-events-none overflow-hidden">
             <span className="font-display font-black text-red-600/20 whitespace-nowrap -rotate-[28deg] tracking-widest"
@@ -269,6 +339,7 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
           <div className="min-w-0 flex-1">
             <p className="font-display font-bold text-ink truncate"><span className="font-mono">{sheet.number}</span> {sheet.title ? `· ${sheet.title}` : ''}</p>
             <p className="text-[11px] text-faint truncate">{zone.name} · {revLabel(v.rev)} · issued {fmtDay(v.issuedOn)}{setOf(v.setId) ? ` · ${setOf(v.setId)!.name}` : ''}{v.scaleText ? ` · ${v.scaleText}` : ''}</p>
+            <p className={'text-[10.5px] truncate ' + (v.placement?.check ? 'text-amber' : 'text-faint')}>{placementWords(v.placement, !!bounds)}</p>
           </div>
         </div>
         <div className="flex gap-1.5 overflow-x-auto pb-0.5 -mx-1 px-1">
@@ -316,10 +387,20 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
             </select>
           )
         )}
+        <button type="button" onClick={() => setScaleOpen((x) => !x)} aria-expanded={scaleOpen}
+          className={'flex-none inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 ' + (scaleOpen ? 'border-teal/60 text-teal' : 'border-navy-700 text-muted')}>
+          <Ruler className="h-3.5 w-3.5" /> Scale <span className={'h-2 w-2 rounded-full ' + toneDot} />
+        </button>
         {bounds && (
           <button type="button" onClick={() => (locating ? stopLocate() : startLocate())}
             className={'flex-none inline-flex items-center gap-1 rounded-lg border px-2 py-1 ' + (locating ? 'border-blue-400/60 text-blue-300' : 'border-navy-700 text-muted')}>
             <LocateFixed className="h-3.5 w-3.5" /> {locating ? (dot && !dot.on ? 'You’re off this sheet' : 'Where am I · on') : 'Where am I'}
+          </button>
+        )}
+        {canEdit && bounds && !cmp && (
+          <button type="button" onClick={() => (cropEdit ? setCropEdit(false) : openCrop())}
+            className={'flex-none inline-flex items-center gap-1 rounded-lg border px-2 py-1 ' + (cropEdit ? 'border-teal/60 text-teal' : 'border-navy-700 text-muted')}>
+            <CropIcon className="h-3.5 w-3.5" /> Map crop{v.crop && v.crop.on !== false ? ' · on' : ''}
           </button>
         )}
         {v.fileId && <button type="button" onClick={() => void openPdfTab()} className="flex-none inline-flex items-center gap-1 rounded-lg border border-navy-700 text-muted px-2 py-1"><FileDown className="h-3.5 w-3.5" /> PDF</button>}
@@ -331,6 +412,35 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
         )}
         {canEdit && <button type="button" onClick={() => void deleteIt()} aria-label="Delete this version" className="flex-none ml-auto rounded-lg p-1.5 text-faint hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>}
       </div>
+
+      {cropEdit && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-navy-900 border-b border-navy-800 text-[12px] flex-wrap">
+          <span className="text-muted flex-1 min-w-[12rem]">Drag the teal edges to the drawing — the border and title block outside it hide on the map.</span>
+          <button type="button" onClick={() => void saveCrop(false)} className="text-faint hover:text-ink">Use the whole sheet</button>
+          <button type="button" onClick={() => setCropEdit(false)} className="text-faint hover:text-ink">Cancel</button>
+          <button type="button" onClick={() => void saveCrop(true)} className="rounded-lg bg-amber text-[#1a1100] font-bold px-2.5 py-1">Save crop</button>
+        </div>
+      )}
+
+      {scaleOpen && (
+        <div className="px-3 py-2 bg-navy-900 border-b border-navy-800 text-[12px] space-y-1.5">
+          <p className={verdict.tone === 'green' ? 'text-emerald-300 font-semibold' : verdict.tone === 'red' ? 'text-red-300 font-semibold' : verdict.tone === 'amber' ? 'text-amber font-semibold' : 'text-muted'}>{verdict.words}</p>
+          {checks.length > 0 && (
+            <table className="w-full text-left">
+              <tbody>
+                {checks.map((c) => (
+                  <tr key={c.key} className="border-t border-navy-800">
+                    <td className="py-1 pr-2 text-muted whitespace-nowrap">{SCALE_LABEL[c.key]}</td>
+                    <td className="py-1 pr-2 font-mono text-ink whitespace-nowrap">{scaleWords(c.feetPerInch)}</td>
+                    <td className="py-1 text-faint">{c.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="text-[10.5px] text-faint">Green: two or more checks agree within 0.5 %. Amber: only one. Red: two disagree by more than 1 % — check before measuring.</p>
+        </div>
+      )}
 
       {cmp && pair && (
         <div className="flex items-center gap-2 px-3 py-1.5 bg-navy-900 border-b border-navy-800 text-[12px] flex-wrap">

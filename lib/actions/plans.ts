@@ -17,6 +17,7 @@ import {
   type RoomVersion, type PlanSetKind,
 } from '@/lib/plans/room'
 import { carryRule } from '@/lib/plans/fingerprint'
+import { cleanCrop } from '@/lib/plans/crop'
 import { versionFromRow, VERSION_COLS } from '@/lib/db/plans'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -67,6 +68,18 @@ async function ownSheet(svc: Svc, companyId: string, sheetId: string) {
   const { data } = await svc.from('plan_sheets').select('id, geofence_id, current_version_id, number')
     .eq('id', sheetId).eq('company_id', companyId).is('deleted_at', null).maybeSingle()
   return data as { id: string; geofence_id: string; current_version_id: string | null; number: string } | null
+}
+
+/** Does a placement land on (or beside) the site? Its centre within 2 km of
+ *  the zone's ring — a misread grid must never fly a sheet across the state. */
+async function nearZone(svc: Svc, zoneId: string, b: [number, number][]): Promise<boolean> {
+  const { data } = await svc.from('geofences_json').select('geometry').eq('id', zoneId).maybeSingle()
+  const ring = (data?.geometry as { coordinates?: [number, number][][] } | null)?.coordinates?.[0]
+  if (!ring?.length) return false
+  const cx = (b[0][0] + b[2][0]) / 2, cy = (b[0][1] + b[2][1]) / 2
+  const zx = ring.reduce((t, p) => t + p[0], 0) / ring.length, zy = ring.reduce((t, p) => t + p[1], 0) / ring.length
+  const m = Math.hypot((cx - zx) * 111_320 * Math.cos((zy * Math.PI) / 180), (cy - zy) * 110_574)
+  return m < 2000
 }
 
 async function liveVersions(svc: Svc, sheetId: string): Promise<RoomVersion[]> {
@@ -268,7 +281,30 @@ export interface AddVersionInput {
   feetPerInch: number | null
   scaleText: string | null
   titleRead: Record<string, unknown> | null
+  /** The page's scale evidence (lib/plans/scale.ts ScaleCheck[]). */
+  scaleChecks?: { key: string; feetPerInch: number; detail: string }[] | null
+  /** Where its state plane coordinates put it (lib/plans/gridfit.ts). */
+  grid?: { bounds: [number, number][]; worstFt: number; n: number; what: string; assumedUp: boolean } | null
+  /** The drawing area to show on the map (lib/plans/crop.ts). */
+  crop?: { x0: number; y0: number; x1: number; y1: number; on?: boolean } | null
 }
+
+const SCALE_KEYS = new Set(['stated', 'bar', 'dims', 'grid'])
+function cleanChecks(x: unknown): { key: string; feetPerInch: number; detail: string }[] | null {
+  if (!Array.isArray(x)) return null
+  const out = x.slice(0, 6).flatMap((c) => {
+    if (!c || typeof c !== 'object') return []
+    const { key, feetPerInch, detail } = c as Record<string, unknown>
+    if (typeof key !== 'string' || !SCALE_KEYS.has(key)) return []
+    if (typeof feetPerInch !== 'number' || !(feetPerInch > 0 && feetPerInch <= 2000)) return []
+    return [{ key, feetPerInch: Math.round(feetPerInch * 100) / 100, detail: String(detail ?? '').slice(0, 80) }]
+  })
+  return out.length ? out : null
+}
+const goodCorners = (b: unknown): b is [number, number][] => Array.isArray(b) && b.length === 4 && b.every((c) =>
+  Array.isArray(c) && c.length === 2 && Number.isFinite(c[0]) && Number.isFinite(c[1]) && Math.abs(c[0]) <= 180 && Math.abs(c[1]) <= 90)
+/** Grid ticks this close place a sheet with no clicks; worse ones are left to a person. */
+const GRID_PLACE_FT = 3
 
 /**
  * File one page of a set as a version of its sheet (making the sheet when the
@@ -328,7 +364,7 @@ export async function addPlanVersionAction(input: AddVersionInput): Promise<Res<
     signature: typeof input.signature === 'string' && /^[0-9a-f]{16,128}$/.test(input.signature) ? input.signature : null,
     page_w: fin(input.pageW, 0, 20000), page_h: fin(input.pageH, 0, 20000), ink_box: ink,
     feet_per_inch: fin(input.feetPerInch, 0, 2000), scale_text: clip(input.scaleText, 40) || null,
-    title_read: titleRead, created_by: userId,
+    title_read: titleRead, scale_checks: cleanChecks(input.scaleChecks), crop: cleanCrop(input.crop), created_by: userId,
   }
   const { data: ver, error: verErr } = await svc.from('plan_versions').insert(row).select(VERSION_COLS).single()
   if (verErr || !ver) return { ok: false, error: 'Couldn’t file that version — try again.' }
@@ -346,9 +382,19 @@ export async function addPlanVersionAction(input: AddVersionInput): Promise<Res<
   if (isCurrent && title) sheetPatch.title = title
   if (Object.keys(sheetPatch).length) await svc.from('plan_sheets').update(sheetPatch).eq('id', sheet.id).eq('company_id', companyId)
 
-  // Placement: the nearest placed version of the same plot lends its corners.
+  // Placement, strongest evidence first: the sheet's own state plane
+  // coordinates, then the nearest placed version of the same plot.
   let carried: 'exact' | 'check' | 'none' = 'none'
   let placed = !!img.bounds
+  const g = input.grid
+  if (!placed && g && goodCorners(g.bounds) && typeof g.worstFt === 'number' && g.worstFt >= 0 && g.worstFt <= GRID_PLACE_FT &&
+      await nearZone(svc, zoneId, g.bounds)) {
+    await svc.from('zone_imagery').update({ bounds: g.bounds }).eq('id', input.imageId).eq('company_id', companyId)
+    await svc.from('plan_versions').update({ placement: {
+      source: 'grid', errorFt: g.worstFt, n: Math.min(500, Math.max(0, Math.round(g.n))), what: clip(g.what, 40), assumedUp: !!g.assumedUp,
+    } }).eq('id', v.id)
+    placed = true
+  }
   if (!placed) {
     const candidates = [prevCurrent, ...before].filter((x): x is RoomVersion => !!x && !!x.imageId)
     for (const c of candidates) {
@@ -548,5 +594,21 @@ export async function markPlanSeenAction(sheetId: string, versionId: string): Pr
   const { data: v } = await db.from('plan_versions').select('id').eq('id', versionId).eq('sheet_id', sheetId).maybeSingle()
   if (!v) return { ok: false, error: 'Version not found' }
   await createServiceClient().from('plan_seen').upsert({ user_id: user.id, sheet_id: sheetId, version_id: versionId, seen_at: new Date().toISOString() })
+  return { ok: true }
+}
+
+/** Set (or switch off) the part of a version that shows on the map. */
+export async function setVersionCropAction(versionId: string, crop: { x0: number; y0: number; x1: number; y1: number; on?: boolean } | null): Promise<Res> {
+  if (isMock) return { ok: false, error: 'Demo mode' }
+  const { companyId, svc } = await writer()
+  if (!UUID.test(versionId)) return { ok: false, error: 'Bad version' }
+  const { data: v } = await svc.from('plan_versions').select('id, sheet_id').eq('id', versionId).eq('company_id', companyId).is('deleted_at', null).maybeSingle()
+  if (!v) return { ok: false, error: 'Version not found' }
+  const c = crop === null ? null : cleanCrop(crop)
+  if (crop !== null && !c) return { ok: false, error: 'That crop is too small — keep at least a tenth of the sheet each way.' }
+  const { error } = await svc.from('plan_versions').update({ crop: c }).eq('id', versionId).eq('company_id', companyId)
+  if (error) return { ok: false, error: 'Couldn’t save — try again.' }
+  const sheet = await ownSheet(svc, companyId, String(v.sheet_id))
+  if (sheet) refresh(sheet.geofence_id)
   return { ok: true }
 }

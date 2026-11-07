@@ -9,7 +9,20 @@ import { GROUPS, BASEMAPS, BASEMAP_TILE, BASEMAP_THUMB_FILTER, LAYER_ROWS, rowSt
 
 export type BaseStyle = BasemapId
 
+/** The Scaled plans row's picker (143): which sheets show, and which version. */
+export interface PlanPicker {
+  sheets: { sheetId: string; label: string; zone: string; href: string; versions: { id: string; label: string; current: boolean }[] }[]
+  hidden: string[]
+  picked: Record<string, string>
+  /** The scrubbed day (yyyy-mm-dd), null on Live. */
+  day: string | null
+  onHide: (sheetId: string, hidden: boolean) => void
+  onPick: (sheetId: string, versionId: string | null) => void
+}
+
 interface WeatherControlProps {
+  /** Scaled plans: the sheets on the map, by site, with their versions. */
+  planPicker?: PlanPicker | null
   base: BaseStyle
   onBase: (b: BaseStyle) => void
   /** 3D buildings + tilt — an independent toggle layerable on any basemap. */
@@ -213,7 +226,7 @@ function GroupHeader({ gid, open, count, hasErr, onToggle }: {
 
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, sunMode = false, onSunMode, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onUpdateView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', searchSlot, filter, onFilter, showZones = true, onShowZones, showDevices = false, onToggleDevices, waybackYears, waybackIdx = 0, onWaybackIdx, hidden = false, hidePill = false }: WeatherControlProps) {
+export function WeatherControl({ planPicker = null, base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, sunMode = false, onSunMode, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onUpdateView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', searchSlot, filter, onFilter, showZones = true, onShowZones, showDevices = false, onToggleDevices, waybackYears, waybackIdx = 0, onWaybackIdx, hidden = false, hidePill = false }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   // The thumb cluster's Layers FAB opens the drawer from outside.
   useEffect(() => {
@@ -429,6 +442,37 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
             className="flex-1 h-1 accent-amber cursor-pointer"
             aria-label="Imagery year"
           />
+        </div>
+      )
+    }
+    if (id === 'siteplans' && isOn('siteplans') && planPicker && planPicker.sheets.length > 0) {
+      const hidden = new Set(planPicker.hidden)
+      return (
+        <div className="px-3 pb-2 -mt-0.5 space-y-1.5">
+          <p className="font-mono text-[10px] text-faint">
+            {planPicker.day ? `showing each sheet as it was on ${planPicker.day}` : 'showing each sheet’s current version'}
+          </p>
+          {planPicker.sheets.map((sh) => {
+            const off = hidden.has(sh.sheetId)
+            const pick = planPicker.picked[sh.sheetId] ?? ''
+            return (
+              <div key={sh.sheetId} className={'rounded-lg border border-navy-800 px-2 py-1.5 ' + (off ? 'opacity-60' : '')}>
+                <label className="flex items-center gap-2 text-[11.5px] text-ink cursor-pointer">
+                  <input type="checkbox" className="accent-teal" checked={!off} onChange={(e) => planPicker.onHide(sh.sheetId, !e.target.checked)} />
+                  <span className="truncate flex-1">{sh.label}</span>
+                  <a href={sh.href} className="text-[10px] text-teal hover:underline flex-none" onClick={(e) => e.stopPropagation()}>open</a>
+                </label>
+                <p className="text-[10px] text-faint truncate pl-5">{sh.zone}</p>
+                {!off && sh.versions.length > 1 && (
+                  <select value={pick} onChange={(e) => planPicker.onPick(sh.sheetId, e.target.value || null)} aria-label={`Version of ${sh.label}`}
+                    className="mt-1 ml-5 w-[calc(100%-1.25rem)] rounded bg-navy-950 border border-navy-700 px-1.5 py-1 text-[10.5px] text-ink">
+                    <option value="">{planPicker.day ? 'Follow the timeline' : 'Current version'}</option>
+                    {sh.versions.map((v) => <option key={v.id} value={v.id}>{v.label}{v.current ? ' (current)' : ''}</option>)}
+                  </select>
+                )}
+              </div>
+            )
+          })}
         </div>
       )
     }

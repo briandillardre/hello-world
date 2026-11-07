@@ -359,6 +359,42 @@ export function buildPlanPdf(chainLines, opts = {}) {
   // that only changes the title block, and one with a new line in the drawing.
   if (opts.titleNote) layer('G-ANNO-TTLB', () => text(opts.titleNote, W - 200, 40, 7, 0))
   if (opts.extraLine) layer('C-CURB', () => { say('q 0 0 0 RG 1 w'); poly(opts.extraLine); say('Q') })
+  // The scale card + grid line-up tests: a stated scale, a graphic bar, the
+  // boundary's labelled distances, and SC State Plane ticks on the border
+  // (the page's bottom-left is at opts.scaleKit.e0 / n0, grid north up).
+  if (opts.scaleKit) {
+    const { e0, n0 } = opts.scaleKit
+    layer('G-ANNO-TTLB', () => {
+      text('SCALE: 1" = 30\'', W - 200, 80, 8, 0)
+      say('q 0 0 0 RG 1 w')
+      const bx = W - 420, by = 70
+      poly([bx, by, bx + 60 * PT_PER_FT, by])
+      say('Q')
+      for (const v of [0, 15, 30, 60]) text(String(v), bx + v * PT_PER_FT, by + 8, 6, 0)
+      text('FEET', bx + 30 * PT_PER_FT, by - 10, 6, 0)
+    })
+    layer('C-CURB', () => {
+      say('q 0 0 0 RG 1.4 w')
+      const x0 = SITE.x0 - 20, y0 = SITE.y0 - 20, x1 = x0 + 480 * PT_PER_FT, y1 = y0 + 360 * PT_PER_FT
+      poly([x0, y0, x1, y0]); poly([x1, y0, x1, y1]); poly([x1, y1, x0, y1]); poly([x0, y1, x0, y0])
+      say('Q')
+      text("N 90°00'00\" E 480.00'", (x0 + x1) / 2, y0 - 9, 7, 0)
+      text("360.00'", x1 + 9, (y0 + y1) / 2, 7, Math.PI / 2)
+      text("480.00'", (x0 + x1) / 2, y1 + 9, 7, 0)
+    })
+    layer('G-ANNO-TTLB', () => {
+      for (let e = Math.ceil(e0 / 200) * 200; (e - e0) * PT_PER_FT < W - 60; e += 200) {
+        const x = (e - e0) * PT_PER_FT
+        if (x < 40) continue
+        text(`E ${e.toLocaleString('en-US')}`, x, 12, 6, 0)
+      }
+      for (let n = Math.ceil(n0 / 200) * 200; (n - n0) * PT_PER_FT < H - 60; n += 200) {
+        const y = (n - n0) * PT_PER_FT
+        if (y < 40) continue
+        text(`N ${n.toLocaleString('en-US')}`, 12, y, 6, Math.PI / 2)
+      }
+    })
+  }
 
   // ── assemble ──
   const objs = []
