@@ -275,6 +275,34 @@ input[type='range'].slider-heat::-moz-range-thumb {
   box-shadow: 0 0 10px rgba(255, 158, 22, 0.55);
   cursor: pointer;
 }
+/* At the live edge the playhead turns broadcast red and breathes — the red
+   head of a live stream (Brian, Nov 7: "the live mode on timeline needs to
+   be more apparent. Something like YouTube TV"). One rule per engine: a
+   selector list mixing -webkit- and -moz- pseudo-elements is dropped whole
+   by the browser that doesn't know the other one. */
+input[type='range'].slider-heat.is-live::-webkit-slider-thumb {
+  border-color: #e62117;
+  animation: ht-live-head 1.6s ease-out infinite;
+}
+input[type='range'].slider-heat.is-live::-moz-range-thumb {
+  border-color: #e62117;
+  animation: ht-live-head 1.6s ease-out infinite;
+}
+@keyframes ht-live-head {
+  0% { box-shadow: 0 0 0 0 rgba(230, 33, 23, 0.6); }
+  70% { box-shadow: 0 0 0 9px rgba(230, 33, 23, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(230, 33, 23, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  input[type='range'].slider-heat.is-live::-webkit-slider-thumb {
+    animation: none;
+    box-shadow: 0 0 10px rgba(230, 33, 23, 0.6);
+  }
+  input[type='range'].slider-heat.is-live::-moz-range-thumb {
+    animation: none;
+    box-shadow: 0 0 10px rgba(230, 33, 23, 0.6);
+  }
+}
 
 /* Command Center event ticker — seamless marquee (content is duplicated once,
    so -50% loops cleanly) */

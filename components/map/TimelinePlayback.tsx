@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
 import { SpeedControl } from '@/components/ui/speed-control'
-import { Play, Pause, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, Navigation2, Circle, AreaChart, Link2, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, History, Box, Hexagon, Search, RotateCw, Plane, Gauge, Sun } from 'lucide-react'
+import { Play, Pause, Ban, Route, Flame, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, Navigation2, Circle, AreaChart, Link2, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, History, Box, Hexagon, Search, RotateCw, Plane, Gauge, Sun } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -51,6 +51,33 @@ const LIVE_EDGE_EPS = 0.003
 
 const RANGE_SHORT: Record<string, string> = {
   live: 'Live', today: 'Today', yesterday: 'Yest', '7d': '7d', '30d': '30d', ytd: 'YTD', all: 'All',
+}
+
+/** The live tag, YouTube TV style (Brian, Nov 7: "the 'live' mode on
+ *  timeline needs to be more apparent. Something like YouTube TV does to
+ *  show you are live"). At the live edge: a solid broadcast-red LIVE with a
+ *  breathing dot. Anywhere else: the same tag gone grey and tappable, the
+ *  way a rewound stream's grey LIVE jumps you back to the edge. Pass no
+ *  `onGoLive` where a button can't sit (inside the collapsed pill, itself a
+ *  button) and the grey tag simply isn't drawn. */
+function LiveTag({ live, onGoLive, className = '' }: { live: boolean; onGoLive?: () => void; className?: string }) {
+  const tag = 'flex-none inline-flex items-center gap-1 rounded-[5px] h-[18px] px-1.5 font-display font-bold text-[10.5px] leading-none tracking-[0.1em] '
+  if (live) {
+    return (
+      <span role="status" aria-label="Live" className={tag + 'bg-live text-white shadow-glow-live ' + className}>
+        <span className="w-1.5 h-1.5 rounded-full bg-white animate-blink" />LIVE
+      </span>
+    )
+  }
+  if (!onGoLive) return null
+  return (
+    <button type="button" onClick={onGoLive} title="Jump to live" aria-label="Jump to live"
+      className={'group relative ' + tag + 'border border-navy-600 bg-navy-900 text-muted hover:text-white hover:border-live transition-colors ' + className}>
+      {/* the tag stays slim; this is the 40px touch box around it (gloves) */}
+      <span aria-hidden className="absolute -inset-x-2 -inset-y-[11px]" />
+      <span className="w-1.5 h-1.5 rounded-full bg-faint group-hover:bg-live transition-colors" />GO LIVE
+    </button>
+  )
 }
 
 const MODES: { key: TrailMode; label: string; short: string; icon: typeof Ban }[] = [
@@ -370,6 +397,15 @@ export function TimelinePlayback({
   }, [live, range, liveT, onRange, onSeek])
   const playPress = useCallback(() => { if (live) onRange('today'); onPlayPause() }, [live, onRange, onPlayPause])
   const pickRange = useCallback((key: TimeRange) => onRange(key === 'today' ? 'live' : key), [onRange])
+  // GO LIVE from any replay — the range switch also stops playback (MapView).
+  const goLive = useCallback(() => onRange('live'), [onRange])
+  // Where "now" sits on the track being shown — the part after it hasn't
+  // happened yet, so the track greys it out and marks the live edge. Live
+  // rides today's window; a Today replay rides its own (the same day in a
+  // real account). The demo's replays run on a staged window, so no edge.
+  const edgeT = live ? liveT
+    : range === 'today' && rwFrom != null && rwTo != null ? Math.max(0, Math.min(1, (Date.now() - rwFrom) / Math.max(1, rwTo - rwFrom)))
+    : null
   useEffect(() => {
     // Parked on (or past) now while paused = live again. Also catches
     // Yesterday → Today, which lands at t=1 beyond the live edge.
@@ -498,7 +534,8 @@ export function TimelinePlayback({
         className={'ht-timeline-pill absolute left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel px-4 py-2 font-mono text-[11px] tracking-[0.12em] text-teal hover:text-ink transition-colors ' + (kiosk ? 'bottom-[calc(64px+env(safe-area-inset-bottom))] md:bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}
       >
         <History className="h-3.5 w-3.5" /> TIMELINE
-        {!live && <span className="text-amber">{RANGES.find((r) => r.key === range)?.label ?? 'Replay'}</span>}
+        {/* collapsed still says which it is: red LIVE, or the replay's range */}
+        {live ? <LiveTag live /> : <span className="text-amber">{RANGES.find((r) => r.key === range)?.label ?? 'Replay'}</span>}
         {/* Keep the asset readout visible even collapsed. */}
         {hud && (
           <span className="text-ink tabular-nums whitespace-nowrap">
@@ -812,11 +849,11 @@ export function TimelinePlayback({
               onClick={() => pickRange(r.key)}
               className={
                 'relative min-w-0 px-0 py-1.5 rounded-lg text-[11px] font-display font-bold leading-none transition-colors truncate ' +
-                (uiRange === r.key ? (live ? 'bg-teal/20 text-teal' : 'bg-amber/20 text-amber') : 'text-faint hover:text-ink')
+                (uiRange === r.key ? (live ? 'bg-live/20 text-ink' : 'bg-amber/20 text-amber') : 'text-faint hover:text-ink')
               }
             >
               {/* live badge in the corner — inline it squeezed "Today" to "Tod…" */}
-              {r.key === 'today' && live && <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-teal animate-blink" />}
+              {r.key === 'today' && live && <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-live animate-blink" />}
               {RANGE_SHORT[r.key] ?? r.label}
             </button>
           ))}
@@ -923,11 +960,11 @@ export function TimelinePlayback({
               className={
                 'flex-none px-2.5 py-1 rounded-full text-[11.5px] sm:text-[12px] font-display font-bold transition-colors ' +
                 (uiRange === r.key
-                  ? live ? 'bg-teal/20 text-teal' : 'bg-amber/20 text-amber'
+                  ? live ? 'bg-live/20 text-ink' : 'bg-amber/20 text-amber'
                   : 'text-faint hover:text-ink hover:bg-navy-900')
               }
             >
-              {r.key === 'today' && live && <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal mr-1.5 align-middle animate-blink" />}
+              {r.key === 'today' && live && <span className="inline-block w-1.5 h-1.5 rounded-full bg-live mr-1.5 align-middle animate-blink" />}
               <span className="sm:hidden">{RANGE_SHORT[r.key] ?? r.label}</span>
               <span className="hidden sm:inline">{r.label}</span>
             </button>
@@ -945,13 +982,6 @@ export function TimelinePlayback({
           >
             <SlidersHorizontal className="h-3 w-3" /> Custom
           </button>
-          {/* Live status rides the same row — its own row wasted a strip of map */}
-          {live && (
-            <span className="hidden sm:flex items-center gap-1.5 font-mono text-[11px] whitespace-nowrap flex-none pl-2 min-w-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-teal shadow-glow-teal animate-blink flex-none" />
-              <span className="text-teal">live · {ago}</span>
-            </span>
-          )}
         </div>
         {pillsMore && <div className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-l from-navy-950 to-transparent" />}
         </div>
@@ -1178,12 +1208,11 @@ export function TimelinePlayback({
           playhead sits at "now" on today's window; any drag starts the replay
           (one Today, Brian Sep 4). Phones park the day stepper here. */}
       <>
-        <div className="px-4 pt-1.5 -mb-0.5 flex items-center gap-1.5 min-w-0">
-          {live
-            ? <span className="w-2 h-2 rounded-full bg-teal shadow-glow-teal animate-blink flex-none" />
-            : <CalendarClock className="h-3.5 w-3.5 text-amber flex-none" />}
-          <span className={'font-display font-bold text-[13px] tabular-nums truncate min-w-0 ' + (live ? 'text-teal' : 'text-amber')}>
-            {live ? `Live · ${customScrubLabel(todayWin.from, todayWin.to, liveT, tz)}`
+        <div className="px-4 pt-1.5 -mb-0.5 flex items-center gap-2 min-w-0">
+          {/* red LIVE at the edge; grey GO LIVE on any replay (YouTube TV) */}
+          <LiveTag live={live} onGoLive={goLive} />
+          <span className={'font-display font-bold text-[13px] tabular-nums truncate min-w-0 ' + (live ? 'text-ink' : 'text-amber')}>
+            {live ? customScrubLabel(todayWin.from, todayWin.to, liveT, tz)
               : custom ? customScrubLabel(customFrom, customTo, t, tz)
               : realWindow ? customScrubLabel(realWindow.from, realWindow.to, t, tz)
               : scrubLabel(range, t)}
@@ -1219,6 +1248,24 @@ export function TimelinePlayback({
                 className="absolute inset-x-0 h-[9px] top-1/2 -translate-y-1/2 rounded-full border border-navy-700/60"
                 style={{ background: heatGradient ?? 'rgba(20,80,111,0.5)' }}
               />
+              {/* Today: the rest of the day hasn't happened yet — grey it
+                  out past now, and mark the live edge red (a stream's
+                  buffered-to-live line). The playhead parks on that mark
+                  while live. */}
+              {edgeT != null && edgeT > 0 && edgeT < 1 && (
+                <>
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute right-0 h-[9px] top-1/2 -translate-y-1/2 rounded-r-full bg-navy-950/75"
+                    style={{ left: `${(edgeT * 100).toFixed(2)}%` }}
+                  />
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute w-[2px] h-[13px] top-1/2 -translate-y-1/2 -translate-x-1/2 rounded-full bg-live"
+                    style={{ left: `${(edgeT * 100).toFixed(2)}%` }}
+                  />
+                </>
+              )}
               {/* Alert moments live ON the timeline — red diamonds at the
                   minute they fired; tap to jump the replay there. */}
               {/* The 8px diamond stays the visual; the button around it is a
@@ -1242,7 +1289,7 @@ export function TimelinePlayback({
               <input
                 type="range" min={0} max={1000} value={Math.round(shownT * 1000)}
                 onChange={(e) => seek(Number(e.target.value) / 1000)}
-                className="slider-heat relative w-full h-[17px] cursor-pointer"
+                className={'slider-heat relative w-full h-[17px] cursor-pointer' + (live ? ' is-live' : '')}
                 aria-label="Timeline position"
               />
             </div>

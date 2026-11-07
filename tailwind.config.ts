@@ -36,6 +36,10 @@ const config: Config = {
           500: '#2dd4bf',
         },
         alert: '#fb5d5d',
+        // Broadcast red for the timeline's LIVE tag only — the YouTube TV
+        // look Brian asked for (Nov 7). Deeper than `alert` so a LIVE tag
+        // never reads as an alarm.
+        live: '#e62117',
         // keep "brand" alias for any legacy refs
         brand: {
           50: '#fffbeb',
@@ -52,6 +56,7 @@ const config: Config = {
       boxShadow: {
         'glow-amber': '0 10px 30px -8px rgba(255,158,22,.5)',
         'glow-teal': '0 0 22px -4px rgba(45,212,191,.45)',
+        'glow-live': '0 0 14px -3px rgba(230,33,23,.8)',
         panel: '0 50px 100px -40px rgba(0,0,0,.85)',
       },
       borderRadius: {
