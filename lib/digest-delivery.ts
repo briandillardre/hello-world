@@ -137,7 +137,7 @@ export async function mirrorOwnerWebhook(
  */
 export async function claimSend(
   db: SupabaseClient,
-  column: 'last_evening_digest_at' | 'last_agenda_at' | 'last_nag_at',
+  column: 'last_evening_digest_at' | 'last_agenda_at' | 'last_nag_at' | 'last_briefing_at',
   companyId: string,
   previous: string | null,
 ): Promise<boolean> {

@@ -85,14 +85,25 @@ export default async function AssetsPage() {
   const miles: Record<string, { today: number; week: number }> = {}
   try {
     const { createClient } = await import('@/lib/supabase-server')
-    const tz = 'America/New_York'
+    const { safeTz } = await import('@/lib/dates')
+    const sb = createClient()
+    // The company's own day — driving_daily.day is built in it (a fixed
+    // Eastern clock split Charleston-time evenings wrong for any other zone).
+    const { data: co } = await sb.from('companies').select('digest_prefs').eq('id', companyId).maybeSingle()
+    const tz = safeTz(((co?.digest_prefs ?? null) as { tz?: string } | null)?.tz)
     const dayKey = (ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(ms))
     const today = dayKey(Date.now())
     const weekStart = dayKey(Date.now() - 6 * 86_400_000)
     const ids = assets.filter((a) => a.type === 'vehicle').map((a) => a.id)
-    if (ids.length) {
-      const { data } = await createClient().from('driving_daily').select('asset_id, day, miles').in('asset_id', ids).gte('day', weekStart)
-      for (const r of (data ?? []) as { asset_id: string; day: string; miles: number }[]) {
+    // In chunks of 100: 7 day-rows each stays under the 1,000-row reply cap
+    // (one call for a big fleet came back silently short, ship-check Nov 7).
+    const rowsAll: { asset_id: string; day: string; miles: number }[] = []
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data } = await sb.from('driving_daily').select('asset_id, day, miles').in('asset_id', ids.slice(i, i + 100)).gte('day', weekStart)
+      rowsAll.push(...((data ?? []) as { asset_id: string; day: string; miles: number }[]))
+    }
+    {
+      for (const r of rowsAll) {
         const m = miles[r.asset_id] ?? { today: 0, week: 0 }
         m.week += Number(r.miles) || 0
         if (r.day === today) m.today += Number(r.miles) || 0

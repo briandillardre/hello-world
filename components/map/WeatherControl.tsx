@@ -298,7 +298,9 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
   // other group — starts collapsed, badge shows how many types are on.
   const [fleetOpen, setFleetOpen] = useState(false)
   // Which groups have their advanced ("More layers") rows expanded.
-  const [moreRows, setMoreRows] = useState<Set<GroupId>>(() => new Set())
+  // One key per expander: `<group>` for Advanced, `<group>#pick` for the
+  // pick-one shades (they shared one key and opened together, ship-check Nov 7).
+  const [moreRows, setMoreRows] = useState<Set<string>>(() => new Set())
   // Search/filter across the registry rows (label + hint, case-insensitive).
   const [query, setQuery] = useState('')
   // Basemap strip shows the everyday 6; "More" reveals the specialty set.
@@ -537,7 +539,8 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     // (Brian, Oct 10: "group all the 'pick 1' weather items together").
     // Collapsed by default like the old expander; the ON one always shows.
     const pickOne = rows.filter((d) => d.pickOne)
-    const pickOpen = moreRows.has(gid)
+    const pickKey = `${gid}#pick`
+    const pickOpen = moreRows.has(pickKey)
     const pickVisible = pickOpen ? pickOne : pickOne.filter((d) => isOn(d.id))
     const showAll = moreRows.has(gid)
     const advVisible = showAll ? advanced : advanced.filter((d) => isOn(d.id))
@@ -548,7 +551,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         {pickOne.length > 0 && (
           <>
             <button
-              onClick={() => setMoreRows((m) => { const n = new Set(m); if (n.has(gid)) n.delete(gid); else n.add(gid); return n })}
+              onClick={() => setMoreRows((m) => { const n = new Set(m); if (n.has(pickKey)) n.delete(pickKey); else n.add(pickKey); return n })}
               aria-expanded={pickOpen}
               className="w-full flex items-center gap-1.5 px-3 py-2 border-t border-navy-800 text-left"
             >

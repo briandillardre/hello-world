@@ -467,8 +467,12 @@ export async function POST(request: NextRequest) {
         for (const [k, v] of Object.entries(r.params)) {
           if (/fuel[._ ]?level/i.test(k) && typeof v === 'number' && v >= 0 && v <= 100) { fuelPct = v; break }
         }
+        // Critical readings write their OWN kind (ship-check, Nov 7): the 12 h
+        // dedupe is per kind, so a warning logged at 9:00 used to swallow the
+        // 7% reading at 3 PM — the one the phone is meant to ring for.
         if (fuelPct != null && fuelPct <= 15) {
-          checks.push({ kind: 'fuel_low', reason: `Fuel low — ${Math.round(fuelPct)}%`, severity: fuelPct <= 8 ? 'critical' : 'warning' })
+          const crit = fuelPct <= 8
+          checks.push({ kind: crit ? 'fuel_critical' : 'fuel_low', reason: `${crit ? 'Fuel nearly empty' : 'Fuel low'} — ${Math.round(fuelPct)}%`, severity: crit ? 'critical' : 'warning' })
         }
         // 12V battery: external/OBD voltage in volts (mV variants normalized
         // by dividing when the number is implausibly large).
@@ -480,7 +484,8 @@ export async function POST(request: NextRequest) {
           // (lib/telemetry-catalog voltScale), or a sagging 22 V pair never alerts.
           const scale = volts > 18 ? 2 : 1
           if (volts > 5 && volts < 11.8 * scale) {
-            checks.push({ kind: 'battery_low', reason: `${scale === 2 ? '24V' : '12V'} battery weak — ${volts.toFixed(1)} V`, severity: volts < 11.4 * scale ? 'critical' : 'warning' })
+            const crit = volts < 11.4 * scale
+            checks.push({ kind: crit ? 'battery_critical' : 'battery_low', reason: `${scale === 2 ? '24V' : '12V'} battery ${crit ? 'critical' : 'weak'} — ${volts.toFixed(1)} V`, severity: crit ? 'critical' : 'warning' })
           }
           break
         }

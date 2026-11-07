@@ -392,7 +392,7 @@ function AssetRow({ asset, toolCount, carrier, where, division, miles }: { asset
         )}
         {miles && (
           <p className="mt-0.5 text-[12px] leading-snug text-ink/90 font-mono tabular-nums">
-            {Math.round(miles.today)} mi today <span className="text-faint">· {Math.round(miles.week)} mi this week</span>
+            {Math.round(miles.today)} mi today <span className="text-faint">· {Math.round(miles.week)} mi last 7 days</span>
           </p>
         )}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[11px] leading-snug text-faint min-w-0">

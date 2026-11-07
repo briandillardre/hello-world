@@ -74,7 +74,9 @@ function LiveTag({ live, onGoLive, className = '' }: { live: boolean; onGoLive?:
     <button type="button" onClick={onGoLive} title="Jump to live" aria-label="Jump to live"
       className={'group relative ' + tag + 'border border-navy-600 bg-navy-900 text-muted hover:text-white hover:border-live transition-colors ' + className}>
       {/* the tag stays slim; this is the 40px touch box around it (gloves) */}
-      <span aria-hidden className="absolute -inset-x-2 -inset-y-[11px]" />
+      {/* -inset-y-[5px]: an 11px reach covered the top of the Play button on
+          the next row and turned a Play tap into GO LIVE (ship-check Nov 7). */}
+      <span aria-hidden className="absolute -inset-x-2 -inset-y-[5px]" />
       <span className="w-1.5 h-1.5 rounded-full bg-faint group-hover:bg-live transition-colors" />GO LIVE
     </button>
   )
@@ -403,7 +405,12 @@ export function TimelinePlayback({
   // happened yet, so the track greys it out and marks the live edge. Live
   // rides today's window; a Today replay rides its own (the same day in a
   // real account). The demo's replays run on a staged window, so no edge.
-  const edgeT = live ? liveT
+  // Between midnight and 4 AM the live data window reaches back into last
+  // evening (lib/dates 'live'), so the heat track under the bar is not
+  // today's 24 h — greying "after now" there would cover real activity
+  // (ship-check, Nov 7). No shading then; the playhead still parks on now.
+  const liveSpansYesterday = live && rwFrom != null && rwFrom < todayWin.from - 60_000
+  const edgeT = live ? (liveSpansYesterday ? null : liveT)
     : range === 'today' && rwFrom != null && rwTo != null ? Math.max(0, Math.min(1, (Date.now() - rwFrom) / Math.max(1, rwTo - rwFrom)))
     : null
   useEffect(() => {
@@ -1227,7 +1234,7 @@ export function TimelinePlayback({
         <div className="flex items-center gap-3 px-4 pt-1 pb-2 md:pr-[112px]">
           <button
             onClick={playPress}
-            className="flex-none grid place-items-center w-9 h-9 rounded-full bg-amber text-[#1a1100] shadow-glow-amber hover:bg-amber-600 transition-colors"
+            className="relative z-[1] flex-none grid place-items-center w-9 h-9 rounded-full bg-amber text-[#1a1100] shadow-glow-amber hover:bg-amber-600 transition-colors"
             aria-label={playing ? 'Pause' : 'Play'}
           >
             {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}

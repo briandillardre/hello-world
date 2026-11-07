@@ -230,6 +230,9 @@ export function NotifyPrefsForm({
         <Chip on={p.nag.push} disabled={off} onChange={(v) => save({ ...p, nag: { ...p.nag, push: v } })}>Phone</Chip>
       </Row>
 
+      {/* The no-login link can't move the company's time zone (it sets the
+          day for driving scores and reports), so it isn't offered there. */}
+      {!token && (
       <div className="flex flex-wrap items-center gap-3 border-t border-navy-800 pt-3">
         <span className="text-xs text-muted">Timezone</span>
         <select
@@ -240,6 +243,7 @@ export function NotifyPrefsForm({
           {TZS.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}
         </select>
       </div>
+      )}
 
       <div className="mt-3 border-t border-navy-800 pt-3">
         {quiet ? (

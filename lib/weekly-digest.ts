@@ -114,7 +114,10 @@ export function onlyQuieter(current: DigestPrefs, next: DigestPrefs): DigestPref
     evening: { enabled: down(current.evening.enabled, next.evening.enabled), email: down(current.evening.email, next.evening.email), sms: down(current.evening.sms, next.evening.sms), push: down(current.evening.push, next.evening.push), hour: next.evening.hour },
     monday: { enabled: down(current.monday.enabled, next.monday.enabled), email: down(current.monday.email, next.monday.email), sms: down(current.monday.sms, next.monday.sms), push: down(current.monday.push, next.monday.push), hour: next.monday.hour },
     nag: { enabled: down(current.nag.enabled, next.nag.enabled), push: down(current.nag.push, next.nag.push), hour: next.nag.hour },
-    tz: next.tz,
+    // The time zone is not a notification setting: it sets the company's day
+    // for driving scores, the insurer report, insights and fuel checks. A
+    // no-login link (forwardable for 180 days) never moves it (sec-check, Nov 7).
+    tz: current.tz,
   }
 }
 
