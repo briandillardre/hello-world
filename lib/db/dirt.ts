@@ -156,22 +156,51 @@ export async function getTakeoff(id: string): Promise<TakeoffFull | null> {
   }
 }
 
-/** The zone's placed plan sheets (055), map-active first. */
+/** The zone's placed plan sheets (055), map-active first — only each
+ *  sheet's CURRENT version once the plan room (143) files them: a superseded
+ *  revision never shows up to trace from. */
 export async function getPlanSheets(geofenceId: string): Promise<PlanSheet[]> {
   if (isMock) return []
   try {
     const { createClient } = await import('@/lib/supabase-server')
-    const { data, error } = await createClient().from('zone_imagery')
+    const db = createClient()
+    const { data, error } = await db.from('zone_imagery')
       .select('id, url, caption, plan_category, bounds, map_active, kind, taken_on')
       .eq('geofence_id', geofenceId).eq('kind', 'plan').not('bounds', 'is', null)
-      .order('map_active', { ascending: false }).order('taken_on', { ascending: false }).limit(20)
+      .order('map_active', { ascending: false }).order('taken_on', { ascending: false }).limit(200)
     if (error || !data) return []
-    return data
-      .filter(r => Array.isArray(r.bounds) && r.bounds.length === 4)
+    const placed = data.filter(r => Array.isArray(r.bounds) && r.bounds.length === 4)
+    // The plan room's word on each picture (pre-143: every picture stands).
+    const label = new Map<string, string>()
+    const hidden = new Set<string>()
+    try {
+      const { data: vs } = await db.from('plan_versions').select('id, sheet_id, image_id').in('image_id', placed.map(r => r.id as string))
+      const sheetIds = Array.from(new Set((vs ?? []).map(v => String(v.sheet_id))))
+      if (sheetIds.length) {
+        const [{ data: sheets }, { data: all }] = await Promise.all([
+          db.from('plan_sheets').select('id, number, title, current_version_id, voided_at').in('id', sheetIds),
+          db.from('plan_versions').select('id, sheet_id, issued_on, created_at, rev').in('sheet_id', sheetIds),
+        ])
+        const { currentOf, revLabel } = await import('@/lib/plans/room')
+        const { versionFromRow } = await import('@/lib/db/plans')
+        const byId = new Map((sheets ?? []).map(s => [String(s.id), s]))
+        for (const v of vs ?? []) {
+          const sh = byId.get(String(v.sheet_id))
+          if (!sh) { hidden.add(String(v.image_id)); continue }
+          const mine = (all ?? []).filter(x => x.sheet_id === v.sheet_id).map(x => versionFromRow(x as Record<string, unknown>))
+          const cur = currentOf({ pinnedVersionId: (sh.current_version_id as string | null) ?? null }, mine)
+          if (sh.voided_at || cur?.id !== v.id) { hidden.add(String(v.image_id)); continue }
+          label.set(String(v.image_id), `${sh.number}${sh.title ? ` · ${sh.title}` : ''} · ${revLabel(cur?.rev)}`)
+        }
+      }
+    } catch { /* pre-143: every placed picture stands */ }
+    return placed
+      .filter(r => !hidden.has(r.id as string))
+      .slice(0, 20)
       .map(r => ({
         id: r.id as string,
         url: r.url as string,
-        caption: (r.caption as string | null) ?? null,
+        caption: label.get(r.id as string) ?? (r.caption as string | null) ?? null,
         category: (r.plan_category as string | null) ?? null,
         corners: r.bounds as [number, number][],
         active: !!r.map_active,

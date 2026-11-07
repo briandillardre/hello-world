@@ -53,7 +53,7 @@ export const ROLE_BLURB: Record<Role, string> = {
  */
 export type FeatureKey =
   | 'map' | 'command' | 'alerts' | 'aircraft'
-  | 'clock' | 'logs' | 'assets' | 'zones' | 'measurements' | 'tags' | 'maintenance' | 'track'
+  | 'clock' | 'logs' | 'assets' | 'zones' | 'plans' | 'measurements' | 'tags' | 'maintenance' | 'track'
   | 'reports' | 'accounting' | 'receipts' | 'finance' | 'team' | 'activity'
   | 'trackers' | 'hardware' | 'settings'
   | 'costs' | 'edit' | 'billing' | 'manage_team' | 'ask_ai'
@@ -81,6 +81,7 @@ export const FEATURES: FeatureDef[] = [
   { key: 'logs',         group: 'Field',  label: 'Daily logs',      hint: 'Daily reports from the field', href: '/logs' },
   { key: 'assets',       group: 'Field',  label: 'Assets',          hint: 'The fleet list and each machine', href: '/assets' },
   { key: 'zones',        group: 'Field',  label: 'Zones',           hint: 'Sites, yards, boundaries', href: '/zones' },
+  { key: 'plans',        group: 'Field',  label: 'Plans',           hint: 'Plan sets, sheets and their revisions', href: '/plans' },
   { key: 'measurements', group: 'Field',  label: 'Measurements',    hint: 'Measure on the map', href: '/measurements' },
   { key: 'tags',         group: 'Field',  label: 'Tag scanner',     hint: 'Bluetooth tool tags', href: '/tags' },
   { key: 'maintenance',  group: 'Field',  label: 'Maintenance',     hint: 'Service schedules and work orders', href: '/maintenance' },
@@ -135,19 +136,19 @@ export const ROLE_FEATURE_DEFAULTS: Record<Role, Record<FeatureKey, boolean>> = 
   admin: ALL_ON,
   manager: on(
     'map', 'command', 'alerts', 'aircraft',
-    'clock', 'logs', 'assets', 'zones', 'measurements', 'tags', 'maintenance', 'track',
+    'clock', 'logs', 'assets', 'zones', 'plans', 'measurements', 'tags', 'maintenance', 'track',
     'reports', 'receipts', 'team', 'trackers', 'hardware',
     'costs', 'edit', 'ask_ai',
   ),
   foreman: on(
     'map', 'command', 'alerts', 'aircraft',
-    'clock', 'logs', 'assets', 'zones', 'measurements', 'tags', 'maintenance', 'track',
+    'clock', 'logs', 'assets', 'zones', 'plans', 'measurements', 'tags', 'maintenance', 'track',
     'reports', 'receipts', 'trackers', 'hardware',
     'edit', 'ask_ai',
   ),
   associate: on(
     'map', 'alerts', 'aircraft',
-    'clock', 'logs', 'assets', 'zones', 'tags', 'maintenance', 'track',
+    'clock', 'logs', 'assets', 'zones', 'plans', 'tags', 'maintenance', 'track',
     'receipts',
     'ask_ai',
   ),
@@ -156,7 +157,7 @@ export const ROLE_FEATURE_DEFAULTS: Record<Role, Record<FeatureKey, boolean>> = 
   // the role CAN hold is on by default; the Master narrows per company in
   // the view-levels table. The crew's side, the office side, people and
   // money are PROSPECT_NEVER — locked in the navs, never switchable.
-  prospect: on('map', 'command', 'alerts', 'aircraft', 'assets', 'zones', 'measurements', 'maintenance', 'reports'),
+  prospect: on('map', 'command', 'alerts', 'aircraft', 'assets', 'zones', 'plans', 'measurements', 'maintenance', 'reports'),
 }
 
 /** Company-wide override on the defaults: role → feature → on/off. Sparse. */
@@ -304,7 +305,7 @@ export function featureForPath(pathname: string): FeatureKey | null {
   const map: [string, FeatureKey][] = [
     ['/assets/onboard', 'hardware'],
     ['/map', 'map'], ['/command', 'command'], ['/alerts', 'alerts'], ['/aircraft', 'aircraft'],
-    ['/clock', 'clock'], ['/timecards', 'clock'], ['/logs', 'logs'], ['/photos', 'logs'], ['/assets', 'assets'], ['/zones', 'zones'],
+    ['/clock', 'clock'], ['/timecards', 'clock'], ['/logs', 'logs'], ['/photos', 'logs'], ['/assets', 'assets'], ['/zones', 'zones'], ['/plans', 'plans'],
     ['/measurements', 'measurements'], ['/tags', 'tags'], ['/maintenance', 'maintenance'], ['/track', 'track'],
     ['/reports', 'reports'], ['/accounting', 'accounting'], ['/receipts', 'receipts'], ['/finance', 'finance'],
     ['/team', 'team'], ['/activity', 'activity'], ['/trackers', 'trackers'], ['/settings', 'settings'],

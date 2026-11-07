@@ -355,6 +355,10 @@ export function buildPlanPdf(chainLines, opts = {}) {
   })
   // Title block.
   layer('G-ANNO-TTLB', () => { say('q 0 0 0 RG 2 w'); say(`20 20 ${W - 40} ${H - 40} re S Q`); text('GRADING PLAN  C-3.0', W - 200, 60, 12, 0) })
+  // The plan room's fingerprint tests (scripts/plan-room-test.mjs): a re-issue
+  // that only changes the title block, and one with a new line in the drawing.
+  if (opts.titleNote) layer('G-ANNO-TTLB', () => text(opts.titleNote, W - 200, 40, 7, 0))
+  if (opts.extraLine) layer('C-CURB', () => { say('q 0 0 0 RG 1 w'); poly(opts.extraLine); say('Q') })
 
   // ── assemble ──
   const objs = []
