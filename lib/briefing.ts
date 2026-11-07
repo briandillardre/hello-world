@@ -76,9 +76,50 @@ async function forecastAt(lat: number, lng: number): Promise<string | null> {
   }
 }
 
-export async function gatherBriefingFacts(
-  db: SupabaseClient, companyId: string, companyName: string, tz: string
-): Promise<BriefingFacts> {
+/**
+ * WHO the briefing is for (sec-check, Nov 7, on #226). The briefing used to
+ * go only to the company's own alert inbox — the owner's channel — so it was
+ * built from everything. Since Nov 6 it also goes to each Admin and Manager,
+ * and one company-wide copy carried assets above their rank (the owner's
+ * phone and battery units, `metadata.visibility`, migration 111) and dollars
+ * to people whose `costs` view level is off. Every copy is now shaped for its
+ * reader: the same raw load, filtered per audience.
+ */
+export interface BriefingAudience {
+  /** The visibility ladder (111) for this reader — `canSeeAsset`. */
+  seesAsset: (a: { metadata?: unknown; type?: string | null }) => boolean
+  /** Dollars on the page: the `costs` view level. */
+  money: boolean
+}
+
+/** The company's own alert inbox / phone: the owner's channel, as before. */
+export const OFFICE_AUDIENCE: BriefingAudience = { seesAsset: () => true, money: true }
+
+type ZoneRow = { id: string; name: string; kind?: string | null; completed_at?: string | null; geometry?: { coordinates?: [number, number][][] } }
+type AssetRow = { id: string; name: string; type?: string | null; tracker_id?: string | null; metadata?: unknown }
+type TruckRaw = { asset: TruckAsset; miles: number; at: string | null; fixMs: number | null; checkEngine: number }
+
+/** Everything the briefing reads, once per company — no audience applied. */
+export interface BriefingRaw {
+  dateLabel: string
+  yesterday: { from: number; to: number }
+  today: string
+  weekOut: string
+  zones: ZoneRow[]
+  assets: AssetRow[]
+  tasks: { title: string; status: string; due_date: string | null; geofence_id: string | null }[]
+  milestones: { name: string; target_date: string | null; geofence_id: string | null }[]
+  maint: { asset_id: string; description: string; interval_type: string; interval_value: number; last_service_date: string | null }[]
+  wos: { status: string; asset_id: string | null }[]
+  alerts: { asset_id: string | null }[]
+  rows: HistoryPoint[]
+  trucks: TruckRaw[]
+  insights: import('./insights').InsightRow[]
+  /** Today's forecast per site zone — fetched at most once per zone. */
+  weather: (zone: ZoneRow) => Promise<string | null>
+}
+
+export async function loadBriefing(db: SupabaseClient, companyId: string, tz: string): Promise<BriefingRaw> {
   const g = async <T,>(q: PromiseLike<{ data: T | null }>): Promise<T | null> => {
     try { return (await q).data } catch { return null }
   }
@@ -96,8 +137,8 @@ export async function gatherBriefingFacts(
     // the old select 400'd and this list has been silently empty. Without
     // live meter readings only day-interval schedules are decidable here.
     g(db.from('maintenance_schedules').select('asset_id, description, interval_type, interval_value, last_service_date').eq('company_id', companyId).limit(200)),
-    g(db.from('work_orders').select('id, status').eq('company_id', companyId).limit(200)),
-    g(db.from('alert_events').select('id').eq('company_id', companyId)
+    g(db.from('work_orders').select('id, status, asset_id').eq('company_id', companyId).limit(200)),
+    g(db.from('alert_events').select('id, asset_id').eq('company_id', companyId)
       .gte('triggered_at', new Date(yesterday.from).toISOString())
       .lt('triggered_at', new Date(yesterday.to).toISOString()).limit(200)),
   ])
@@ -121,8 +162,53 @@ export async function gatherBriefingFacts(
     rows.reverse() // chronological for the accrual engine
   }
 
-  type ZoneRow = { id: string; name: string; kind?: string | null; completed_at?: string | null; geometry?: { coordinates?: [number, number][][] } }
-  const siteZones = ((zones ?? []) as ZoneRow[])
+  const zoneRows = (zones ?? []) as ZoneRow[]
+  const assetRows = (assets ?? []) as AssetRow[]
+  const trucks = await gatherTrucks(db, tz, assetRows as TruckAsset[], zoneRows)
+  const insights = await (async () => {
+    try {
+      const { getActiveInsights } = await import('./insights')
+      // Money rows ride along; each audience drops what it may not see.
+      return await getActiveInsights(db, companyId, { limit: 10, includeMoney: true })
+    } catch { return [] }
+  })()
+
+  const forecasts = new Map<string, Promise<string | null>>()
+  const weather = (z: ZoneRow) => {
+    let p = forecasts.get(z.id)
+    if (!p) {
+      const ring = z.geometry?.coordinates?.[0] ?? []
+      const cx = ring.reduce((s, q) => s + q[0], 0) / Math.max(1, ring.length)
+      const cy = ring.reduce((s, q) => s + q[1], 0) / Math.max(1, ring.length)
+      p = ring.length >= 3 ? forecastAt(cy, cx) : Promise.resolve(null)
+      forecasts.set(z.id, p)
+    }
+    return p
+  }
+
+  return {
+    dateLabel: new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' }).format(new Date()),
+    yesterday, today, weekOut,
+    zones: zoneRows,
+    assets: assetRows,
+    tasks: (tasks ?? []) as BriefingRaw['tasks'],
+    milestones: (milestones ?? []) as BriefingRaw['milestones'],
+    maint: (maint ?? []) as BriefingRaw['maint'],
+    wos: (wos ?? []) as BriefingRaw['wos'],
+    alerts: (alertsYest ?? []) as BriefingRaw['alerts'],
+    rows,
+    trucks,
+    insights,
+    weather,
+  }
+}
+
+/** One reader's briefing from the shared load — nothing above their rank,
+ *  no dollars without the costs level. */
+export async function shapeBriefing(raw: BriefingRaw, companyName: string, who: BriefingAudience): Promise<BriefingFacts> {
+  const seen = raw.assets.filter((a) => who.seesAsset(a))
+  const seenIds = new Set(seen.map((a) => a.id))
+  const siteZones = raw.zones
     .filter((z) => (z.kind ?? 'site') === 'site' && !z.completed_at)
     .slice(0, 10)
 
@@ -130,25 +216,24 @@ export async function gatherBriefingFacts(
   for (const z of siteZones) {
     const ring = z.geometry?.coordinates?.[0]
     if (!ring || ring.length < 3) continue
-    const usage = zoneAssetUsage(ring, (assets ?? []) as { id: string }[], rows, yesterday.from, yesterday.to)
-    const dueToday = (tasks ?? [])
-      .filter((t) => t.geofence_id === z.id && t.due_date && (t.due_date as string) <= today)
-      .map((t) => ({ title: t.title as string, overdue: (t.due_date as string) < today }))
+    // Only assets this reader may see are counted — their names, hours and $.
+    const usage = zoneAssetUsage(ring, seen as { id: string }[], raw.rows, raw.yesterday.from, raw.yesterday.to)
+    const dueToday = raw.tasks
+      .filter((t) => t.geofence_id === z.id && t.due_date && t.due_date <= raw.today)
+      .map((t) => ({ title: t.title, overdue: (t.due_date as string) < raw.today }))
       .slice(0, 6)
-    const milestonesSoon = (milestones ?? [])
-      .filter((m) => m.geofence_id === z.id && m.target_date && (m.target_date as string) <= weekOut)
-      .map((m) => ({ name: m.name as string, date: (m.target_date as string | null) ?? null }))
+    const milestonesSoon = raw.milestones
+      .filter((m) => m.geofence_id === z.id && m.target_date && m.target_date <= raw.weekOut)
+      .map((m) => ({ name: m.name, date: m.target_date ?? null }))
       .slice(0, 4)
     const hadActivity = usage.some((u) => u.presentHours > 0.05)
     // Skip zones with nothing to say — an empty section is noise at 6 AM.
     if (!hadActivity && !dueToday.length && !milestonesSoon.length) continue
-    const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length
-    const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length
     sites.push({
       zone: z.name,
-      weather: await forecastAt(cy, cx),
+      weather: await raw.weather(z),
       yesterdayHours: Math.round(usage.reduce((s, u) => s + u.activeHours, 0) * 10) / 10,
-      yesterdayCost: Math.round(usage.reduce((s, u) => s + u.amount, 0)),
+      yesterdayCost: who.money ? Math.round(usage.reduce((s, u) => s + u.amount, 0)) : 0,
       onSite: usage.filter((u) => u.presentHours > 0.05).map((u) => u.name).slice(0, 8),
       dueToday,
       milestonesSoon,
@@ -157,54 +242,66 @@ export async function gatherBriefingFacts(
 
   // Broken things: hardware units (IMEI tracker_ids) silent >6h.
   const newest = new Map<string, number>()
-  for (const r of rows) {
+  for (const r of raw.rows) {
     const t = Date.parse(r.timestamp)
     if (!newest.has(r.asset_id) || t > (newest.get(r.asset_id) ?? 0)) newest.set(r.asset_id, t)
   }
-  type AssetRow = { id: string; name: string; tracker_id?: string | null }
-  const silentUnits = ((assets ?? []) as AssetRow[])
+  const silentUnits = seen
     .filter((a) => /^\d{15}$/.test(String(a.tracker_id ?? '')))
     .filter((a) => (newest.get(a.id) ?? 0) < Date.now() - 6 * 3_600_000)
     .filter((a) => newest.has(a.id)) // never-reported = mid-setup, not broken
     .map((a) => a.name).slice(0, 5)
 
-  const nameOf = new Map(((assets ?? []) as AssetRow[]).map((a) => [a.id, a.name]))
-  const trucks = await gatherTrucks(db, companyId, tz, (assets ?? []) as TruckAsset[], (zones ?? []) as ZoneRow[])
+  const nameOf = new Map(seen.map((a) => [a.id, a.name]))
+  // An insight about one machine links to its page; a hidden machine's
+  // insight (the owner's idle unit) is not this reader's to see.
+  const hiddenLink = (link: string | null | undefined) => {
+    const m = /^\/assets\/([^/?#]+)/.exec(link ?? '')
+    return !!m && !seenIds.has(m[1])
+  }
 
   return {
     company: companyName,
-    dateLabel: new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' }).format(new Date()),
+    dateLabel: raw.dateLabel,
     sites,
     silentUnits,
-    maintenanceOverdue: (maint ?? [])
+    maintenanceOverdue: raw.maint
+      .filter((m) => seenIds.has(m.asset_id))
       .filter((m) => m.interval_type === 'days' && m.last_service_date && Number(m.interval_value) > 0 &&
-        (Date.now() - Date.parse(m.last_service_date as string)) / 86_400_000 >= Number(m.interval_value))
-      .map((m) => `${nameOf.get(m.asset_id as string) ?? 'Asset'} — ${m.description}`)
+        (Date.now() - Date.parse(m.last_service_date)) / 86_400_000 >= Number(m.interval_value))
+      .map((m) => `${nameOf.get(m.asset_id) ?? 'Asset'} — ${m.description}`)
       .slice(0, 6),
-    openWorkOrders: (wos ?? []).filter((w) => w.status !== 'done' && w.status !== 'canceled').length,
-    alertsYesterday: (alertsYest ?? []).length,
-    trucks,
-    noticed: await (async () => {
-      try {
-        const { getInsightHeadlines } = await import('./insights')
-        // includeMoney: the briefing goes to alert_email/alert_phone — the owner.
-        return await getInsightHeadlines(db, companyId, 3, true)
-      } catch { return [] }
-    })(),
+    openWorkOrders: raw.wos.filter((w) => (!w.asset_id || seenIds.has(w.asset_id)) && w.status !== 'done' && w.status !== 'canceled').length,
+    alertsYesterday: raw.alerts.filter((a) => !a.asset_id || seenIds.has(a.asset_id)).length,
+    trucks: raw.trucks
+      .filter((t) => seenIds.has(t.asset.id))
+      .map((t) => ({ name: t.asset.name, milesYesterday: t.miles, at: t.at, silentH: t.fixMs == null ? null : (Date.now() - t.fixMs) / 3_600_000, checkEngine: t.checkEngine }))
+      .sort((a, b) => b.milesYesterday - a.milesYesterday),
+    noticed: raw.insights
+      .filter((r) => (who.money || !r.money) && !hiddenLink(r.link))
+      .slice(0, 3)
+      .map((r) => r.headline),
   }
 }
 
-type TruckAsset = { id: string; name: string; type?: string; tracker_id?: string | null }
+/** The office copy (alert inbox / phone): everything, as before. */
+export async function gatherBriefingFacts(
+  db: SupabaseClient, companyId: string, companyName: string, tz: string
+): Promise<BriefingFacts> {
+  return shapeBriefing(await loadBriefing(db, companyId, tz), companyName, OFFICE_AUDIENCE)
+}
+
+type TruckAsset = { id: string; name: string; type?: string | null; tracker_id?: string | null; metadata?: unknown }
 
 /** Miles yesterday off the safety builder's day rows (driving_daily, built
  *  hourly in the company's own day), the newest fix per truck, the zone it
  *  sits in, and the check-engine count off the telemetry map. Each read
  *  degrades to "unknown", never to an error. */
 async function gatherTrucks(
-  db: SupabaseClient, companyId: string, tz: string,
+  db: SupabaseClient, tz: string,
   assets: TruckAsset[],
   zones: { id: string; name: string; kind?: string | null; geometry?: { coordinates?: [number, number][][] } }[],
-): Promise<TruckBrief[]> {
+): Promise<TruckRaw[]> {
   const vehicles = assets.filter((a) => a.type === 'vehicle' && /^\d{15}$/.test(String(a.tracker_id ?? '')))
   if (!vehicles.length) return []
   const ids = vehicles.map((v) => v.id)
@@ -217,7 +314,7 @@ async function gatherTrucks(
   const codes = new Map((tel as { asset_id: string; readings: Record<string, { v?: unknown }> | null }[])
     .map((r) => [r.asset_id, Number(r.readings?.['can.dtc.number']?.v ?? 0) || 0]))
   const { pointInPolygon } = await import('./alerts-engine')
-  const out: TruckBrief[] = []
+  const out: TruckRaw[] = []
   for (const v of vehicles) {
     const { data } = await db.from('asset_locations').select('lat, lng, timestamp')
       .eq('asset_id', v.id).order('timestamp', { ascending: false }).limit(1)
@@ -231,14 +328,14 @@ async function gatherTrucks(
       }
     }
     out.push({
-      name: v.name,
-      milesYesterday: Math.round(miles.get(v.id) ?? 0),
+      asset: v,
+      miles: Math.round(miles.get(v.id) ?? 0),
       at,
-      silentH: fix ? (Date.now() - Date.parse(fix.timestamp)) / 3_600_000 : null,
+      fixMs: fix ? Date.parse(fix.timestamp) : null,
       checkEngine: codes.get(v.id) ?? 0,
     })
   }
-  return out.sort((a, b) => b.milesYesterday - a.milesYesterday)
+  return out
 }
 
 /** "F350 — 112 mi · at Magley" / "RAM 2500 — dark 28 days" */
@@ -283,23 +380,23 @@ export function briefingEmailHtml(f: BriefingFacts, manageUrl?: string | null): 
   }
   if (f.sites.length) {
     for (const s of f.sites) {
-      inner += h2(s.zone)
+      inner += h2(escapeHtml(s.zone))
       if (s.weather) inner += li(`Today: <b style="color:#e8f0f7">${s.weather}</b>`)
       if (s.yesterdayHours > 0) {
-        inner += li(`Yesterday: <b style="color:#e8f0f7">${s.yesterdayHours} h</b> tracked${s.yesterdayCost ? ` · $${s.yesterdayCost.toLocaleString()}` : ''}${s.onSite.length ? ` — ${s.onSite.join(', ')}` : ''}`)
+        inner += li(`Yesterday: <b style="color:#e8f0f7">${s.yesterdayHours} h</b> tracked${s.yesterdayCost ? ` · $${s.yesterdayCost.toLocaleString()}` : ''}${s.onSite.length ? ` — ${s.onSite.map(escapeHtml).join(', ')}` : ''}`)
       }
       for (const t of s.dueToday) {
-        inner += li(`${t.overdue ? '<b style="color:#f87171">OVERDUE</b> · ' : 'Due today · '}${t.title}`)
+        inner += li(`${t.overdue ? '<b style="color:#f87171">OVERDUE</b> · ' : 'Due today · '}${escapeHtml(t.title)}`)
       }
-      for (const m of s.milestonesSoon) inner += li(`Milestone: ${m.name} — ${day(m.date)}`)
+      for (const m of s.milestonesSoon) inner += li(`Milestone: ${escapeHtml(m.name)} — ${day(m.date)}`)
     }
   } else {
     inner += none('No active site had activity or deadlines — quiet board this morning.')
   }
 
   const broken: string[] = []
-  if (f.silentUnits.length) broken.push(li(`<b style="color:#f87171">Trackers silent:</b> ${f.silentUnits.join(', ')} — check power/SIM`))
-  if (f.maintenanceOverdue.length) broken.push(...f.maintenanceOverdue.map((m) => li(`<b style="color:#ff9e16">Service overdue:</b> ${m}`)))
+  if (f.silentUnits.length) broken.push(li(`<b style="color:#f87171">Trackers silent:</b> ${f.silentUnits.map(escapeHtml).join(', ')} — check power/SIM`))
+  if (f.maintenanceOverdue.length) broken.push(...f.maintenanceOverdue.map((m) => li(`<b style="color:#ff9e16">Service overdue:</b> ${escapeHtml(m)}`)))
   if (f.openWorkOrders) broken.push(li(`${f.openWorkOrders} open work order${f.openWorkOrders === 1 ? '' : 's'}`))
   if (f.alertsYesterday) broken.push(li(`${f.alertsYesterday} alert${f.alertsYesterday === 1 ? '' : 's'} fired yesterday`))
   if (broken.length) {
