@@ -505,5 +505,26 @@ export async function GET(req: NextRequest) {
     out.flespi = await syncFlespiDevices(svcClient())
   } catch (err) { out.flespi = err instanceof Error ? err.message : 'failed' }
 
+  // 10 — is the Claude API answering? (Brian, Nov 7: "lets fix the claude
+  // api credits".) Board #154 sat open for weeks because nothing could tell
+  // whether the key worked. One 1-token request an hour; the verdict lives in
+  // system_state `ai.status` and the founder feed hears only when it flips.
+  try {
+    const { probeAi, aiStatusNotice, isTransient, AI_STATUS_KEY } = await import('@/lib/ai-status')
+    const { createServiceClient: svcClient } = await import('@/lib/supabase-server')
+    const db = svcClient()
+    const now = await probeAi(process.env.ANTHROPIC_API_KEY)
+    const prev = await readState<import('@/lib/ai-status').AiStatus>(db, AI_STATUS_KEY)
+    // No memory (read failed) → stay quiet rather than page on every run.
+    // An overload or rate-limit blip is neither news nor memory: the stored
+    // verdict stays what it was, so a blip can't trigger a "back" page later.
+    if (prev !== undefined && !isTransient(now)) {
+      const notice = aiStatusNotice(prev, now)
+      if (notice) await notifySystem(notice.title, notice.body)
+      await writeState(db, AI_STATUS_KEY, now)
+    }
+    out.ai = now.ok ? `ok (${now.model})` : now.why
+  } catch (err) { out.ai = err instanceof Error ? err.message : 'failed' }
+
   return NextResponse.json({ ok: true, at: new Date().toISOString(), ...out })
 }
