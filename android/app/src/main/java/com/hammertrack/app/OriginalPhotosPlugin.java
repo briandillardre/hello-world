@@ -139,13 +139,38 @@ public class OriginalPhotosPlugin extends Plugin {
         return dir;
     }
 
+    /** Is this permission in OUR merged manifest? Android 13+ media reads are
+     *  out of the manifest since v1.5.6 (Play's Photo and Video declaration
+     *  held every release for eight weeks — see AndroidManifest.xml). Asking
+     *  Capacitor for an undeclared permission REJECTS the call, which the page
+     *  reads as "cancelled" — a gallery button that does nothing. So the door
+     *  checks the manifest first and reports itself closed instead. */
+    private boolean declared(String permission) {
+        try {
+            String[] requested = getContext().getPackageManager()
+                .getPackageInfo(getContext().getPackageName(), android.content.pm.PackageManager.GET_PERMISSIONS)
+                .requestedPermissions;
+            if (requested == null) return false;
+            for (String p : requested) if (permission.equals(p)) return true;
+        } catch (Exception ignored) { /* unknown = closed */ }
+        return false;
+    }
+
+    /** The read permission this Android needs is actually in the manifest. */
+    private boolean readDeclared() {
+        if (Build.VERSION.SDK_INT >= 33) return declared(Manifest.permission.READ_MEDIA_IMAGES);
+        return declared(Manifest.permission.READ_EXTERNAL_STORAGE);
+    }
+
     /** Is the native door even usable here? The page asks before it offers it. */
     @PluginMethod
     public void available(PluginCall call) {
         JSObject out = new JSObject();
         // setRequireOriginal landed in Android 10. Below that nothing is
         // redacted in the first place and the web input is already fine.
-        out.put("available", Build.VERSION.SDK_INT >= 29);
+        // Without the read permission in the manifest (Android 13+ since
+        // v1.5.6) the page uses the WebView's own file input instead.
+        out.put("available", Build.VERSION.SDK_INT >= 29 && readDeclared());
         out.put("granted", canReadPicked());
         out.put("location", canReadLocation());
         call.resolve(out);
@@ -153,6 +178,9 @@ public class OriginalPhotosPlugin extends Plugin {
 
     @PluginMethod
     public void pick(PluginCall call) {
+        // Belt and braces for a page that skipped available(): an undeclared
+        // permission is a refusal, never a rejected call.
+        if (Build.VERSION.SDK_INT >= 29 && !readDeclared()) { denied(call); return; }
         if (!canReadPicked()) {
             if (refused) { denied(call); return; }
             requestPermissionForAlias(aliasForThisAndroid(), call, "afterPermission");

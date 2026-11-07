@@ -14,6 +14,7 @@ import { getMyPermissions } from '@/lib/permissions-server'
 import { safeTz } from '@/lib/dates'
 import { rankOf, isProspect, scopeFleet, type Permissions } from '@/lib/permissions'
 import { ipRateLimited } from '@/lib/rate-limit'
+import { aiErrorCategory, everydayModel } from '@/lib/ai-status'
 
 /** The 403 when the view-levels table says no. A Prospective Client keeps
  *  the button (Brian, Sep 23) and gets the reason instead of a run. */
@@ -41,20 +42,8 @@ const signInFirst = () => NextResponse.json({ error: 'Sign in to use Ask AI.' },
 /** Why the model path failed, in words an owner can act on — never the
  *  provider's raw text (request ids, org and key details stay in the
  *  founder feed). Admins see this beside the offline answer. */
-function degradedCategory(err: unknown): string {
-  if (err instanceof Anthropic.APIConnectionError) return 'couldn’t reach the AI service'
-  if (err instanceof Anthropic.APIError) {
-    const msg = String(err.message || '').toLowerCase()
-    if (msg.includes('credit balance')) return 'the AI account is out of credits'
-    if (err.status === 401) return 'the AI key was refused'
-    if (err.status === 403) return 'the AI key isn’t allowed to do this'
-    if (err.status === 404 || msg.includes('model')) return 'the AI model name wasn’t recognized'
-    if (err.status === 429) return 'the AI service is rate-limiting us'
-    if (err.status === 529 || msg.includes('overloaded')) return 'the AI service is overloaded'
-    if (typeof err.status === 'number' && err.status >= 500) return 'the AI service had an outage'
-  }
-  return 'the AI service returned an error'
-}
+// One wording for a provider failure, shared with the hourly health check.
+const degradedCategory = aiErrorCategory
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -317,7 +306,7 @@ export async function POST(request: NextRequest) {
     // Sonnet 5 for the everyday assistant (Brian, Sep 23: "run a cheaper
     // model for this purpose — Sonnet 5 should be fine for now"); AI_MODEL
     // overrides. The monthly owner memo keeps Opus (AI_MODEL_DEEP, lib/memo.ts).
-    const model = process.env.AI_MODEL || 'claude-sonnet-5'
+    const model = everydayModel()
     // The clock rides on every request: "since Friday morning" only means a
     // window once the model knows what day it is, and in which zone.
     const system = `${SYSTEM}\n\n${askClock(Date.now(), tz)}`
@@ -326,40 +315,57 @@ export async function POST(request: NextRequest) {
       { role: 'user' as const, content: question },
     ]
 
-    let response = await client.messages.create({
+    // max_tokens covers the model's thinking AND its answer. 1500 was too
+    // tight for a two-part question ("miles everyone drove today and how long
+    // everyone was on each site this week", Nov 6): the turn ended with no
+    // answer and the reply fell to the built-in engine, which talked about one
+    // truck's location instead. A cap, not a spend — only what's used is billed.
+    const MAX_TOKENS = 4096
+    const ask = (toolChoice?: Anthropic.ToolChoice) => client.messages.create({
       model,
-      max_tokens: 1500,
+      max_tokens: MAX_TOKENS,
       thinking: { type: 'adaptive' },
       system,
       tools,
+      ...(toolChoice ? { tool_choice: toolChoice } : {}),
       messages,
     })
-
-    // Agent loop — execute tool calls until the model answers in text.
-    for (let turn = 0; turn < 6 && response.stop_reason === 'tool_use'; turn++) {
-      messages.push({ role: 'assistant', content: response.content })
+    const runTools = async (content: Anthropic.ContentBlock[]): Promise<Anthropic.ToolResultBlockParam[]> => {
       const results: Anthropic.ToolResultBlockParam[] = []
-      for (const block of response.content) {
+      for (const block of content) {
         if (block.type !== 'tool_use') continue
         const out = await runAiTool(block.name, (block.input ?? {}) as Record<string, unknown>, toolCtx)
         results.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(out) })
       }
-      messages.push({ role: 'user', content: results })
-      response = await client.messages.create({
-        model,
-        max_tokens: 1500,
-        thinking: { type: 'adaptive' },
-        system,
-        tools,
-        messages,
-      })
+      return results
     }
-
-    const text = response.content
+    const textOf = (r: Anthropic.Message) => r.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
       .join('')
       .trim()
+
+    let response = await ask()
+
+    // Agent loop — execute tool calls until the model answers in text.
+    const MAX_TURNS = 8
+    for (let turn = 0; turn < MAX_TURNS && response.stop_reason === 'tool_use'; turn++) {
+      messages.push({ role: 'assistant', content: response.content })
+      messages.push({ role: 'user', content: await runTools(response.content) })
+      response = await ask()
+    }
+
+    let text = textOf(response)
+    // Out of turns mid-lookup: run that last batch, then ask for the answer
+    // with tools switched off, so the model sums up what it found instead of
+    // the whole reply dropping to the built-in engine.
+    if (!text && response.stop_reason === 'tool_use') {
+      messages.push({ role: 'assistant', content: response.content })
+      messages.push({ role: 'user', content: await runTools(response.content) })
+      response = await ask({ type: 'none' })
+      text = textOf(response)
+    }
+    if (!text) console.warn('Assistant: no answer from the model', { stop_reason: response.stop_reason, model })
 
     if (text) {
       if (!perms.viewingAs) await saveTurn(userId, userCompanyId, question, text)
