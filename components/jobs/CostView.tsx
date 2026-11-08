@@ -60,9 +60,9 @@ export function CostView({ zone, data, roll, wip, canEdit, canManage, demo }: {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <Stat label="Contract to date" value={money(wip.contract)} />
-          <Stat label="Cost to date" value={money(wip.costToDate)} sub={`${wip.pctComplete}% of ${money(wip.estimatedCost)}`} />
-          <Stat label="Forecast margin" value={money(wip.forecastMargin)} sub={wip.marginPct !== null ? `${wip.marginPct}%` : ''} tone={wip.forecastMargin < 0 ? 'bad' : undefined} />
-          <Stat label={wip.overUnder > 0 ? 'Overbilled' : wip.overUnder < 0 ? 'Underbilled' : 'Over / under billed'} value={money(Math.abs(wip.overUnder))} sub={`billed ${money(wip.billed)} · earned ${money(wip.earned)}`} tone={wip.overUnder < 0 ? 'warn' : undefined} />
+          <Stat label="Cost to date" value={money(wip.costToDate)} sub={wip.known ? `${wip.pctComplete}% of ${money(wip.estimatedCost)}` : 'no budget yet'} />
+          <Stat label="Forecast margin" value={wip.known ? money(wip.forecastMargin) : '—'} sub={wip.known ? (wip.marginPct !== null ? `${wip.marginPct}%` : '') : 'no budget yet'} tone={wip.known && wip.forecastMargin < 0 ? 'bad' : undefined} />
+          <Stat label={!wip.known ? 'Over / under billed' : wip.overUnder > 0 ? 'Overbilled' : wip.overUnder < 0 ? 'Underbilled' : 'Over / under billed'} value={wip.known ? money(Math.abs(wip.overUnder)) : '—'} sub={wip.known ? `billed ${money(wip.billed)} · earned ${money(wip.earned)}` : `billed ${money(wip.billed)} · no budget yet`} tone={wip.known && wip.overUnder < 0 ? 'warn' : undefined} />
         </div>
 
         <section className="rounded-xl border border-navy-800 bg-navy-900/60 p-3 space-y-2">
@@ -110,7 +110,8 @@ export function CostView({ zone, data, roll, wip, canEdit, canManage, demo }: {
 
         <section className="rounded-xl border border-navy-800 bg-navy-900/60 p-3 space-y-2">
           <h2 className="text-ink font-semibold text-[14px]">WIP</h2>
-          <p className="text-muted">Cost to cost: {wip.pctComplete}% complete ({money(wip.costToDate)} of an estimated {money(wip.estimatedCost)}) → {money(wip.earned)} earned of {money(wip.contract)}; billed {money(wip.billed)} ({wip.overUnder >= 0 ? `${money(wip.overUnder)} overbilled` : `${money(-wip.overUnder)} earned, not billed`}); retainage held {money(wip.retainageHeld)}.</p>
+          {!wip.known && <p className="text-amber">No budget yet, so % complete can&apos;t be measured — build the budget from the estimate below, or enter your estimate at completion. Until then nothing is counted as earned.</p>}
+          {wip.known && <p className="text-muted">Cost to cost: {wip.pctComplete}% complete ({money(wip.costToDate)} of an estimated {money(wip.estimatedCost)}) → {money(wip.earned)} earned of {money(wip.contract)}; billed {money(wip.billed)} ({wip.overUnder >= 0 ? `${money(wip.overUnder)} overbilled` : `${money(-wip.overUnder)} earned, not billed`}); retainage held {money(wip.retainageHeld)}.</p>}
           {canManage && (
             <div className="flex items-end gap-2 flex-wrap">
               <label className="block space-y-0.5"><span className="block text-[11.5px] text-faint">Your estimate at completion ($ — blank = the current budget)</span><input inputMode="decimal" className={box + ' w-48 max-w-full'} value={eac} onChange={(e) => setEac(e.target.value)} /></label>
@@ -173,7 +174,7 @@ export function CostView({ zone, data, roll, wip, canEdit, canManage, demo }: {
                 const r = await importCostsAction(zone.id, paste)
                 if (r?.ok) setPasteResult(`${r.added} added${r.skipped.length ? ` · ${r.skipped.length} skipped: ${r.skipped.slice(0, 5).map((x) => `line ${x.line} — ${x.why}`).join(' · ')}` : ''}`)
                 return r
-              }, 'Couldn’t add them — try again.', () => setPaste(null))} className="rounded-xl bg-amber px-3 py-1.5 font-semibold text-navy-950 disabled:opacity-50">{busy === 'paste' ? 'Adding…' : 'Add them'}</button>
+              }, 'No answer came back — they may have been added. Refresh and check the list before you paste again.', () => setPaste(null))} className="rounded-xl bg-amber px-3 py-1.5 font-semibold text-navy-950 disabled:opacity-50">{busy === 'paste' ? 'Adding…' : 'Add them'}</button>
             </div>
           )}
           {pasteResult && <p className="text-teal">{pasteResult}</p>}

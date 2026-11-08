@@ -42,10 +42,11 @@ async function client() {
 
 const UUID = /^[0-9a-f-]{36}$/i
 
-async function ownZone(supabase: Awaited<ReturnType<typeof client>>['supabase'], companyId: string | null, zoneId: string): Promise<boolean> {
+/** A zone of the caller's company — and a personal zone only for its owner (its punch list is theirs). */
+async function ownZone(supabase: Awaited<ReturnType<typeof client>>['supabase'], companyId: string | null, zoneId: string, userId: string | null): Promise<boolean> {
   if (!companyId || !UUID.test(zoneId)) return false
-  const { data } = await supabase.from('geofences').select('id').eq('id', zoneId).eq('company_id', companyId).maybeSingle()
-  return !!data
+  const { data } = await supabase.from('geofences').select('id, owner_id').eq('id', zoneId).eq('company_id', companyId).maybeSingle()
+  return !!data && (!data.owner_id || data.owner_id === userId)
 }
 
 async function ownMember(supabase: Awaited<ReturnType<typeof client>>['supabase'], companyId: string | null, userId: string | undefined | null): Promise<boolean> {
@@ -61,7 +62,7 @@ export async function addTaskAction(zoneId: string, input: { title: string; assi
   const title = input.title.trim().slice(0, 300)
   if (!title) return { ok: false, error: 'Write the task first.' }
   const { supabase, companyId, userId } = await client()
-  if (!(await ownZone(supabase, companyId, zoneId))) return { ok: false, error: 'That site wasn’t found.' }
+  if (!(await ownZone(supabase, companyId, zoneId, userId))) return { ok: false, error: 'That site wasn’t found.' }
   if (!(await ownMember(supabase, companyId, input.assigneeId))) return { ok: false, error: 'Pick someone on your team.' }
   const { data, error } = await supabase.from('project_tasks').insert({
     company_id: companyId,
@@ -84,7 +85,8 @@ export async function updateTaskAction(zoneId: string, taskId: string, input: { 
   if (isMock) return { ok: false, error: 'Demo mode' }
   const title = input.title.trim().slice(0, 300)
   if (!title) return { ok: false, error: 'The task needs a name.' }
-  const { supabase, companyId } = await client()
+  const { supabase, companyId, userId } = await client()
+  if (!(await ownZone(supabase, companyId, zoneId, userId))) return { ok: false, error: 'That site wasn’t found.' }
   if (!(await ownMember(supabase, companyId, input.assigneeId))) return { ok: false, error: 'Pick someone on your team.' }
   const { error } = await supabase.from('project_tasks')
     .update({
@@ -104,7 +106,8 @@ export async function updateMilestoneAction(zoneId: string, milestoneId: string,
   if (isMock) return { ok: false, error: 'Demo mode' }
   const name = input.name.trim().slice(0, 200)
   if (!name) return { ok: false, error: 'The milestone needs a name.' }
-  const { supabase, companyId } = await client()
+  const { supabase, companyId, userId } = await client()
+  if (!(await ownZone(supabase, companyId, zoneId, userId))) return { ok: false, error: 'That site wasn’t found.' }
   const { error } = await supabase.from('project_milestones')
     .update({ name, target_date: input.targetDate || null })
     .eq('id', milestoneId).eq('company_id', companyId).eq('geofence_id', zoneId)
@@ -116,7 +119,8 @@ export async function updateMilestoneAction(zoneId: string, milestoneId: string,
 export async function toggleTaskAction(zoneId: string, taskId: string, done: boolean): Promise<Result> {
   await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
-  const { supabase, companyId } = await client()
+  const { supabase, companyId, userId } = await client()
+  if (!(await ownZone(supabase, companyId, zoneId, userId))) return { ok: false, error: 'That site wasn’t found.' }
   const { error } = await supabase.from('project_tasks')
     .update({ status: done ? 'done' : 'open', done_at: done ? new Date().toISOString() : null })
     .eq('id', taskId).eq('company_id', companyId).eq('geofence_id', zoneId)
@@ -128,7 +132,8 @@ export async function toggleTaskAction(zoneId: string, taskId: string, done: boo
 export async function deleteTaskAction(zoneId: string, taskId: string): Promise<Result> {
   await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
-  const { supabase, companyId } = await client()
+  const { supabase, companyId, userId } = await client()
+  if (!(await ownZone(supabase, companyId, zoneId, userId))) return { ok: false, error: 'That site wasn’t found.' }
   const { error } = await supabase.from('project_tasks').delete().eq('id', taskId).eq('company_id', companyId).eq('geofence_id', zoneId)
   if (error) return { ok: false, error: MIGRATION_HINT }
   revalidatePath(`/zones/${zoneId}`)
@@ -140,8 +145,8 @@ export async function addMilestoneAction(zoneId: string, input: { name: string; 
   if (isMock) return { ok: false, error: 'Demo mode' }
   const name = input.name.trim().slice(0, 200)
   if (!name) return { ok: false, error: 'Name the milestone first.' }
-  const { supabase, companyId } = await client()
-  if (!(await ownZone(supabase, companyId, zoneId))) return { ok: false, error: 'That site wasn’t found.' }
+  const { supabase, companyId, userId } = await client()
+  if (!(await ownZone(supabase, companyId, zoneId, userId))) return { ok: false, error: 'That site wasn’t found.' }
   const { data, error } = await supabase.from('project_milestones').insert({
     company_id: companyId,
     geofence_id: zoneId,
@@ -156,7 +161,8 @@ export async function addMilestoneAction(zoneId: string, input: { name: string; 
 export async function toggleMilestoneAction(zoneId: string, milestoneId: string, done: boolean): Promise<Result> {
   await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
-  const { supabase, companyId } = await client()
+  const { supabase, companyId, userId } = await client()
+  if (!(await ownZone(supabase, companyId, zoneId, userId))) return { ok: false, error: 'That site wasn’t found.' }
   const { error } = await supabase.from('project_milestones')
     .update({ done_at: done ? new Date().toISOString() : null })
     .eq('id', milestoneId).eq('company_id', companyId).eq('geofence_id', zoneId)
@@ -168,7 +174,8 @@ export async function toggleMilestoneAction(zoneId: string, milestoneId: string,
 export async function deleteMilestoneAction(zoneId: string, milestoneId: string): Promise<Result> {
   await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
-  const { supabase, companyId } = await client()
+  const { supabase, companyId, userId } = await client()
+  if (!(await ownZone(supabase, companyId, zoneId, userId))) return { ok: false, error: 'That site wasn’t found.' }
   const { error } = await supabase.from('project_milestones').delete().eq('id', milestoneId).eq('company_id', companyId).eq('geofence_id', zoneId)
   if (error) return { ok: false, error: MIGRATION_HINT }
   revalidatePath(`/zones/${zoneId}`)

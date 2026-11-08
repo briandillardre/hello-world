@@ -115,7 +115,7 @@ export async function payAppPdf(info: DocInfo, app: AppView): Promise<Blob> {
   const after = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y + 200
   let yc = after + 22
   doc.setFontSize(8.5); ink(60)
-  const cert = doc.splitTextToSize('The undersigned certifies that, to the best of their knowledge, information and belief, the work covered by this application has been completed in accordance with the contract documents, that all amounts have been paid for work for which previous certificates for payment were issued and payments received, and that the current payment shown herein is now due.', W / 2 - M - 10) as string[]
+  const cert = doc.splitTextToSize('Signed for the contractor: the work billed here was done as the contract requires; the subcontractors and suppliers on work we were paid for on earlier applications have been paid; and the payment due above is owed now.', W / 2 - M - 10) as string[]
   doc.text(cert, W / 2 + 10, yc)
   yc += cert.length * 11 + 18
   ink()

@@ -62,6 +62,10 @@ eq(['Fuel', 'Diesel #2', 'Repair', 'Tire', 'Material', 'Stone', 'Tool', 'Equipme
   const over = C.wip({ contract: 200000, currentBudget: 150000, costToDate: 170000, billed: 190000, retainageHeld: 0 })
   eq([over.estimatedCost, over.pctComplete, over.forecastMargin], [170000, 100, 30000], 'past the budget: the cost so far is the estimate, never a % past 100')
   eq(C.wip({ contract: 200000, currentBudget: 150000, costToDate: 60000, billed: 0, retainageHeld: 0, estimateAtCompletion: 180000 }).pctComplete, 33.3, 'the PM’s own estimate at completion wins')
+  // No budget, no estimate at completion: time cards and machine hours still add cost — never call that 100% done.
+  const nb = C.wip({ contract: 1000000, currentBudget: 0, costToDate: 5000, billed: 40000, retainageHeld: 4000 })
+  eq([nb.known, nb.pctComplete, nb.earned, nb.overUnder, nb.forecastMargin, nb.marginPct, nb.billed, nb.costToDate], [false, 0, 0, 0, 0, null, 40000, 5000], 'no budget yet: % complete unknown, nothing earned on paper, the facts kept')
+  eq([C.wip({ contract: 1000000, currentBudget: 0, costToDate: 5000, billed: 0, retainageHeld: 0, estimateAtCompletion: 800000 }).known, w.known], [true, true], 'an estimate at completion or a budget makes it measurable')
 }
 
 // ── pasted costs ──

@@ -93,7 +93,7 @@ export function cleanIssue(raw: unknown, opts: { money: boolean }): { issue: Iss
   if (!title) return { issue: null, error: 'Give it a title.' }
   if (!isIssueCategory(o.category)) return { issue: null, error: 'Pick what kind of issue it is.' }
   const days = o.scheduleDays === '' || o.scheduleDays === null || o.scheduleDays === undefined ? null : Number(o.scheduleDays)
-  if (days !== null && !(Number.isInteger(days) && Math.abs(days) <= 3650)) return { issue: null, error: 'Schedule days must be a whole number.' }
+  if (days !== null && !(Number.isInteger(days) && Math.abs(days) <= 1000)) return { issue: null, error: 'Schedule days must be a whole number, up to 1,000.' }
   if (o.dueOn && !isoDay(o.dueOn)) return { issue: null, error: 'That due date can’t be read.' }
   const issue: IssueInput = {
     title,
@@ -155,6 +155,7 @@ export function changeOrderFromIssue(i: Pick<Issue, 'number' | 'title' | 'detail
     status: 'potential' as const,
     identifiedOn: today,
     costImpact: i.costExposure ?? null,
-    scheduleDays: i.scheduleDays ?? null,
+    // A change order takes ±1,000 days (154) — an older issue may carry more.
+    scheduleDays: i.scheduleDays === null || i.scheduleDays === undefined ? null : Math.max(-1000, Math.min(1000, i.scheduleDays)),
   }
 }

@@ -1,5 +1,6 @@
 // node scripts/jobs-test.mjs — the job (lib/jobs/job.ts, migration 152).
 // Run it after ANY change to the stages, the checklist template or the cleaners.
+// Every figure and name here is made up.
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 
@@ -14,7 +15,7 @@ const ok = (c, msg) => { if (c) pass++; else { fail++; console.log('FAIL', msg) 
 const eq = (a, b, msg) => ok(JSON.stringify(a) === JSON.stringify(b), `${msg}: got ${JSON.stringify(a)}, want ${JSON.stringify(b)}`)
 
 // ── job numbers: DCG's YY-NNN at the front of the zone name ──
-eq(J.nextJobNumber(['26-083 Pond', 'Z26-084 Haywood', '25-099 Old', null, 'Creekside'], 2026), '26-085', 'one past the highest this year, completed (Z) ones included')
+eq(J.nextJobNumber(['26-083 Pond', 'Z26-084 North Lot', '25-099 Old', null, 'Creekside'], 2026), '26-085', 'one past the highest this year, completed (Z) ones included')
 eq(J.nextJobNumber(['25-057 Clinic'], 2026), '26-001', 'a new year starts at 001')
 eq(J.nextJobNumber(['26-009'], 2026), '26-010', 'three digits, zero-padded')
 
@@ -43,7 +44,7 @@ eq(J.datesOnMove('closed', { awardDate: '2026-10-01', startDate: '2026-10-05', a
 }
 
 // ── money ──
-eq(J.cleanMoney({ bidAmount: '$703,955.34', contractAmount: '', retainagePct: '10', bonded: true }).money, { bidAmount: 703955.34, contractAmount: null, retainagePct: 10, storedRetainagePct: 10, bonded: true }, 'dollars read the way the sheet writes them; stored retainage follows the work retainage')
+eq(J.cleanMoney({ bidAmount: '$1,234,567.89', contractAmount: '', retainagePct: '10', bonded: true }).money, { bidAmount: 1234567.89, contractAmount: null, retainagePct: 10, storedRetainagePct: 10, bonded: true }, 'dollars read the way the sheet writes them; stored retainage follows the work retainage')
 ok(!!J.cleanMoney({ retainagePct: 75 }).error, 'retainage past 50% is refused')
 ok(!!J.cleanMoney({ contractAmount: 'lots' }).error, 'a dollar amount that can’t be read is refused, never zero')
 

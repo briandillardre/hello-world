@@ -31,8 +31,9 @@ interface Draft {
   dueOn: string; scheduleDays: string; costExposure: string; detail: string; resolution: string
 }
 const blank = (): Draft => ({ id: null, title: '', category: 'site', priority: 'medium', status: 'open', ownerId: '', decisionFrom: '', dueOn: '', scheduleDays: '', costExposure: '', detail: '', resolution: '' })
-const draftOf = (i: Issue): Draft => ({
-  id: i.id, title: i.title, category: i.category, priority: i.priority, status: i.status, ownerId: i.ownerId ?? '', decisionFrom: i.decisionFrom ?? '',
+const draftOf = (i: Issue, members: Member[]): Draft => ({
+  // Someone who has left the team can't be picked again — the form starts at "Nobody yet" for them.
+  id: i.id, title: i.title, category: i.category, priority: i.priority, status: i.status, ownerId: i.ownerId && members.some((m) => m.id === i.ownerId) ? i.ownerId : '', decisionFrom: i.decisionFrom ?? '',
   dueOn: i.dueOn ?? '', scheduleDays: i.scheduleDays === null ? '' : String(i.scheduleDays), costExposure: i.costExposure === null ? '' : String(i.costExposure),
   detail: i.detail ?? '', resolution: i.resolution ?? '',
 })
@@ -99,7 +100,7 @@ export function IssuesView({ zone, issues, available, members, coNumbers, today,
             <p className="text-faint">Opened {fmtDay(i.openedOn)}{co && canCosts ? <> · <Link href={`/jobs/${zone.id}/billing`} className="text-teal hover:underline">Change order {co}</Link></> : null}</p>
             {canEdit && (
               <div className="flex gap-2 flex-wrap">
-                <button type="button" onClick={() => setDraft(draftOf(i))} className={btn}><Pencil className="h-3.5 w-3.5" /> Edit</button>
+                <button type="button" onClick={() => setDraft(draftOf(i, members))} className={btn}><Pencil className="h-3.5 w-3.5" /> Edit</button>
                 {canCosts && !co && (
                   <button type="button" disabled={!!busy} onClick={() => void run(`co:${i.id}`, () => issueToChangeOrderAction(zone.id, i.id), 'Couldn’t start the change order — try again.')} className={btn}>
                     <FilePlus2 className="h-3.5 w-3.5" /> {busy === `co:${i.id}` ? 'Starting…' : 'Make it a change order'}

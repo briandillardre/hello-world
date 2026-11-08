@@ -97,6 +97,7 @@ export function PortfolioView({ jobs, ar, wip, cash, retHeld, terms, partial, av
 
         <section className="rounded-xl border border-navy-800 bg-navy-900/60 p-3 space-y-2">
           <h2 className="text-ink font-semibold text-[14px]">WIP schedule</h2>
+          {wip.totals.noBudget > 0 && <p className="text-amber">{wip.totals.noBudget} {wip.totals.noBudget === 1 ? 'job has' : 'jobs have'} no budget yet — left out of estimated cost, earned, over / under and margin until one is built (Job cost → Build it from the estimate).</p>}
           <p className="text-faint">Every job won and not closed, cost to cost: % complete = cost to date ÷ the estimated cost (the current budget, or the PM&apos;s estimate at completion); earned = that share of the contract to date; billed = the last sent application.</p>
           <div className="overflow-x-auto -mx-3 px-3">
             <table className="min-w-[900px] w-full text-ink">
@@ -111,14 +112,14 @@ export function PortfolioView({ jobs, ar, wip, cash, retHeld, terms, partial, av
                     <tr key={r.jobId} className="border-t border-navy-800">
                       <td className="py-1 pr-3 max-w-[220px] truncate">{z ? <Link href={`/jobs/${z}/cost`} className="hover:underline">{label(r.jobId)}</Link> : label(r.jobId)}</td>
                       <td className={td}>{money(r.w.contract)}</td>
-                      <td className={td}>{money(r.w.estimatedCost)}</td>
+                      <td className={td + (r.w.known ? '' : ' text-faint')}>{r.w.known ? money(r.w.estimatedCost) : '—'}</td>
                       <td className={td}>{money(r.w.costToDate)}</td>
-                      <td className={td + ' text-muted'}>{r.w.pctComplete}%</td>
-                      <td className={td}>{money(r.w.earned)}</td>
+                      <td className={td + (r.w.known ? ' text-muted' : ' text-amber')}>{r.w.known ? `${r.w.pctComplete}%` : 'no budget'}</td>
+                      <td className={td + (r.w.known ? '' : ' text-faint')}>{r.w.known ? money(r.w.earned) : '—'}</td>
                       <td className={td}>{money(r.w.billed)}</td>
-                      <td className={td + (r.w.overUnder < 0 ? ' text-amber' : '')}>{r.w.overUnder < 0 ? `(${money(-r.w.overUnder)})` : money(r.w.overUnder)}</td>
+                      <td className={td + (r.w.known && r.w.overUnder < 0 ? ' text-amber' : r.w.known ? '' : ' text-faint')}>{!r.w.known ? '—' : r.w.overUnder < 0 ? `(${money(-r.w.overUnder)})` : money(r.w.overUnder)}</td>
                       <td className={td + ' text-muted'}>{money(r.w.retainageHeld)}</td>
-                      <td className={'py-1 text-right font-mono whitespace-nowrap ' + (r.w.forecastMargin < 0 ? 'text-red-300' : '')}>{money(r.w.forecastMargin)}{r.w.marginPct !== null ? <span className="text-faint"> {r.w.marginPct}%</span> : null}</td>
+                      <td className={'py-1 text-right font-mono whitespace-nowrap ' + (r.w.known && r.w.forecastMargin < 0 ? 'text-red-300' : r.w.known ? '' : 'text-faint')}>{r.w.known ? <>{money(r.w.forecastMargin)}{r.w.marginPct !== null ? <span className="text-faint"> {r.w.marginPct}%</span> : null}</> : '—'}</td>
                     </tr>
                   )
                 })}

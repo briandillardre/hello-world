@@ -84,6 +84,12 @@ export function rollup(budget: BudgetLine[], coImpacts: { pcat: Pcat; amount: nu
 }
 
 export interface Wip {
+  /**
+   * false = no budget and no estimate at completion: % complete can't be
+   * measured, so nothing is called earned (earned, over / under and margin
+   * read 0 and the pages say "no budget yet").
+   */
+  known: boolean
   contract: number
   estimatedCost: number
   costToDate: number
@@ -104,11 +110,19 @@ export interface Wip {
  * billed − earned. `estimatedCost` can be the PM's own estimate at completion.
  */
 export function wip(o: { contract: number; currentBudget: number; costToDate: number; billed: number; retainageHeld: number; estimateAtCompletion?: number | null }): Wip {
-  const eac = o.estimateAtCompletion && o.estimateAtCompletion > 0 ? c(o.estimateAtCompletion) : Math.max(c(o.currentBudget), c(o.costToDate))
+  const given = o.estimateAtCompletion && o.estimateAtCompletion > 0 ? c(o.estimateAtCompletion) : 0
+  // With no budget the cost so far would be "the whole job" — 100% done, the contract earned. Say unknown instead.
+  if (!given && c(o.currentBudget) <= 0) {
+    return {
+      known: false, contract: d(c(o.contract)), estimatedCost: 0, costToDate: d(c(o.costToDate)), pctComplete: 0,
+      earned: 0, billed: d(c(o.billed)), overUnder: 0, retainageHeld: d(c(o.retainageHeld)), forecastMargin: 0, marginPct: null,
+    }
+  }
+  const eac = given || Math.max(c(o.currentBudget), c(o.costToDate))
   const pct = eac > 0 ? Math.min(1, c(o.costToDate) / eac) : 0
   const earned = Math.round(c(o.contract) * pct)
   return {
-    contract: d(c(o.contract)), estimatedCost: d(eac), costToDate: d(c(o.costToDate)), pctComplete: Math.round(pct * 1000) / 10,
+    known: true, contract: d(c(o.contract)), estimatedCost: d(eac), costToDate: d(c(o.costToDate)), pctComplete: Math.round(pct * 1000) / 10,
     earned: d(earned), billed: d(c(o.billed)), overUnder: d(c(o.billed) - earned), retainageHeld: d(c(o.retainageHeld)),
     forecastMargin: d(c(o.contract) - eac), marginPct: o.contract > 0 ? Math.round(((c(o.contract) - eac) / c(o.contract)) * 1000) / 10 : null,
   }

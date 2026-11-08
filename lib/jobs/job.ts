@@ -310,7 +310,7 @@ export function nextJobNumber(codes: (string | null | undefined)[], year: number
 export interface JobMoney { bidAmount: number | null; contractAmount: number | null; retainagePct: number; storedRetainagePct: number; bonded: boolean }
 export const NO_MONEY: JobMoney = { bidAmount: null, contractAmount: null, retainagePct: 10, storedRetainagePct: 10, bonded: false }
 
-/** "$703,955.34" / "703955.34" / 703955.34 → the number; '' → null; anything else → 'bad'. */
+/** "$1,234,567.89" / "1234567.89" / 1234567.89 → the number; '' → null; anything else → 'bad'. */
 export function readMoney(v: unknown): number | null | 'bad' {
   if (v === null || v === undefined || v === '') return null
   const n = typeof v === 'number' ? v : Number(String(v).replace(/[$,\s]/g, ''))

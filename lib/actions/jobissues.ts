@@ -55,7 +55,6 @@ export async function saveIssueAction(zoneId: string, raw: unknown, id?: string 
   if (!job) return { ok: false, error: 'That job wasn’t found.' }
   const { issue, error } = cleanIssue(raw, { money: perms.canViewCosts })
   if (!issue) return { ok: false, error: error ?? 'Nothing to save.' }
-  if (!(await ownMember(svc, companyId, issue.ownerId))) return { ok: false, error: 'That owner isn’t on your team.' }
   const row: Record<string, unknown> = {
     title: issue.title, category: issue.category, priority: issue.priority, status: issue.status, owner_id: issue.ownerId,
     decision_from: issue.decisionFrom, due_on: issue.dueOn, schedule_days: issue.scheduleDays, detail: issue.detail, resolution: issue.resolution,
@@ -64,14 +63,17 @@ export async function saveIssueAction(zoneId: string, raw: unknown, id?: string 
   let issueId: string
   if (id) {
     if (!UUID.test(id)) return { ok: false, error: 'Bad issue' }
-    const { data: cur } = await svc.from('job_issues').select('status, resolved_on').eq('id', id).eq('job_id', job).eq('company_id', companyId).is('deleted_at', null).maybeSingle()
+    const { data: cur } = await svc.from('job_issues').select('status, resolved_on, owner_id').eq('id', id).eq('job_id', job).eq('company_id', companyId).is('deleted_at', null).maybeSingle()
     if (!cur) return { ok: false, error: 'That issue wasn’t found.' }
+    // An owner who has since left stays on record until someone replaces them.
+    if (issue.ownerId !== cur.owner_id && !(await ownMember(svc, companyId, issue.ownerId))) return { ok: false, error: 'That owner isn’t on your team.' }
     // The day it was resolved: set when it is resolved, cleared when it opens again.
     row.resolved_on = issue.status === 'resolved' ? (cur.status === 'resolved' ? cur.resolved_on ?? today() : today()) : null
     const { data, error: e } = await svc.from('job_issues').update(row).eq('id', id).eq('job_id', job).eq('company_id', companyId).is('deleted_at', null).select('id').maybeSingle()
     if (e || !data) return { ok: false, error: 'Couldn’t save — try again.' }
     issueId = id
   } else {
+    if (!(await ownMember(svc, companyId, issue.ownerId))) return { ok: false, error: 'That owner isn’t on your team.' }
     const { data: top } = await svc.from('job_issues').select('number').eq('job_id', job).is('deleted_at', null).order('number', { ascending: false }).limit(1).maybeSingle()
     const number = Number(top?.number ?? 0) + 1
     if (number > 9999) return { ok: false, error: 'That’s a lot of issues for one job.' }

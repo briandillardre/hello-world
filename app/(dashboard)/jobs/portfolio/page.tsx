@@ -8,6 +8,8 @@ import { PortfolioView } from '@/components/jobs/PortfolioView'
 
 export const metadata = { title: 'Money across jobs — HammerTrack' }
 export const dynamic = 'force-dynamic'
+// Every running job's cost is read (four at a time) — give a busy company room.
+export const maxDuration = 60
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'

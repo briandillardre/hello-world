@@ -71,39 +71,38 @@ export async function getJobCost(companyId: string, job: { id: string; zoneId: s
 
     const svc = createServiceClient()
     const fromTs = job.from ? `${job.from}T00:00:00Z` : null
-    // Time cards clocked to the job.
-    const teR = await allRows((f, t) => {
+    // Time cards clocked to the job, machine hours on the site, job-coded receipts — read at once.
+    const [teR, udR, rcR] = await Promise.all([allRows((f, t) => {
       let q = svc.from('time_entries').select('id, user_id, clock_in_at, clock_out_at, break_minutes').eq('company_id', companyId).eq('project_geofence_id', job.zoneId)
       if (fromTs) q = q.gte('clock_in_at', fromTs)
       return q.order('id').range(f, t)
-    }, { max: 50_000 })
-    // Machine hours on the site, from the ledger.
-    const udR = await allRows((f, t) => {
+    }, { max: 50_000 }),
+    allRows((f, t) => {
       let q = svc.from('usage_daily').select('asset_id, day, on_site_secs, active_secs').eq('company_id', companyId).eq('geofence_id', job.zoneId)
       if (job.from) q = q.gte('day', job.from)
       return q.order('day').order('asset_id').range(f, t)
-    }, { max: 100_000 })
-    // Job-coded receipts (not rejected).
-    const rcR = await allRows((f, t) => {
+    }, { max: 100_000 }),
+    allRows((f, t) => {
       let q = svc.from('receipts').select('id, amount, category, status, txn_date, created_at').eq('company_id', companyId).eq('project_geofence_id', job.zoneId).neq('status', 'rejected')
       if (job.from) q = q.or(`txn_date.gte.${job.from},and(txn_date.is.null,created_at.gte.${fromTs})`)
       return q.order('id').range(f, t)
-    }, { max: 20_000 })
+    }, { max: 20_000 })])
 
     const te = teR.rows, ud = udR.rows, rc = rcR.rows
     const partial = [e, teR, udR, rcR].some((x) => x.truncated)
 
-    // Rates: each person's phone asset (loaded labor $/hr), each machine's own.
+    // Rates: each person's phone asset (loaded labor $/hr), each machine's own — read through the
+    // caller's RLS, so a phone or machine hidden from them (111) is never priced into their totals.
     const people = Array.from(new Set(te.map((x) => String(x.user_id))))
     const machineIds = Array.from(new Set(ud.map((x) => String(x.asset_id))))
     const rate = new Map<string, number>()
     for (let i = 0; i < people.length; i += 150) {
-      const { data } = await svc.from('assets').select('tracker_id, hourly_rate').eq('company_id', companyId).in('tracker_id', people.slice(i, i + 150).map((u) => `phone-${u}`))
+      const { data } = await db.from('assets').select('tracker_id, hourly_rate').eq('company_id', companyId).in('tracker_id', people.slice(i, i + 150).map((u) => `phone-${u}`))
       for (const a of data ?? []) if (a.hourly_rate !== null && Number(a.hourly_rate) > 0) rate.set(String(a.tracker_id).slice(6), Number(a.hourly_rate))
     }
     const assets = new Map<string, { type: AssetType | null; hourly_rate: number | null; daily_cost: number | null }>()
     for (let i = 0; i < machineIds.length; i += 150) {
-      const { data } = await svc.from('assets').select('id, type, hourly_rate, daily_cost').eq('company_id', companyId).in('id', machineIds.slice(i, i + 150))
+      const { data } = await db.from('assets').select('id, type, hourly_rate, daily_cost').eq('company_id', companyId).in('id', machineIds.slice(i, i + 150))
       for (const a of data ?? []) assets.set(String(a.id), { type: a.type as AssetType | null, hourly_rate: a.hourly_rate as number | null, daily_cost: a.daily_cost as number | null })
     }
 
