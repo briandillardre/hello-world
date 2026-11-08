@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Briefcase, ChevronDown, ChevronRight, FileStack, MapPin, Ruler, Calculator, Layers, Cpu, Plane, Hash, CheckCircle2, AlertTriangle, Receipt } from 'lucide-react'
+import { ArrowLeft, Briefcase, ChevronDown, ChevronRight, FileStack, MapPin, Ruler, Calculator, Layers, Cpu, Plane, Hash, CheckCircle2, AlertTriangle, Receipt, Wallet } from 'lucide-react'
 import {
   bucketOf, CHECK_STAGES, MAIN_PATH, progressOf, readyToStart, sectionsNow, SIDE_STAGES, STAGE_WORDS, type Stage,
 } from '@/lib/jobs/job'
@@ -86,6 +86,7 @@ export function JobView({ zone, page, canEdit, canCosts, canPlans, demo }: {
   const at = onPath ? MAIN_PATH.indexOf(stage) : -1
   const flow = [
     { href: `/jobs/${zone.id}/billing`, label: 'Pay apps', sub: 'Schedule of values, change orders, G702/G703', Icon: Receipt, show: canCosts },
+    { href: `/jobs/${zone.id}/cost`, label: 'Job cost', sub: 'Budget vs actual, WIP', Icon: Wallet, show: canCosts },
     { href: `/zones/${zone.id}`, label: 'Site page', sub: 'Map, photos, hours, punch list', Icon: MapPin, show: true },
     { href: `/plans/${zone.id}`, label: 'Plan room', sub: 'Sets, sheets, revisions', Icon: FileStack, show: canPlans },
     { href: `/plans/${zone.id}/takeoff`, label: 'Takeoff', sub: 'Quantities on the sheets', Icon: Ruler, show: canPlans },

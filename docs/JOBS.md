@@ -99,6 +99,52 @@ Jobs → a job → **Pay apps** (costs only). DCG's PA1, PA2… tabs as screens:
   The customer's own lien waiver and notarized affidavit forms are still
   theirs to attach.
 
+## Job cost (migration 155)
+
+Jobs → a job → **Job cost** (costs only). The PM Master's budget tab and its
+WIP, with most of the actuals filling themselves in:
+
+- **The budget** (`job_budget_lines`, Manager+): DIRECT cost from the awarded
+  scope by cost type — L labor, M material, S subcontract, E equipment &
+  trucking, O other — never the sell total. *Build it from the estimate*
+  (only on an empty budget): each section's material → M, sub → S, haul and
+  the lowboy → E, and the crew's install cost split labor / equipment by a
+  share the estimator types (a crew's $/hr carries both). The ORIGINAL is
+  the Managers' to set (and correct); the CURRENT budget = the original plus
+  each APPROVED change order's cost impact, on the cost type the change
+  order names (`cost_pcat`, picked on the change order in Pay apps).
+- **Actuals that feed themselves** — read where they already live, totals
+  only (no one's hours or pay is shown):
+  - labor = time cards clocked to the site × each person's loaded rate (the
+    $/hr on their phone in Assets), paid hours by the time cards' own rule
+    (break taken off, an open shift counts to now) so job cost and the time
+    cards agree; hours from people with no rate are counted and named as a
+    count, never priced at a guess;
+  - equipment = machine hours on the site from the hours ledger
+    (`usage_daily`) × each machine's rates — trucks and machines only (fuel
+    receipts count on top, so a machine's rate leaves its fuel out when the
+    fuel comes in on receipts);
+  - receipts coded to the job, by their category: fuel → F, repairs → R,
+    material → M, tools and rentals → E, the rest → O (rejected ones never).
+  Counting starts at the job's start date (else its award date, else the day
+  it went on the log).
+- **Costs entered or pasted** (`job_costs`, any editor): sub and supplier
+  invoices, payroll adjustments — date, type (L M S E F R O), amount, vendor,
+  reference, description (20,000 per job). *Paste from accounting* takes the rows straight out
+  of Excel or Sheets (CSV or tabs, a header row skipped, `(1,250.00)` = a
+  credit) and says which lines it skipped and why. F (fuel) and R (repairs)
+  are actual-only: no budget of their own, never "over".
+- **WIP**, cost to cost: % complete = cost to date ÷ the estimated total cost
+  (the current budget, or what has been spent when that is more, or the PM's
+  own *estimate at completion*, Manager+); earned = that % of the contract to
+  date (the last sent pay app's line 3, else the contract plus approved
+  change orders); over / under billing = billed − earned; retainage held and
+  the forecast margin beside them.
+
+`lib/jobs/cost.ts` is the pure half (`rollup`, `wip`, `budgetFromEstimate`,
+`parseCosts`, `pcatOfReceipt`); `lib/db/jobcost.ts` reads, `lib/actions/
+jobcost.ts` writes (service role after the edit + Jobs + costs checks).
+
 ## Permissions
 
 View level **Jobs** (`jobs`): on for Admin, Manager and Foreman; off for the
@@ -109,13 +155,10 @@ write is a server action on the service role after the edit + Jobs checks
 
 ## Still to build
 
-- **Job cost** (board #231): the L/M/S/E budget from the estimate (Original
-  never changes; Current only by approved change order), actuals that feed
-  themselves (time cards × loaded rate, the equipment ledger, receipts by
-  category, pasted sub and supplier invoices), cost to complete, WIP.
 - **Issues & actions, documents, closeout that checks itself** (board #232).
 - **The portfolio** — AR aging, WIP schedule, cash (board #233).
 
 Harnesses: `node scripts/jobs-test.mjs` — after ANY change to
 `lib/jobs/job.ts`; `node scripts/payapp-test.mjs` — after ANY change to
-`lib/jobs/payapp.ts` (these are invoices).
+`lib/jobs/payapp.ts` (these are invoices); `node scripts/jobcost-test.mjs` —
+after ANY change to `lib/jobs/cost.ts`.
