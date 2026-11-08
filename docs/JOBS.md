@@ -63,6 +63,42 @@ equipment hours.
 4. Mobilize, every month, closeout — then the job closes; completing the zone
    (the Z flip) stays on the Zones list.
 
+## Pay apps (migration 154)
+
+Jobs → a job → **Pay apps** (costs only). DCG's PA1, PA2… tabs as screens:
+
+- **Schedule of values** (`job_sov`): item, area, description, scheduled
+  value, a line's own retainage % (variable retainage). *Build it from the
+  won estimate*: one line per section, priced to the contract by each
+  section's share of the direct cost, to the cent (only on an empty
+  schedule). A line billed on a sent application can't be deleted.
+- **Change orders** (`job_change_orders`): CO1, CO2… potential → pricing →
+  submitted → approved / rejected / void; asked and approved amounts (minus
+  for a credit), cost impact on the budget, schedule days, their CO number.
+  The contract changes only by an APPROVED change order, and it joins the
+  applications as its own line from its approval date. One on a sent
+  application keeps its approved amount; an approved one is voided, never
+  deleted.
+- **Applications** (`job_pay_apps`): one draft at a time, numbered after the
+  last. This period in dollars or as % complete to date, stored material
+  (it carries until it is installed), retainage on work and on stored
+  material (the job's, or a line's own), and a *final application* switch
+  that releases all of it. The G702 lines 1–9 and the G703 columns A–I are
+  computed live (`lib/jobs/payapp.ts`, cents inside every sum; line 5 takes
+  the % of the total once, as the form does). **Send** (Manager+) computes
+  the numbers on the server and FREEZES them; every later application
+  builds on the last sent one (D = what it billed, line 7 = its line 6).
+  Then: approved, paid (date and amount), lien waiver (partial / final).
+  Only the last sent application can be voided, and a voided one frees its
+  number for the resubmission.
+- **PDF and Excel** off the screen (`lib/jobs/payapp-docs.ts`): the
+  application page and the continuation sheet in the G702 / G703 layout
+  (our own words — AIA's forms are copyrighted), and a workbook whose
+  application sheet reads the continuation sheet by live formulas. In the
+  Android app both go out as export links (the WebView has no download).
+  The customer's own lien waiver and notarized affidavit forms are still
+  theirs to attach.
+
 ## Permissions
 
 View level **Jobs** (`jobs`): on for Admin, Manager and Foreman; off for the
@@ -73,10 +109,6 @@ write is a server action on the service role after the edit + Jobs checks
 
 ## Still to build
 
-- **Pay apps** (board #230): schedule of values from the won estimate, change
-  orders (potential → priced → submitted → approved), G702/G703 applications
-  for payment with retainage on work and stored material, frozen once sent, a
-  PDF and an Excel in the same columns as the sheet, lien waiver tracking.
 - **Job cost** (board #231): the L/M/S/E budget from the estimate (Original
   never changes; Current only by approved change order), actuals that feed
   themselves (time cards × loaded rate, the equipment ledger, receipts by
@@ -84,5 +116,6 @@ write is a server action on the service role after the edit + Jobs checks
 - **Issues & actions, documents, closeout that checks itself** (board #232).
 - **The portfolio** — AR aging, WIP schedule, cash (board #233).
 
-Harness: `node scripts/jobs-test.mjs` — run it after ANY change to
-`lib/jobs/job.ts`.
+Harnesses: `node scripts/jobs-test.mjs` — after ANY change to
+`lib/jobs/job.ts`; `node scripts/payapp-test.mjs` — after ANY change to
+`lib/jobs/payapp.ts` (these are invoices).
