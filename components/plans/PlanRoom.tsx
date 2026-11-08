@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, FileStack, Plus, MapPin, Pencil, Trash2, RotateCcw, Map as MapIcon, Layers, Drill, Cpu } from 'lucide-react'
+import { ArrowLeft, FileStack, Plus, MapPin, Pencil, Trash2, RotateCcw, Map as MapIcon, Layers, Drill, Cpu, Plane } from 'lucide-react'
 import {
   groupSheets, revLabel, setKindLabel, SET_KINDS, placementWords, type PlanSetKind,
 } from '@/lib/plans/room'
@@ -48,7 +48,7 @@ export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false, i
   canDelete?: boolean
   items?: TakeoffItem[]
   canCosts?: boolean
-  /** The site's borings and its machine files (not for a prospect). */
+  /** The site's borings, machine files and flight progress (not for a prospect). */
   canGround?: boolean
 }) {
   const router = useRouter()
@@ -105,6 +105,11 @@ export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false, i
             {canGround && (
               <Link href={`/plans/${zone.id}/machine`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
                 <Cpu className="h-4 w-4" /> Machines
+              </Link>
+            )}
+            {canGround && (
+              <Link href={`/plans/${zone.id}/progress`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
+                <Plane className="h-4 w-4" /> Progress
               </Link>
             )}
             <Link href={`/zones/${zone.id}`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">

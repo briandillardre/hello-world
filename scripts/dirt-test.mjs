@@ -28,7 +28,7 @@ const surfUrl = transpile('../lib/dirt/surface.ts', {
   delaunator: npm('delaunator'), '@kninnug/constrainautor': npm('@kninnug/constrainautor'), './geom': geomUrl,
 })
 const tkUrl = transpile('../lib/dirt/takeoff.ts', { earcut: npm('earcut'), './tm': tmUrl, './geom': geomUrl, './surface': surfUrl })
-const heatUrl = transpile('../lib/dirt/heat.ts', { './takeoff': tkUrl, './geom': geomUrl })
+const heatUrl = transpile('../lib/dirt/heat.ts', { './takeoff': tkUrl, './geom': geomUrl, './heat-colors': transpile('../lib/dirt/heat-colors.ts') })
 const featUrl = transpile('../lib/dirt/features.ts', { './takeoff': tkUrl })
 const schemaUrl = transpile('../lib/dirt/schema.ts', { zod: npm('zod'), './takeoff': tkUrl, './limits': transpile('../lib/dirt/limits.ts') })
 const pileUrl = transpile('../lib/dirt/stockpile.ts', { './geom': geomUrl, './surface': surfUrl, './tm': tmUrl })

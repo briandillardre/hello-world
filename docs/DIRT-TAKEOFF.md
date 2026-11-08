@@ -321,3 +321,24 @@ was built from. The day a newer revision of one of those sheets lands, the
 file says which sheet moved ("C-101: built from Rev 1 — Rev 2 is current") and
 the page counts the files to rebuild. A file of the same name and kind filed
 later is the newer one. Harness: `node scripts/machine-test.mjs`.
+
+## Progress by drone flight (Nov 8, migration 150)
+
+Plan room → **Progress** measures every drone survey of the site (the DSMs
+uploaded on Stockpiles) against the site's saved dirt takeoff:
+
+- **The flight is the existing ground that day.** The server reads only the
+  grading limits' window of the survey plus a 30 m band, runs the saved design
+  against it with the topsoil and demo deductions dropped (the flight already
+  shows that ground), and stores cut left, fill left and % done — the share of
+  what the design had to move (cut + topsoil + demo out, fill in) that is done.
+- **Levelled before it is trusted.** A drone without survey control can sit
+  metres off vertically, so the flight is shifted by the median of (lidar +
+  the takeoff's datum offset − flight) on the band outside the limits — ground
+  the job has not touched. The spread is reported; trees and stockpiles in the
+  band widen it. A flight tied to survey control can be measured "as flown".
+- **On a timeline.** A % done chart by flight date, and a slider over the
+  flights that puts each day's cut / fill-to-grade picture on the satellite,
+  with the yards moved since the flight before.
+
+Harness: `node scripts/progress-test.mjs`.

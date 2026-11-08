@@ -422,12 +422,18 @@ export async function GET(req: NextRequest) {
       const { createServiceClient } = await import('@/lib/supabase-server')
       const svc = createServiceClient()
       const HEAT_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/heat-[0-9]+\.png$/i
+      const PROGRESS_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/progress-[0-9a-f-]{36}-[0-9]+\.png$/i
       const GROUND_PATH = /^ground\/[0-9a-f-]{36}_[0-9]+_[0-9]+_[0-9]+_[0-9]+_[0-9]+_[0-9]+\.bin$/i
       const DAY = 86_400_000
       const { data: gone, error: goneErr } = await svc.from('dirt_takeoffs').select('id, heat_path')
         .lt('deleted_at', new Date(Date.now() - 30 * DAY).toISOString()).limit(200)
       if (goneErr) throw new Error(`dirt_takeoffs read: ${goneErr.message}`)
       const pics = (gone ?? []).map((r) => r.heat_path).filter((x): x is string => typeof x === 'string' && HEAT_PATH.test(x))
+      // Their flights' progress pictures (150) go with them — the rows cascade, the files don't.
+      if (gone?.length) {
+        const { data: prog } = await svc.from('dirt_progress').select('heat_path').in('takeoff_id', gone.map((r) => r.id as string)).limit(1000)
+        pics.push(...(prog ?? []).map((r) => r.heat_path).filter((x): x is string => typeof x === 'string' && PROGRESS_PATH.test(x)))
+      }
       if (pics.length) await svc.storage.from('dirt').remove(pics)
       if (gone?.length) {
         const { error } = await svc.from('dirt_takeoffs').delete().in('id', gone.map((r) => r.id as string))
@@ -441,10 +447,19 @@ export async function GET(req: NextRequest) {
       for (const t of recent ?? []) {
         const prefix = `${t.company_id}/${t.id}`
         const { data: objects } = await svc.storage.from('dirt').list(prefix, { limit: 100, sortBy: { column: 'created_at', order: 'asc' } })
-        const stray = (objects ?? [])
+        const old = (objects ?? [])
           .filter((o) => o.name && Date.parse(o.created_at ?? '') < Date.now() - DAY)
           .map((o) => `${prefix}/${o.name}`)
-          .filter((x) => HEAT_PATH.test(x) && x !== t.heat_path)
+        const stray = old.filter((x) => HEAT_PATH.test(x) && x !== t.heat_path)
+        // A flight's picture no live progress row points at (a measure that died between upload and write, or replaced).
+        const progressPics = old.filter((x) => PROGRESS_PATH.test(x))
+        if (progressPics.length) {
+          const { data: kept, error: keptErr } = await svc.from('dirt_progress').select('heat_path').in('heat_path', progressPics).is('deleted_at', null)
+          if (!keptErr) {
+            const live = new Set((kept ?? []).map((r) => String(r.heat_path)))
+            stray.push(...progressPics.filter((x) => !live.has(x)))
+          }
+        }
         if (stray.length) { await svc.storage.from('dirt').remove(stray); strays += stray.length }
       }
       out.dirtStrayPictures = strays
