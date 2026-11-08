@@ -14,10 +14,10 @@
  */
 import { boxCorners, type TakeoffContext } from './takeoff'
 import type { Box, Poly } from './geom'
+import { CUT_STEPS, FILL_STEPS, NEUTRAL } from './heat-colors'
 
-export const FILL_STEPS = ['#b7d3f6', '#86b6ef', '#5598e7', '#2a78d6', '#1c5cab']
-export const CUT_STEPS = ['#f6c2bb', '#ec998f', '#e06f64', '#ca453d', '#a1302b']
-export const NEUTRAL = '#d9d8d3'
+export { CUT_STEPS, FILL_STEPS, NEUTRAL }
+
 /** |difference| under this (feet) reads as no change. */
 export const FLAT_FT = 0.1
 const BAND_CHOICES = [0.25, 0.5, 1, 2, 5, 10]
