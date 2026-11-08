@@ -597,5 +597,39 @@ export async function GET(req: NextRequest) {
     out.planOrphansSwept = swept
   } catch (err) { out.planSweep = err instanceof Error ? err.message : 'failed' }
 
+  // 12 — machine files nobody filed (149): an upload under <company>/<id> in
+  // the private 'machine' bucket with no live machine_files row, two hours
+  // after it landed, goes (a delete removes its file at once; this catches an
+  // upload whose filing never finished). Same bounds as step 11.
+  try {
+    const { createServiceClient: svcClient } = await import('@/lib/supabase-server')
+    const svc = svcClient()
+    const U = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+    const PATH = new RegExp(`^${U}/${U}$`)
+    const old = (o: { created_at?: string | null }) => Date.parse(o.created_at ?? '') < Date.now() - 2 * 3_600_000
+    let swept = 0
+    const { data: cos } = await svc.storage.from('machine').list('', { limit: 50 })
+    for (const co of cos ?? []) {
+      if (co.id || !new RegExp(`^${U}$`).test(co.name)) continue
+      const { data: objs } = await svc.storage.from('machine').list(co.name, { limit: 1000 })
+      const stale = (objs ?? []).filter((o) => o.id && o.name && old(o)).map((o) => `${co.name}/${o.name}`).filter((p) => PATH.test(p))
+      if (!stale.length) continue
+      const live = new Set<string>()
+      let failed = false
+      for (let i = 0; i < stale.length && !failed; i += 200) {
+        const { data, error } = await svc.from('machine_files').select('path').in('path', stale.slice(i, i + 200)).is('deleted_at', null)
+        if (error) failed = true
+        else for (const r of data ?? []) live.add(String(r.path))
+      }
+      if (failed) continue
+      const gone = stale.filter((p) => !live.has(p)).slice(0, 200)
+      if (gone.length) {
+        const { error } = await svc.storage.from('machine').remove(gone)
+        if (!error) swept += gone.length
+      }
+    }
+    out.machineOrphansSwept = swept
+  } catch (err) { out.machineSweep = err instanceof Error ? err.message : 'failed' }
+
   return NextResponse.json({ ok: true, at: new Date().toISOString(), ...out })
 }

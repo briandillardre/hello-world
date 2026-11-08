@@ -30,6 +30,7 @@ import type { BoringRow } from '@/lib/db/borings'
 import { groundWords, type GroundResults } from '@/lib/borings/ground'
 import type { MapSheet } from './TakeoffMap'
 import NumField from './NumField'
+import { MachineExport } from './MachineExport'
 
 const TakeoffMap = dynamic(() => import('./TakeoffMap'), { ssr: false })
 const PlanReader = dynamic(() => import('./PlanReader'), { ssr: false })
@@ -802,6 +803,10 @@ export default function TakeoffEditor({ takeoff, zone, sheets, borings, canEdit 
                 design={design} canEdit={canEdit} onSettings={s => commit({ ...designRef.current, settings: { ...designRef.current.settings, ...s } })}
                 heatVisible={heatVisible} setHeatVisible={setHeatVisible} heatOpacity={heatOpacity} setHeatOpacity={setHeatOpacity}
                 copied={copied} onCopy={async (text) => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { /* clipboard blocked */ } }} />
+            )}
+            {step === 'results' && (
+              <MachineExport takeoffId={takeoff.id} name={name} zoneId={zone.id} zoneRing={zone.ring} design={design} ground={ground.grid}
+                dirty={dirty} canEdit={canEdit} hasDesign={design.features.some(f => f.kind === 'fg_contour' || f.kind === 'fg_spot' || f.kind === 'platform')} />
             )}
 
             {step !== 'results' && results && (
