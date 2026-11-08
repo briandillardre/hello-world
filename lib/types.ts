@@ -205,7 +205,7 @@ export interface AssetWithLocation extends Asset {
 }
 
 /** Pin categories for saved Places — drives glyph + colour on the map. */
-export type PlaceKind = 'supplier' | 'fuel' | 'dump' | 'shop' | 'customer' | 'rental' | 'other'
+export type PlaceKind = 'supplier' | 'fuel' | 'dump' | 'shop' | 'customer' | 'rental' | 'quarry' | 'asphalt' | 'concrete' | 'borrow' | 'landfill' | 'other'
 
 /**
  * A saved destination crews navigate to (migration 085). A POINT, not an

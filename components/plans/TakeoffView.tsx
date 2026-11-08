@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Layers, FileSpreadsheet, Snowflake, Link2, Copy, Trash2, Sparkles, Check, Pencil, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Layers, FileSpreadsheet, Snowflake, Link2, Copy, Trash2, Sparkles, Check, Pencil, AlertTriangle, Calculator } from 'lucide-react'
 import type { TakeoffSummary, TakeoffRow } from '@/lib/takeoff-summary'
 import type { TakeoffSnapshot, BidMemo, TakeoffLink } from '@/lib/db/takeoff'
 import { revLabel } from '@/lib/plans/room'
@@ -158,6 +158,11 @@ export function TakeoffView({ zone, summary, snapshots, memo, links, canEdit, ca
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {canCosts && (
+            <Link href={`/plans/${zone.id}/estimate`} className="inline-flex items-center gap-1.5 rounded-xl border border-teal/50 text-teal px-3 py-2 text-[12.5px]">
+              <Calculator className="h-4 w-4" /> Estimate
+            </Link>
+          )}
           <a href={demo ? undefined : xlsxHref} aria-disabled={demo}
             className={'inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink ' + (demo ? 'opacity-50 pointer-events-none' : '')}>
             <FileSpreadsheet className="h-4 w-4" /> Download Excel{snap ? ' (with the revision report)' : ''}
