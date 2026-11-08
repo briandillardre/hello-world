@@ -9,15 +9,19 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Briefcase, ChevronDown, ChevronRight, FileStack, MapPin, Ruler, Calculator, Layers, Cpu, Plane, Hash, CheckCircle2, AlertTriangle, Receipt, Wallet } from 'lucide-react'
+import { ArrowLeft, Briefcase, ChevronDown, ChevronRight, FileStack, MapPin, Ruler, Calculator, Layers, Cpu, Plane, Hash, CheckCircle2, AlertTriangle, Receipt, Wallet, ListChecks, FolderOpen } from 'lucide-react'
 import {
   bucketOf, CHECK_STAGES, MAIN_PATH, progressOf, readyToStart, sectionsNow, SIDE_STAGES, STAGE_WORDS, type Stage,
 } from '@/lib/jobs/job'
 import type { JobPage } from '@/lib/db/jobs'
+import type { JobExtras } from '@/lib/db/jobwork'
+import { expiryWords, DOC_KIND_WORDS, ONE_WORDS } from '@/lib/jobs/documents'
+import { money as usd } from '@/lib/jobs/payapp'
 import { assignNumberAction, createJobAction, setStageAction } from '@/lib/actions/jobs'
 import { JobChecklist } from './JobChecklist'
 import { JobDetails } from './JobDetails'
 import { JobContacts } from './JobContacts'
+import { CloseoutCard } from './CloseoutCard'
 
 
 const NEXT_WORDS: Partial<Record<Stage, string>> = {
@@ -26,8 +30,9 @@ const NEXT_WORDS: Partial<Record<Stage, string>> = {
 }
 const nextOf = (s: Stage): Stage | null => s === 'on_hold' ? 'active' : (() => { const i = MAIN_PATH.indexOf(s); return i >= 0 && i < MAIN_PATH.length - 1 ? MAIN_PATH[i + 1] : null })()
 
-export function JobView({ zone, page, canEdit, canCosts, canPlans, demo }: {
-  zone: { id: string; name: string; kind: string | null }; page: JobPage; canEdit: boolean; canCosts: boolean; canPlans: boolean; demo: boolean
+export function JobView({ zone, page, extras, today, canEdit, canManage, canCosts, canPlans, demo }: {
+  zone: { id: string; name: string; kind: string | null }; page: JobPage; extras: JobExtras | null; today: string
+  canEdit: boolean; canManage: boolean; canCosts: boolean; canPlans: boolean; demo: boolean
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
@@ -84,9 +89,19 @@ export function JobView({ zone, page, canEdit, canCosts, canPlans, demo }: {
   const ready = stage === 'awarded' && readyToStart(page.checklist)
   const onPath = MAIN_PATH.includes(stage)
   const at = onPath ? MAIN_PATH.indexOf(stage) : -1
+  const iss = extras?.issues
+  const issuesSub = iss && iss.open + iss.waiting > 0
+    ? [`${iss.open + iss.waiting} open`, iss.overdue ? `${iss.overdue} late` : '', iss.high ? `${iss.high} high` : ''].filter(Boolean).join(' · ')
+    : 'What came up, who decides'
+  const closedBy = job.closedBy ? page.members.find((m) => m.id === job.closedBy)?.name ?? null : null
+  const closedLine = job.closedAt
+    ? `Closed ${new Date(job.closedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}${closedBy ? ` by ${closedBy}` : ''}${job.closedNote ? ` — closed with items open: ${job.closedNote}` : ''}.`
+    : null
   const flow = [
     { href: `/jobs/${zone.id}/billing`, label: 'Pay apps', sub: 'Schedule of values, change orders, G702/G703', Icon: Receipt, show: canCosts },
     { href: `/jobs/${zone.id}/cost`, label: 'Job cost', sub: 'Budget vs actual, WIP', Icon: Wallet, show: canCosts },
+    { href: `/jobs/${zone.id}/issues`, label: 'Issues & actions', sub: issuesSub, Icon: ListChecks, show: true },
+    { href: `/jobs/${zone.id}/documents`, label: 'Documents', sub: extras?.docCount ? `${extras.docCount} filed` : 'COIs, permits, waivers, warranties', Icon: FolderOpen, show: true },
     { href: `/zones/${zone.id}`, label: 'Site page', sub: 'Map, photos, hours, punch list', Icon: MapPin, show: true },
     { href: `/plans/${zone.id}`, label: 'Plan room', sub: 'Sets, sheets, revisions', Icon: FileStack, show: canPlans },
     { href: `/plans/${zone.id}/takeoff`, label: 'Takeoff', sub: 'Quantities on the sheets', Icon: Ruler, show: canPlans },
@@ -122,7 +137,7 @@ export function JobView({ zone, page, canEdit, canCosts, canPlans, demo }: {
           {ready && <p className="flex items-center gap-1.5 text-[12.5px] text-teal"><CheckCircle2 className="h-4 w-4" /> Ready to start — every must-do of the set-up is done.</p>}
           {canEdit && (
             <div className="flex items-center gap-2 flex-wrap text-[12.5px]">
-              {next && (
+              {next && !(next === 'closed' && extras?.closeout) && (
                 <button type="button" disabled={!!busy} onClick={() => void run('next', () => setStageAction(zone.id, next), 'Couldn’t move it — try again.')}
                   className="rounded-xl bg-amber px-3 py-1.5 font-semibold text-navy-950 disabled:opacity-50">{busy === 'next' ? 'Moving…' : NEXT_WORDS[stage] ?? STAGE_WORDS[next]}</button>
               )}
@@ -145,6 +160,26 @@ export function JobView({ zone, page, canEdit, canCosts, canPlans, demo }: {
             </div>
           )}
         </section>
+
+        {/* What needs a look: open issues, papers running out */}
+        {extras && (iss!.open + iss!.waiting > 0 || extras.expiring.length > 0) && (
+          <section className="rounded-xl border border-navy-800 bg-navy-900/60 p-3 space-y-1 text-[12.5px]">
+            {iss!.open + iss!.waiting > 0 && (
+              <Link href={`/jobs/${zone.id}/issues`} className={'flex items-center gap-1.5 hover:underline ' + (iss!.overdue || iss!.high ? 'text-amber' : 'text-muted')}>
+                <ListChecks className="h-4 w-4 flex-none" /> {issuesSub}{iss!.exposure ? ` · ${usd(iss!.exposure)} exposure` : ''}
+              </Link>
+            )}
+            {extras.expiring.map((d) => (
+              <Link key={d.id} href={`/jobs/${zone.id}/documents`} className={'flex items-center gap-1.5 hover:underline ' + (d.expiresOn && d.expiresOn < today ? 'text-red-300' : 'text-amber')}>
+                <AlertTriangle className="h-4 w-4 flex-none" /> {ONE_WORDS[d.kind] ?? DOC_KIND_WORDS[d.kind]}: {d.title} — {d.expiresOn ? expiryWords(d.expiresOn, today) : ''}
+              </Link>
+            ))}
+          </section>
+        )}
+
+        {extras?.closeout && (
+          <CloseoutCard zoneId={zone.id} checks={extras.closeout.checks} closed={stage === 'closed'} closedLine={closedLine} canEdit={canEdit} canManage={canManage} billing={canCosts} />
+        )}
 
         {/* What's next */}
         {now.length > 0 && (

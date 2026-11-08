@@ -12,6 +12,8 @@ import { requireEditOrThrow } from '@/lib/permissions-server'
 import { rankOf, RANK } from '@/lib/permissions'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { parseJobName } from '@/lib/job-code'
+import { blockWords, cleanCloseNote, closeoutChecks } from '@/lib/jobs/closeout'
+import { getCloseoutFacts } from '@/lib/db/jobwork'
 import {
   cleanContact, cleanJobPatch, cleanMoney, cleanTemplate, datesOnMove, DEFAULT_CHECKLIST, isCheckStage, isStage,
   JOB_COLUMNS, nextJobNumber, type CheckStage, type JobFields, type Stage,
@@ -127,9 +129,9 @@ export async function saveJobAction(zoneId: string, raw: unknown): Promise<Res> 
 }
 
 /** Move the job along (or off) the road. Blank dates the move implies are filled in; typed ones never change. */
-export async function setStageAction(zoneId: string, stage: string, lostReason?: string | null): Promise<Res> {
+export async function setStageAction(zoneId: string, stage: string, lostReason?: string | null, closeNote?: string | null): Promise<Res> {
   if (isMock) return { ok: false, error: 'Demo mode' }
-  const { companyId, svc } = await writer()
+  const { perms, companyId, userId, svc } = await writer()
   if (!isStage(stage)) return { ok: false, error: 'Unknown stage.' }
   const job = await jobOf(svc, companyId, zoneId)
   if (!job) return { ok: false, error: 'That job wasn’t found.' }
@@ -139,6 +141,19 @@ export async function setStageAction(zoneId: string, stage: string, lostReason?:
   if (stage === 'lost' || stage === 'no_bid' || stage === 'cancelled') {
     const why = typeof lostReason === 'string' ? lostReason.trim().slice(0, 300) : ''
     if (why) row.lost_reason = why
+  }
+  // Closeout that checks itself (156): Closed only when nothing is open — or a
+  // Manager says why it closes anyway, written on the job with who and when.
+  if (stage === 'closed' && job.stage !== 'closed') {
+    const facts = await getCloseoutFacts(companyId, { id: job.id, zoneId })
+    if (!facts) return { ok: false, error: 'Couldn’t check the closeout — try again.' }
+    const { blocking } = closeoutChecks(facts, { money: perms.canViewCosts })
+    const note = cleanCloseNote(closeNote)
+    if (blocking.length && rankOf(perms) < RANK.manager) return { ok: false, error: `Not yet — ${blockWords(blocking)}. A Manager can close it anyway with a reason.` }
+    if (blocking.length && !note) return { ok: false, error: `Still open: ${blockWords(blocking)}. Say why it closes anyway.` }
+    row.closed_at = new Date().toISOString(); row.closed_by = userId; row.closed_note = blocking.length ? note : null
+  } else if (stage !== 'closed' && job.stage === 'closed') {
+    row.closed_at = null; row.closed_by = null; row.closed_note = null
   }
   const { error } = await svc.from('jobs').update(row).eq('id', job.id).eq('company_id', companyId)
   if (error) return { ok: false, error: 'Couldn’t move it — try again.' }

@@ -20,14 +20,19 @@ export interface Job extends JobFields {
   estimateId: string | null
   createdAt: string
   updatedAt: string
+  /** Who closed it, when, and the Manager's reason when something was still open (156). */
+  closedAt: string | null
+  closedBy: string | null
+  closedNote: string | null
 }
 
-export const JOB_SELECT = ['id', 'geofence_id', 'stage', 'estimate_id', 'created_at', 'updated_at', ...Object.values(JOB_COLUMNS)].join(', ')
+export const JOB_SELECT = ['id', 'geofence_id', 'stage', 'estimate_id', 'created_at', 'updated_at', 'closed_at', 'closed_by', 'closed_note', ...Object.values(JOB_COLUMNS)].join(', ')
 
 export function jobFromRow(r: Record<string, unknown>): Job {
   const out: Record<string, unknown> = {
     id: String(r.id), zoneId: String(r.geofence_id), stage: isStage(r.stage) ? r.stage : 'estimating',
     estimateId: (r.estimate_id as string | null) ?? null, createdAt: String(r.created_at), updatedAt: String(r.updated_at),
+    closedAt: (r.closed_at as string | null) ?? null, closedBy: (r.closed_by as string | null) ?? null, closedNote: (r.closed_note as string | null) ?? null,
   }
   for (const [k, col] of Object.entries(JOB_COLUMNS)) out[k] = (r[col] as unknown) ?? null
   return out as unknown as Job
