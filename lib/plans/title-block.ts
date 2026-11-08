@@ -36,6 +36,63 @@ export interface TitleBlock {
   feetPerInch: number | null
   /** 0..1 — how sure the number pick is. */
   confidence: number
+  /** What kind of page it looks like, for naming one that has no number. */
+  kind: PageKind
+}
+
+/** A page with no sheet number still gets a name (Brian, Nov 8: "if it
+ *  doesn't have one just call it something that makes sense — Detail-1, DOT").
+ *  `code` is the made-up number's stem, `title` the words for the title box. */
+export interface PageKind { code: string; title: string }
+
+// First match wins; tested against the page's biggest words first, then all of them.
+const KINDS: [RegExp, string, string][] = [
+  [/\b(SC)?DOT\b|DEPARTMENT OF TRANSPORTATION|STANDARD DRAWING/, 'DOT', 'DOT standard'],
+  [/\bDETAILS?\b/, 'DETAIL', 'Details'],
+  [/\bCOVER\b|\bTITLE SHEET\b|\bSHEET INDEX\b|\bINDEX OF (SHEETS|DRAWINGS)\b/, 'COVER', 'Cover sheet'],
+  [/\bPROFILES?\b/, 'PROFILE', 'Profiles'],
+  [/\bSECTIONS?\b/, 'SECTION', 'Sections'],
+  [/\bSPECIFICATIONS?\b|\bSPECS\b/, 'SPEC', 'Specifications'],
+  [/\bNOTES\b/, 'NOTES', 'Notes'],
+  [/\bBORINGS?\b|\bGEOTECH/, 'GEO', 'Geotechnical'],
+  [/\bSURVEY\b|\bPLAT\b/, 'SURVEY', 'Survey'],
+  [/\bPLANS?\b/, 'PLAN', 'Plan'],
+]
+const PAGE_KIND: PageKind = { code: 'PAGE', title: '' }
+
+/** The kind of page from its words: big text decides, the rest breaks ties. */
+export function pageKind(words: PdfText[]): PageKind {
+  if (!words.length) return PAGE_KIND
+  const all = lines(words)
+  const sizes = all.map((l) => l.size).sort((a, b) => b - a)
+  const big = all.filter((l) => l.size >= 0.6 * sizes[0] || l.size >= sizes[Math.min(sizes.length - 1, 9)])
+  for (const text of [big.map((l) => l.str).join('\n').toUpperCase(), all.map((l) => l.str).join('\n').toUpperCase()]) {
+    const k = KINDS.find(([re]) => re.test(text))
+    if (k) {
+      // A DOT standard that is a detail sheet reads "DOT standard details".
+      const title = k[1] === 'DOT' && /\bDETAILS?\b/.test(text) ? 'DOT standard details' : k[2]
+      return { code: k[1], title }
+    }
+  }
+  return PAGE_KIND
+}
+
+/** Names for the pages of one set that read no number: CODE-1, CODE-2… per
+ *  kind, in page order, never a number another page of the set already has.
+ *  Deterministic, so the same set filed again lands on the same names. */
+export function nameUnnumbered(pages: { number: string | null; kind: PageKind | null }[]): (string | null)[] {
+  const taken = new Set(pages.map((p) => p.number).filter((n): n is string => !!n).map(sheetKey))
+  const next = new Map<string, number>()
+  return pages.map((p) => {
+    if (p.number) return null
+    const code = (p.kind ?? PAGE_KIND).code
+    let n = next.get(code) ?? 1
+    while (taken.has(sheetKey(`${code}-${n}`))) n++
+    next.set(code, n + 1)
+    const name = `${code}-${n}`
+    taken.add(sheetKey(name))
+    return name
+  })
 }
 
 export interface PageSize { width: number; height: number }
@@ -195,7 +252,7 @@ function newestRev(revs: string[]): string | null {
 }
 
 export function readTitleBlock(words: PdfText[], page: PageSize): TitleBlock {
-  const empty: TitleBlock = { number: null, discipline: null, title: null, rev: null, date: null, scaleText: null, feetPerInch: null, confidence: 0 }
+  const empty: TitleBlock = { number: null, discipline: null, title: null, rev: null, date: null, scaleText: null, feetPerInch: null, confidence: 0, kind: PAGE_KIND }
   if (!words.length || !(page.width > 0 && page.height > 0)) return empty
 
   const cands = numberCandidates(words, page)
@@ -234,7 +291,7 @@ export function readTitleBlock(words: PdfText[], page: PageSize): TitleBlock {
   const scaleLine = tb.map((l) => readScale(l.str)).find(Boolean) ?? all.map((l) => readScale(l.str)).find(Boolean) ?? null
 
   const discipline = number ? (/^([A-Z]+)/.exec(number)?.[1] ?? null) : null
-  return { number, discipline, title, rev, date, scaleText: scaleLine?.text ?? null, feetPerInch: scaleLine?.feetPerInch ?? null, confidence: Math.round(confidence * 100) / 100 }
+  return { number, discipline, title, rev, date, scaleText: scaleLine?.text ?? null, feetPerInch: scaleLine?.feetPerInch ?? null, confidence: Math.round(confidence * 100) / 100, kind: number ? PAGE_KIND : pageKind(words) }
 }
 
 /**

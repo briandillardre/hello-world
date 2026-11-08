@@ -137,5 +137,25 @@ eq(tb.revsIn('REV. NO. 3 · REVISION B').join(), '3,B', 'revision marks')
   eq(r.title, 'GRADING PLAN', 'F fixture PDF title')
 }
 
+// ── Pages with no sheet number get a name from what they look like ──
+{
+  const dot = tb.readTitleBlock([w('SOUTH CAROLINA DEPARTMENT OF TRANSPORTATION', 1300, 1600, 30), w('STANDARD DRAWING 605-105', 1300, 1500, 24), w('CURB AND GUTTER DETAILS', 1300, 1400, 20), w('NOTES: 1. CONCRETE 3000 PSI', 400, 300, 8)], PAGE)
+  eq(dot.number, null, 'DOT page reads no number')
+  eq(dot.kind.code, 'DOT', 'DOT page kind')
+  eq(dot.kind.title, 'DOT standard details', 'DOT page title')
+  const det = tb.pageKind([w('TYPICAL PAVEMENT DETAIL', 1300, 1600, 28), w('NOT TO SCALE', 1300, 1550, 10), w('SEE GRADING PLAN', 500, 300, 8)])
+  eq(det.code, 'DETAIL', 'detail page kind (big text beats the small PLAN)')
+  eq(tb.pageKind([]).code, 'PAGE', 'no words = PAGE')
+  eq(tb.pageKind([w('GENERAL NOTES', 1300, 1600, 28), w('1. ALL WORK PER PLANS', 400, 1400, 10)]).code, 'NOTES', 'notes page kind')
+  const C101 = tb.readTitleBlock([w('SHEET', 2440, 210, 10), w('C-101', 2440, 150, 36), w('SITE DETAILS', 2440, 320, 16)], PAGE)
+  eq(C101.kind.code, 'PAGE', 'a numbered sheet needs no kind')
+  const DET = { code: 'DETAIL', title: 'Details' }, DOTK = { code: 'DOT', title: 'DOT standard' }
+  const names = tb.nameUnnumbered([
+    { number: 'C-101', kind: null }, { number: null, kind: DET }, { number: null, kind: DOTK },
+    { number: 'DETAIL-2', kind: null }, { number: null, kind: DET }, { number: null, kind: DOTK }, { number: null, kind: null },
+  ])
+  eq(JSON.stringify(names), JSON.stringify([null, 'DETAIL-1', 'DOT-1', null, 'DETAIL-3', 'DOT-2', 'PAGE-1']), 'names per kind, skipping a printed DETAIL-2')
+}
+
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
