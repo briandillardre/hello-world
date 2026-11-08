@@ -41,6 +41,8 @@ export interface ChangeOrder {
   id: string; number: number; customerNo: string | null; title: string; description: string | null; type: CoType | null; status: CoStatus
   identifiedOn: string | null; submittedOn: string | null; approvedOn: string | null
   requested: number | null; approved: number | null; costImpact: number | null; scheduleDays: number | null; note: string | null
+  /** The budget cost type the cost impact lands on (job cost, 155): L M S E O. */
+  costPcat?: 'L' | 'M' | 'S' | 'E' | 'O' | null
 }
 
 /** One line of an application: what it was billed against and what was billed. */
@@ -273,6 +275,7 @@ export function cleanChangeOrder(raw: unknown): { co?: Omit<ChangeOrder, 'id' | 
       customerNo: clip(o.customerNo, 40), title, description: clip(o.description, 2000), type, status,
       identifiedOn: day(o.identifiedOn), submittedOn: day(o.submittedOn), approvedOn: status === 'approved' ? day(o.approvedOn) : day(o.approvedOn),
       requested, approved, costImpact, scheduleDays: days, note: clip(o.note, 500),
+      costPcat: (['L', 'M', 'S', 'E', 'O'] as const).find((p) => p === o.costPcat) ?? null,
     },
   }
 }

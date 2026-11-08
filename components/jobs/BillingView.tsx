@@ -347,7 +347,7 @@ function SovPanel({ zoneId, sov, total, contract, canEdit, run, busy }: { zoneId
   )
 }
 
-const blankCo = { id: null as string | null, title: '', customerNo: '', type: '', status: 'potential', identifiedOn: '', submittedOn: '', approvedOn: '', requested: '', approved: '', costImpact: '', scheduleDays: '', description: '', note: '' }
+const blankCo = { id: null as string | null, title: '', customerNo: '', type: '', status: 'potential', identifiedOn: '', submittedOn: '', approvedOn: '', requested: '', approved: '', costImpact: '', costPcat: 'E', scheduleDays: '', description: '', note: '' }
 
 function CoPanel({ zoneId, cos, canEdit, run, busy }: { zoneId: string; cos: ChangeOrder[]; canEdit: boolean; run: Run; busy: string | null }) {
   const [d, setD] = useState<typeof blankCo | null>(null)
@@ -366,7 +366,7 @@ function CoPanel({ zoneId, cos, canEdit, run, busy }: { zoneId: string; cos: Cha
             </p>
           </div>
           {canEdit && <>
-            <button type="button" aria-label="Edit" onClick={() => setD({ id: c.id, title: c.title, customerNo: c.customerNo ?? '', type: c.type ?? '', status: c.status, identifiedOn: c.identifiedOn ?? '', submittedOn: c.submittedOn ?? '', approvedOn: c.approvedOn ?? '', requested: s(c.requested), approved: s(c.approved), costImpact: s(c.costImpact), scheduleDays: s(c.scheduleDays), description: c.description ?? '', note: c.note ?? '' })} className="rounded p-1 text-faint hover:text-ink"><Pencil className="h-3.5 w-3.5" /></button>
+            <button type="button" aria-label="Edit" onClick={() => setD({ id: c.id, title: c.title, customerNo: c.customerNo ?? '', type: c.type ?? '', status: c.status, identifiedOn: c.identifiedOn ?? '', submittedOn: c.submittedOn ?? '', approvedOn: c.approvedOn ?? '', requested: s(c.requested), approved: s(c.approved), costImpact: s(c.costImpact), costPcat: c.costPcat ?? 'E', scheduleDays: s(c.scheduleDays), description: c.description ?? '', note: c.note ?? '' })} className="rounded p-1 text-faint hover:text-ink"><Pencil className="h-3.5 w-3.5" /></button>
             {c.status !== 'approved' && <button type="button" aria-label="Delete" onClick={() => { if (window.confirm(`Delete CO${c.number}?`)) void run('delCo', () => deleteChangeOrderAction(zoneId, c.id), 'Couldn’t delete it — try again.') }} className="rounded p-1 text-faint hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>}
           </>}
         </div>
@@ -383,6 +383,7 @@ function CoPanel({ zoneId, cos, canEdit, run, busy }: { zoneId: string; cos: Cha
             <L label="Asked for ($, minus for a credit)"><input inputMode="decimal" className={inp} value={d.requested} onChange={(e) => setD({ ...d, requested: e.target.value })} /></L>
             <L label="Approved ($)"><input inputMode="decimal" className={inp} value={d.approved} onChange={(e) => setD({ ...d, approved: e.target.value })} /></L>
             <L label="Cost impact on the budget ($)"><input inputMode="decimal" className={inp} value={d.costImpact} onChange={(e) => setD({ ...d, costImpact: e.target.value })} /></L>
+            <L label="…lands on the budget's"><select className={inp} value={d.costPcat} onChange={(e) => setD({ ...d, costPcat: e.target.value })}>{(['L', 'M', 'S', 'E', 'O'] as const).map((p) => <option key={p} value={p}>{({ L: 'Labor', M: 'Material', S: 'Subcontract', E: 'Equipment & trucking', O: 'Other' })[p]}</option>)}</select></L>
             <L label="Came up"><input type="date" className={inp} value={d.identifiedOn} onChange={(e) => setD({ ...d, identifiedOn: e.target.value })} /></L>
             <L label="Submitted"><input type="date" className={inp} value={d.submittedOn} onChange={(e) => setD({ ...d, submittedOn: e.target.value })} /></L>
             <L label="Approved on"><input type="date" className={inp} value={d.approvedOn} onChange={(e) => setD({ ...d, approvedOn: e.target.value })} /></L>

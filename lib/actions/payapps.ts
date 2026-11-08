@@ -155,6 +155,7 @@ export async function saveChangeOrderAction(zoneId: string, raw: unknown, id?: s
     customer_no: co.customerNo, title: co.title, description: co.description, type: co.type, status: co.status,
     identified_on: co.identifiedOn, submitted_on: co.submittedOn, approved_on: co.status === 'approved' ? (co.approvedOn ?? new Date().toISOString().slice(0, 10)) : co.approvedOn,
     requested_amount: co.requested, approved_amount: co.approved, cost_impact: co.costImpact, schedule_days: co.scheduleDays, note: co.note,
+    cost_pcat: co.costPcat ?? null,
     updated_at: new Date().toISOString(),
   }
   if (id) {

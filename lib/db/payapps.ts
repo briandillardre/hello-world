@@ -17,7 +17,7 @@ export function coFromRow(r: Record<string, unknown>): ChangeOrder {
     id: String(r.id), number: Number(r.number), customerNo: (r.customer_no as string | null) ?? null, title: String(r.title), description: (r.description as string | null) ?? null,
     type: (r.type as CoType | null) ?? null, status: String(r.status) as CoStatus, identifiedOn: (r.identified_on as string | null) ?? null, submittedOn: (r.submitted_on as string | null) ?? null,
     approvedOn: (r.approved_on as string | null) ?? null, requested: num(r.requested_amount), approved: num(r.approved_amount), costImpact: num(r.cost_impact),
-    scheduleDays: num(r.schedule_days), note: (r.note as string | null) ?? null,
+    scheduleDays: num(r.schedule_days), note: (r.note as string | null) ?? null, costPcat: (r.cost_pcat as ChangeOrder['costPcat']) ?? null,
   }
 }
 export function appFromRow(r: Record<string, unknown>): AppRow {
@@ -32,7 +32,7 @@ export function appFromRow(r: Record<string, unknown>): AppRow {
 }
 
 export const SOV_COLS = 'id, item_no, area, description, scheduled_value, retainage_pct, sort'
-export const CO_COLS = 'id, number, customer_no, title, description, type, status, identified_on, submitted_on, approved_on, requested_amount, approved_amount, cost_impact, schedule_days, note'
+export const CO_COLS = 'id, number, customer_no, title, description, type, status, identified_on, submitted_on, approved_on, requested_amount, approved_amount, cost_impact, schedule_days, note, cost_pcat'
 export const APP_COLS = 'id, app_no, app_date, period_to, status, retainage_pct, stored_retainage_pct, release, entries, lines, totals, invoice_no, note, submitted_at, approved_at, paid_on, paid_amount, waiver, waiver_on'
 
 export interface Billing { available: boolean; sov: SovLine[]; cos: ChangeOrder[]; apps: AppView[] }
