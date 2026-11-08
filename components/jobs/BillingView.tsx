@@ -270,10 +270,10 @@ function AppPanel({ app, apps, sov, cos, contract, info, canEdit, canManage, run
           <button type="button" disabled={!!busy || !dirty} onClick={() => void save()} className="rounded-xl bg-amber px-3 py-1.5 font-semibold text-navy-950 disabled:opacity-50">{busy === 'save' ? 'Saving…' : dirty ? 'Save' : 'Saved'}</button>
           {canManage && (
             <button type="button" disabled={!!busy || dirty} title={dirty ? 'Save first' : undefined}
-              onClick={() => { if (window.confirm(`Send pay app ${app.appNo} for ${money(t.currentDue)}? Its numbers freeze once sent.`)) void run('send', () => submitPayAppAction(app.id), 'Couldn’t send it — try again.') }}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-teal px-3 py-1.5 font-semibold text-navy-950 disabled:opacity-50"><Send className="h-4 w-4" /> {busy === 'send' ? 'Sending…' : 'Send — freeze the numbers'}</button>
+              onClick={() => { if (window.confirm(`Mark pay app ${app.appNo} sent for ${money(t.currentDue)}? Its numbers freeze — the PDF or Excel goes to the customer from you.`)) void run('send', () => submitPayAppAction(app.id), 'Couldn’t mark it sent — try again.') }}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-teal px-3 py-1.5 font-semibold text-navy-950 disabled:opacity-50"><Send className="h-4 w-4" /> {busy === 'send' ? 'Marking sent…' : 'Mark sent — freeze the numbers'}</button>
           )}
-          {!canManage && <span className="text-faint">A Manager sends it.</span>}
+          {!canManage && <span className="text-faint">A Manager marks it sent.</span>}
           <button type="button" disabled={!!busy} onClick={() => { if (window.confirm('Delete this draft?')) void run('del', () => deleteDraftAction(app.id), 'Couldn’t delete it — try again.') }} className={btn}><Trash2 className="h-4 w-4" /> Delete draft</button>
         </div>
       )}

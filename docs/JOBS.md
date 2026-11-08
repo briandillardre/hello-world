@@ -19,7 +19,7 @@ equipment hours.
 
 - **One job per site** (`jobs`, migration 152). The site zone stays the
   project (046's zone = project = QuickBooks customer); the job number is the
-  front of the zone name (`26-084 Haywood Mall`), and *Give it the next job
+  front of the zone name (`26-084 North Lot`), and *Give it the next job
   number* writes both. A job never sits on a personal zone, a boundary, a
   supplier stop or a yard, and a site with a job can't be made personal (152
   extends 151's guard).
@@ -93,7 +93,7 @@ Jobs → a job → **Pay apps** (costs only). DCG's PA1, PA2… tabs as screens:
   number for the resubmission.
 - **PDF and Excel** off the screen (`lib/jobs/payapp-docs.ts`): the
   application page and the continuation sheet in the G702 / G703 layout
-  (our own words — AIA's forms are copyrighted), and a workbook whose
+  (our own words throughout, the certification included — AIA's forms are copyrighted), and a workbook whose
   application sheet reads the continuation sheet by live formulas. In the
   Android app both go out as export links (the WebView has no download).
   The customer's own lien waiver and notarized affidavit forms are still
@@ -221,6 +221,10 @@ write is a server action on the service role after the edit + Jobs checks
 
 ## Still to build
 
+Board #234: the proposal PDF and e-sign on proposals and change orders;
+sub and supplier commitments (POs, subcontracts) as committed cost; a
+per-sub COI list with expiry reminders; T&M tickets; pay apps to
+QuickBooks as invoices once it connects.
 
 Harnesses: `node scripts/jobs-test.mjs` — after ANY change to
 `lib/jobs/job.ts`; `node scripts/payapp-test.mjs` — after ANY change to
