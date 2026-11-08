@@ -5,6 +5,7 @@
  * ability.
  */
 import type { Measure, Unit, MarkGeom, MarkKind } from '@/lib/plans/measure'
+import { allRows } from '@/lib/db/paged'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -96,9 +97,10 @@ export async function getMarks(versionIds: string[]): Promise<PlanMark[]> {
     const db = createClient()
     const out: PlanMark[] = []
     for (let i = 0; i < versionIds.length; i += 150) {
-      const { data, error } = await db.from('plan_marks').select(MARK_COLS).in('version_id', versionIds.slice(i, i + 150)).limit(10000)
+      const chunk = versionIds.slice(i, i + 150)
+      const { rows, error } = await allRows((from, to) => db.from('plan_marks').select(MARK_COLS).in('version_id', chunk).order('id').range(from, to), { max: 20_000 })
+      for (const r of rows) out.push(markFromRow(r as Record<string, unknown>))
       if (error) return out
-      for (const r of data ?? []) out.push(markFromRow(r as Record<string, unknown>))
     }
     return out
   } catch {

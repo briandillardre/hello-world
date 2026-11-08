@@ -332,8 +332,16 @@ flight (Measure); nothing is measured on upload by itself:
 - **The flight is the existing ground that day.** The server reads only the
   grading limits' window of the survey plus a 30 m band, runs the saved design
   against it with the topsoil and demo deductions dropped (the flight already
-  shows that ground), and stores cut left, fill left and % done — the share of
-  what the design had to move (cut + topsoil + demo out, fill in) that is done.
+  shows that ground), and stores cut left, fill left and % done. The yardstick
+  is the START: the same design run against the original ground (the lidar
+  with the takeoff's datum offset, or the traced contours), measured exactly
+  the way a flight is — so untouched ground reads 0% and a finished site 100%
+  (adding the takeoff's topsoil strip to its cut read a 10 ft fill pad as 9%
+  done before anyone showed up). The finished grade ties in to the ORIGINAL
+  ground at the grading limits even when the flight is the existing — a
+  stockpile or silt fence on the limit line never bends the design. With no
+  lidar for the start, the takeoff's own cut + fill stand in and the result
+  says so.
 - **Levelled before it is trusted.** A drone without survey control can sit
   metres off vertically, so the flight is shifted by the median of (lidar +
   the takeoff's datum offset − flight) on the band outside the limits — ground

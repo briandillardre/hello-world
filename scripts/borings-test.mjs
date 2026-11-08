@@ -184,6 +184,13 @@ ok(allFar.rock === null && G.groundWords(allFar, 1)[0].startsWith('No boring sit
   ok(!local.rows.length && /local site grid/.test(local.skipped[0]?.why ?? ''), 'a local site grid (N 5000 / E 5000) is refused, never placed')
   ok(!!P.parseBorings('just some text').error, 'no header row: says what it needs')
   {
+    const ft = P.parseBorings('Name,Lat,Lng,Depth (ft),Topsoil (ft)\nB-1,34.85,-82.39,15,0.5')
+    ok(ft.rows[0]?.boring.topsoilIn === 6, `a Topsoil (ft) column is converted to inches (${ft.rows[0]?.boring.topsoilIn})`)
+    const inch = P.parseBorings('Name,Lat,Lng,Depth,Topsoil (in)\nB-1,34.85,-82.39,15,6')
+    ok(inch.rows[0]?.boring.topsoilIn === 6, 'a Topsoil (in) column stays inches')
+    ok(P.readNumber('None to 20 ft') === null && P.readNumber("NE @ 15'") === null, 'not encountered down to a depth is never a hit at it')
+  }
+  {
     // Every label the panel echoes back must itself read as a heading — the doc lists them that way (truth-check, Nov 8).
     const labels = Object.values(P.WORDS)
     const echo = P.parseBorings(labels.join('\t') + '\n' + labels.map(() => '').join('\t'))

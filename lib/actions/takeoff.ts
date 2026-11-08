@@ -16,6 +16,7 @@ import { versionScale, remeasureVersion, itemsById } from '@/lib/takeoff-server'
 import { markFromRow, MARK_COLS, memoFromRow, MEMO_COLS, type PlanMark, type BidMemo } from '@/lib/db/takeoff'
 import { keyRateLimited } from '@/lib/rate-limit'
 import { cleanPenStats, ruleAssign, cleanAssignments, firstPassPrompt, FIRST_PASS_SYSTEM, MAX_MARKS, type Assignment, type LibraryItem } from '@/lib/plans/first-pass'
+import { allRows } from '@/lib/db/paged'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -108,8 +109,8 @@ export async function saveTakeoffItemAction(input: ItemInput): Promise<Res<{ id:
     const { error } = await svc.from('takeoff_items').update(row).eq('id', input.id).eq('company_id', companyId)
     if (error) return { ok: false, error: 'Couldn’t save — try again.' }
     // Depth / unit changes re-measure the marks that use it.
-    const { data: vs } = await svc.from('plan_marks').select('version_id').eq('item_id', input.id).is('deleted_at', null).limit(5000)
-    for (const vid of Array.from(new Set((vs ?? []).map((r) => String(r.version_id))))) await remeasureVersion(svc, companyId, vid)
+    const { rows: vs } = await allRows((from, to) => svc.from('plan_marks').select('id, version_id').eq('item_id', input.id).eq('company_id', companyId).is('deleted_at', null).order('id').range(from, to), { max: 20_000 })
+    for (const vid of Array.from(new Set(vs.map((r) => String(r.version_id))))) await remeasureVersion(svc, companyId, vid)
     revalidatePath('/plans', 'layout')
     return { ok: true, id: input.id }
   }
@@ -197,14 +198,30 @@ export async function updateMarkAction(markId: string, patch: { itemId?: string;
   return { ok: true, mark: markFromRow(data as Record<string, unknown>) }
 }
 
+/**
+ * One change on many marks. Ids ride the request URL, so 100 at a time (400
+ * ids made a 15.7 KB URL), every answer checked, and no .limit() on an UPDATE
+ * (PostgREST 12 refuses it) — "Accept all" used to report done while nothing
+ * saved (ship-check, Nov 8).
+ */
+async function updateMarks(svc: ReturnType<typeof import('@/lib/supabase-server').createServiceClient>, companyId: string, ids: string[], patch: Record<string, unknown>): Promise<{ sheetId: string | null; failed: boolean }> {
+  let sheetId: string | null = null
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await svc.from('plan_marks').update(patch).in('id', ids.slice(i, i + 100)).eq('company_id', companyId).is('deleted_at', null).select('sheet_id')
+    if (error) return { sheetId, failed: true }
+    if (!sheetId && data?.[0]) sheetId = String(data[0].sheet_id)
+  }
+  return { sheetId, failed: false }
+}
+
 export async function deleteMarksAction(markIds: string[]): Promise<Res> {
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { companyId, svc } = await writer()
   if (!Array.isArray(markIds) || markIds.length > 2000 || !markIds.every((x) => UUID.test(x))) return { ok: false, error: 'Bad marks' }
   if (!markIds.length) return { ok: true }
-  const { data } = await svc.from('plan_marks').update({ deleted_at: new Date().toISOString() }).in('id', markIds).eq('company_id', companyId).select('sheet_id').limit(1)
-  if (data?.[0]) refresh(await zoneOfSheet(svc, String(data[0].sheet_id)), String(data[0].sheet_id))
-  return { ok: true }
+  const r = await updateMarks(svc, companyId, markIds, { deleted_at: new Date().toISOString() })
+  if (r.sheetId) refresh(await zoneOfSheet(svc, r.sheetId), r.sheetId)
+  return r.failed ? { ok: false, error: 'Couldn’t delete them all — try again.' } : { ok: true }
 }
 
 /** Accept the AI's suggested marks, or clear "needs a look" on carried ones. */
@@ -213,9 +230,9 @@ export async function confirmMarksAction(markIds: string[]): Promise<Res> {
   const { companyId, svc } = await writer()
   if (!Array.isArray(markIds) || markIds.length > 2000 || !markIds.every((x) => UUID.test(x))) return { ok: false, error: 'Bad marks' }
   if (!markIds.length) return { ok: true }
-  const { data } = await svc.from('plan_marks').update({ status: 'ok', updated_at: new Date().toISOString() }).in('id', markIds).eq('company_id', companyId).is('deleted_at', null).select('sheet_id').limit(1)
-  if (data?.[0]) refresh(await zoneOfSheet(svc, String(data[0].sheet_id)), String(data[0].sheet_id))
-  return { ok: true }
+  const r = await updateMarks(svc, companyId, markIds, { status: 'ok', updated_at: new Date().toISOString() })
+  if (r.sheetId) refresh(await zoneOfSheet(svc, r.sheetId), r.sheetId)
+  return r.failed ? { ok: false, error: 'Couldn’t accept them all — try again.' } : { ok: true }
 }
 
 /**

@@ -156,6 +156,13 @@ export interface RunLimits {
   deadline?: number
   /** Integration pieces + area splits allowed. */
   maxWork?: number
+  /**
+   * Where the finished grade ties in at the grading limits, when that is not
+   * this run's existing ground: a drone flight is the existing for progress,
+   * but the design still ties into the ORIGINAL ground (a stockpile or silt
+   * fence on the limit line must not bend it — ship-check, Nov 8).
+   */
+  tieIn?: { frame: Frame; eg: Surface | null }
 }
 
 const DEFAULT_MAX_WORK = 15_000_000
@@ -311,7 +318,7 @@ export class AreaLookup {
 }
 
 /** Build every surface and area for a design. Shared by the volume run and the heat map. */
-export function buildContext(design: DirtDesign, ground: GroundGrid | null, warnings: string[] = []): TakeoffContext & { flatTriangles: number; droppedEdges: number; proposedFromExisting: boolean; fgPoints: TinPoint[]; egTracedPoints: TinPoint[] } {
+export function buildContext(design: DirtDesign, ground: GroundGrid | null, warnings: string[] = [], tieIn?: RunLimits['tieIn']): TakeoffContext & { flatTriangles: number; droppedEdges: number; proposedFromExisting: boolean; fgPoints: TinPoint[]; egTracedPoints: TinPoint[] } {
   const c = centerOf(design)
   const zone = ground?.zone ?? (c ? utmZone(c[0]) : 17)
   const frame = makeFrame(c?.[0] ?? -81, c?.[1] ?? 34, zone)
@@ -461,7 +468,11 @@ export function buildContext(design: DirtDesign, ground: GroundGrid | null, warn
           const x = r[i] + ((r[j] - r[i]) * s) / steps
           const y = r[i + 1] + ((r[j + 1] - r[i + 1]) * s) / steps
           if (tooClose(x, y)) continue
-          const z = eg.zAt(x, y)
+          let z: number
+          if (!tieIn) z = eg.zAt(x, y)
+          else if (!tieIn.eg) z = NaN
+          else if (tieIn.frame.zone === frame.zone && tieIn.frame.e0 === frame.e0 && tieIn.frame.n0 === frame.n0) z = tieIn.eg.zAt(x, y)
+          else { const [lng, lat] = fromFrame(frame, x, y); const [tx, ty] = toFrame(tieIn.frame, lng, lat); z = tieIn.eg.zAt(tx, ty) }
           if (!Number.isFinite(z)) { missing++; continue }
           fgPoints.push({ x, y, z, src: 'grading limits' })
         }
@@ -546,7 +557,7 @@ export function runTakeoff(design: DirtDesign, ground: GroundGrid | null, now: D
   const t0 = Date.now()
   const budget = new Budget(limits)
   const warnings: string[] = []
-  const built = buildContext(design, ground, warnings)
+  const built = buildContext(design, ground, warnings, limits.tieIn)
   const { frame, eg, fg, boundary, demo, topsoil, reduce, platforms, domain } = built
   const k2 = frame.k * frame.k
   const look = lookups(built)

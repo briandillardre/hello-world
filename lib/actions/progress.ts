@@ -84,24 +84,34 @@ export async function measureProgressAction(input: { takeoffId: string; surfaceI
     const info = s.info as import('@/lib/dirt/dsm').DsmInfo
     const tiff = await openDsm(signed.signedUrl, signal)
     const top = await dsmSurface(tiff, info, frame, ring, signal)
-    // Level the flight on the untouched band against the lidar (plus the takeoff's datum offset).
+    // The original ground: the lidar — to level the flight on the untouched band
+    // (plus the takeoff's datum offset), and to measure where the job started.
+    let lidarGrid: import('@/lib/dirt/takeoff').GroundGrid | null = null
+    try {
+      const { groundCached } = await import('@/lib/dirt/ground')
+      const gr = await groundCached(svc as never, lngLat, signal, { companyId: g.companyId, who: g.userId })
+      if (gr.header.coverage > 0 && gr.grid.zone === frame.zone) lidarGrid = gr.grid
+    } catch { /* no lidar: the flight is used as flown and % done is against the takeoff — the result says so */ }
     let fit: DatumFit | null = null
-    if (!input.asFlown) {
-      try {
-        const { groundCached } = await import('@/lib/dirt/ground')
-        const gr = await groundCached(svc as never, lngLat, signal, { companyId: g.companyId, who: g.userId })
-        if (gr.header.coverage > 0 && gr.grid.zone === frame.zone) {
-          const { GridSurface } = await import('@/lib/dirt/surface')
-          const lg = gr.grid
-          const lidar = new GridSurface({ x0: lg.x0 - frame.e0, y0: lg.y0 - frame.n0, dx: lg.dx, dy: lg.dy, nx: lg.nx, ny: lg.ny, z: lg.z })
-          const offFt = design.existing.source === 'lidar' ? Number(design.existing.offsetFt) || 0 : original.datum?.planExistingMinusLidarFt ?? 0
-          fit = datumFit(bandDiffs({ flight: top.surface, existing: lidar, inside: lim.inside, box: b, existingOffsetM: offFt * FT }))
-        }
-      } catch { /* no lidar: the flight is used as flown, and the result says so */ }
+    if (!input.asFlown && lidarGrid) {
+      const { GridSurface } = await import('@/lib/dirt/surface')
+      const lg = lidarGrid
+      const lidar = new GridSurface({ x0: lg.x0 - frame.e0, y0: lg.y0 - frame.n0, dx: lg.dx, dy: lg.dy, nx: lg.nx, ny: lg.ny, z: lg.z })
+      const offFt = design.existing.source === 'lidar' ? Number(design.existing.offsetFt) || 0 : original.datum?.planExistingMinusLidarFt ?? 0
+      fit = datumFit(bandDiffs({ flight: top.surface, existing: lidar, inside: lim.inside, box: b, existingOffsetM: offFt * FT }))
     }
+    const pd = progressDesign(design)
+    // Where the job started: the same design against the ORIGINAL existing ground
+    // (the takeoff's own — lidar with its offset, or the traced contours). Its
+    // finished grade ties in to that ground at the limits, and the flight's run
+    // borrows that tie-in: a stockpile on the limit line must not bend the design.
+    const deadline = Date.now() + RUN_MS
+    const start = lidarGrid || design.existing.source === 'traced'
+      ? runTakeoff({ ...pd, existing: design.existing }, lidarGrid, new Date(), { deadline })
+      : null
     const ground = flightGround(top.surface, frame, fit?.offsetM ?? 0, `Drone survey “${s.name}” (${s.flown_on})`, top.resM)
-    const run = runTakeoff(progressDesign(design), ground, new Date(), { deadline: Date.now() + RUN_MS })
-    results = progressResults({ flownOn: String(s.flown_on), left: run.results, original, fit, asFlown: !!input.asFlown, resolutionM: top.resM })
+    const run = runTakeoff(pd, ground, new Date(), { deadline, tieIn: start ? { frame: start.ctx.frame, eg: start.ctx.eg } : undefined })
+    results = progressResults({ flownOn: String(s.flown_on), left: run.results, start: start?.results ?? null, original, fit, asFlown: !!input.asFlown, resolutionM: top.resM })
     const { heatRaster } = await import('@/lib/dirt/heat')
     heat = heatRaster(run.ctx, { maxPx: 1400 })
   } catch (e) {

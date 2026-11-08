@@ -18,8 +18,8 @@ import {
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
-type ExportKind = 'gif' | 'png' | 'pdf'
-const EXPORT_MIME: Record<ExportKind, string> = { gif: 'image/gif', png: 'image/png', pdf: 'application/pdf' }
+type ExportKind = 'gif' | 'png' | 'pdf' | 'xlsx'
+const EXPORT_MIME: Record<ExportKind, string> = { gif: 'image/gif', png: 'image/png', pdf: 'application/pdf', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
 const isExportKind = (k: unknown): k is ExportKind =>
   typeof k === 'string' && Object.prototype.hasOwnProperty.call(EXPORT_MIME, k)
 const MAX_EXPORT_BYTES = 25 * 1024 * 1024
@@ -131,7 +131,7 @@ export async function finalizeExportAction(path: string, filename: string, title
   const me = await caller()
   if (!me) return { ok: false, error: 'Sign in first.' }
   if (await previewing()) return { ok: false, error: 'Leave “View as” first.' }
-  const m = new RegExp(`^${exportFolder(me.companyId)}/exports/([23456789abcdefghjkmnpqrstuvwxyz]{12})\\.(gif|png|pdf)$`).exec(path)
+  const m = new RegExp(`^${exportFolder(me.companyId)}/exports/([23456789abcdefghjkmnpqrstuvwxyz]{12})\\.(gif|png|pdf|xlsx)$`).exec(path)
   if (!m) return { ok: false, error: 'Bad upload path' }
   const id = m[1]
   const ext = m[2] as ExportKind

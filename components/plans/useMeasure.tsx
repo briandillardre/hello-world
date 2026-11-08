@@ -179,7 +179,8 @@ export function useMeasure({ versionId, prevVersionId, items, allMarks, setAllMa
   }
 
   const panel = on ? (
-    <div className="px-3 py-2 bg-navy-900 border-b border-navy-800 text-[12px] space-y-2">
+    // Capped: a long legend scrolls inside the panel instead of shrinking the sheet to a sliver on a phone.
+    <div className="px-3 py-2 bg-navy-900 border-b border-navy-800 text-[12px] space-y-2 max-h-[38dvh] overflow-y-auto overscroll-contain">
       {blocked && <p className="text-amber">{blocked}</p>}
       {canEdit && !blocked && (
         <div className="flex items-center gap-2 flex-wrap">

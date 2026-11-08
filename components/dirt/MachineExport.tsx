@@ -7,7 +7,7 @@
  * the site's Machine files with the plan revisions it was traced from — what
  * the dealer builds the machine's file from.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Cpu, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
@@ -33,12 +33,16 @@ export function MachineExport({ takeoffId, name, zoneId, zoneRing, design, groun
   const [done, setDone] = useState<{ warnings: string[]; grid: string } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const zoneNo = centre ? Math.floor((centre[0] + 180) / 6) + 1 : 17
+  // Leaving the panel stops a running export — it used to keep a phone's CPU busy for up to 3 minutes.
+  const worker = useRef<Worker | null>(null)
+  useEffect(() => () => { worker.current?.terminate(); worker.current = null }, [])
 
   if (!canEdit || !zoneId) return null
 
   function build(): Promise<Exported> {
     return new Promise((resolve, reject) => {
       const w = new Worker(new URL('../../lib/dirt/worker.ts', import.meta.url))
+      worker.current = w
       const stop = setTimeout(() => { w.terminate(); reject(new Error('The export took too long — try again on a computer.')) }, 180_000)
       w.onmessage = (e: MessageEvent<{ type: string; error?: string } & Partial<Exported>>) => {
         clearTimeout(stop)

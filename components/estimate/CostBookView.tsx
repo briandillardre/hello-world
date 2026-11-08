@@ -89,7 +89,7 @@ function Prices({ book, canEdit, canManage }: { book: CostBook; canEdit: boolean
     if (!draft) return
     setErr(null)
     const r = await savePriceAction({
-      id: draft.id, placeId: draft.placeId, materialId: draft.materialId, price: Number(draft.price), unit: draft.unit, basis: draft.basis,
+      id: draft.id, placeId: draft.placeId, materialId: draft.materialId, price: draft.price.trim() === '' ? null : Number(draft.price), unit: draft.unit, basis: draft.basis,
       minCharge: n(draft.minCharge), fuelPct: n(draft.fuelPct), quotedOn: draft.quotedOn, note: draft.note || null,
     }).catch(() => null)
     if (!r?.ok) { setErr(r && !r.ok ? r.error : 'Couldn’t save — try again.'); return }

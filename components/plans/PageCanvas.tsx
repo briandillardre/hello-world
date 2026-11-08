@@ -198,7 +198,7 @@ export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, 
 
   // ── gestures ──
   const pointers = useRef(new Map<number, { x: number; y: number }>())
-  const downAt = useRef(new Map<number, { x: number; y: number; t: number; moved: number }>())
+  const downAt = useRef(new Map<number, { x: number; y: number; t: number; moved: number; multi?: boolean }>())
   const pinch = useRef<{ d: number; mx: number; my: number } | null>(null)
   const lastTap = useRef(0)
 
@@ -221,6 +221,9 @@ export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, 
     wrap.current?.setPointerCapture(e.pointerId)
     pointers.current.set(e.pointerId, local(e))
     downAt.current.set(e.pointerId, { ...local(e), t: Date.now(), moved: 0 })
+    // Every finger down while another is down took part in a pinch — none of them is a tap
+    // when it lifts (a still thumb in a pinch used to drop a stray corner; ship-check, Nov 8).
+    if (pointers.current.size > 1) for (const d of Array.from(downAt.current.values())) d.multi = true
     if (pointers.current.size === 2) {
       const [a, b] = Array.from(pointers.current.values())
       pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }
@@ -251,6 +254,12 @@ export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, 
       pinch.current = { d, mx, my }
     }
   }
+  /** The OS took the touch back (a gesture, a call): forget it — never a tap. */
+  function onPointerCancel(e: React.PointerEvent) {
+    pointers.current.delete(e.pointerId)
+    downAt.current.delete(e.pointerId)
+    if (pointers.current.size < 2) pinch.current = null
+  }
   function onPointerUp(e: React.PointerEvent) {
     const wasOnly = pointers.current.size === 1
     pointers.current.delete(e.pointerId)
@@ -258,7 +267,7 @@ export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, 
     const d0 = downAt.current.get(e.pointerId)
     downAt.current.delete(e.pointerId)
     // A tap: one finger, barely moved, quick — never the end of a pan or a pinch.
-    if (onTap && wasOnly && d0 && d0.moved < 6 && Date.now() - d0.t < 600 && camRef.current.s) {
+    if (onTap && wasOnly && d0 && !d0.multi && d0.moved < 6 && Date.now() - d0.t < 600 && camRef.current.s) {
       const p = local(e)
       onTap(toPage(p.x, p.y, camRef.current, vw, vh, cos, sin), camRef.current)
     }
@@ -283,7 +292,7 @@ export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, 
 
   return (
     <div ref={wrap} className={'relative h-full w-full overflow-hidden bg-[#3b4652] touch-none select-none ' + (drawing ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing')}
-      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
       <div className="absolute left-0 top-0 origin-top-left shadow-2xl" style={{ width: pageW, height: pageH, transform: t }}>
         <div ref={baseHost} className="absolute inset-0 bg-white" />
         <canvas ref={detail} className="absolute" style={detailBox ? {

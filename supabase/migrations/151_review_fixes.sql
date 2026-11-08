@@ -56,4 +56,11 @@ CREATE POLICY "admins read" ON public.estimate_markups
     AND EXISTS (SELECT 1 FROM public.estimates e JOIN public.geofences g ON g.id = e.geofence_id
                 WHERE e.id = estimate_markups.estimate_id AND (g.owner_id IS NULL OR g.owner_id = auth.uid())));
 
+-- 5. The takeoff workbook leaves the Android app as an export link (the
+--    WebView has no download door, the Sep 12 lesson): .xlsx joins the
+--    exports bucket's types.
+UPDATE storage.buckets
+   SET allowed_mime_types = ARRAY['image/gif', 'image/png', 'application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+ WHERE id = 'exports';
+
 NOTIFY pgrst, 'reload schema';

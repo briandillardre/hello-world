@@ -362,6 +362,7 @@ function PhotoButton({ id, onDone, onError }: { id: string; onDone: () => void; 
       const c = document.createElement('canvas')
       c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k)
       c.getContext('2d')?.drawImage(bmp, 0, 0, c.width, c.height)
+      bmp.close()
       const b = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/jpeg', 0.85))
       return b ?? f
     } catch { return f }

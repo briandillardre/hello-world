@@ -67,8 +67,13 @@ export async function startMachineUploadAction(input: { zoneId: string; filename
 async function takeoffBuiltFrom(svc: Svc, companyId: string, zoneId: string, takeoffId: string): Promise<BuiltFrom[] | null> {
   const { data: t } = await svc.from('dirt_takeoffs').select('id, design').eq('id', takeoffId).eq('company_id', companyId).eq('geofence_id', zoneId).is('deleted_at', null).maybeSingle()
   if (!t) return null
-  const sheets = ((t.design as { sheets?: unknown } | null)?.sheets ?? []) as unknown[]
-  const ids = sheets.filter((s): s is string => typeof s === 'string' && UUID.test(s)).slice(0, 200)
+  // The sheets it was traced from: the ones the plan reader imported (each
+  // feature's `src` is the sheet picture), plus any the design lists. Nothing
+  // wrote `design.sheets` until now, so every export read "Plans not recorded"
+  // (ship-check, Nov 8). A hand-traced takeoff still records none — honestly.
+  const design = (t.design ?? {}) as { sheets?: unknown; features?: { src?: unknown }[] }
+  const raw = [...(Array.isArray(design.sheets) ? design.sheets : []), ...(Array.isArray(design.features) ? design.features.map((f) => f?.src) : [])]
+  const ids = Array.from(new Set(raw.filter((s): s is string => typeof s === 'string' && UUID.test(s)))).slice(0, 200)
   if (!ids.length) return []
   const { data: vs } = await svc.from('plan_versions').select('id, sheet_id, issued_on').in('image_id', ids).eq('company_id', companyId).is('deleted_at', null)
     .order('issued_on', { ascending: false }).limit(400)

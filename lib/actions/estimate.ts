@@ -12,7 +12,7 @@ import { requireEditOrThrow } from '@/lib/permissions-server'
 import { rankOf, RANK } from '@/lib/permissions'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { keyRateLimited } from '@/lib/rate-limit'
-import { cleanLines, cleanMarkups, cleanSettings, PRICE_UNITS, type Line, type LineUnit, type PriceUnit } from '@/lib/estimate/engine'
+import { cleanLines, cleanMarkups, cleanSettings, PRICE_UNITS, type Line, type LineUnit, type PriceUnit, layersOf } from '@/lib/estimate/engine'
 import { SOURCE_KINDS } from '@/lib/db/estimate'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -82,7 +82,7 @@ export async function deleteMaterialAction(id: string): Promise<Res> {
 
 // ── Prices ──────────────────────────────────────────────────────────────────
 
-export interface PriceInput { id?: string; placeId: string; materialId: string; price: number; unit: string; basis: string; minCharge?: number | null; fuelPct?: number | null; quotedOn: string; note?: string | null }
+export interface PriceInput { id?: string; placeId: string; materialId: string; price: number | null; unit: string; basis: string; minCharge?: number | null; fuelPct?: number | null; quotedOn: string; note?: string | null }
 
 async function priceRow(svc: Svc, companyId: string, input: PriceInput): Promise<Record<string, unknown> | string> {
   if (!UUID.test(input.placeId) || !UUID.test(input.materialId)) return 'Pick a source and a material.'
@@ -157,7 +157,9 @@ export async function importPricesAction(text: string): Promise<Res<{ added: num
     const [srcName, matName, priceTxt, unitTxt, basisTxt, quoted, note] = rows[i]
     const placeId = placeBy.get((srcName ?? '').toLowerCase())
     if (!placeId) { skipped.push({ row: i + 1, why: `No place called “${clip(srcName, 40)}” on the map — drop its pin first.` }); continue }
-    const price = Number(String(priceTxt ?? '').replace(/[$,\s]/g, ''))
+    // An empty cell is no price — never $0, which would win "cheapest delivered" (ship-check, Nov 8).
+    const priceClean = String(priceTxt ?? '').replace(/[$,\s]/g, '')
+    const price = priceClean ? Number(priceClean) : NaN
     if (!(price >= 0 && price <= 1_000_000)) { skipped.push({ row: i + 1, why: 'No price.' }); continue }
     const unit = String(unitTxt ?? '').toUpperCase().replace(/^TONS?$/, 'TON').replace(/^LOADS?$/, 'LOAD').replace(/^EACH$/, 'EA') as PriceUnit
     if (!PRICE_UNITS.includes(unit)) { skipped.push({ row: i + 1, why: `Unit “${clip(unitTxt, 10)}” — use TON, CY, SY, SF, LF, EA or LOAD.` }); continue }
@@ -283,18 +285,32 @@ export async function createEstimateAction(zoneId: string, snapshotId: string | 
   // Each item's section depth turns its area into the volume a material is sold by.
   const { data: items } = await svc.from('takeoff_items').select('code, depth_in').eq('company_id', companyId).is('deleted_at', null).limit(1000)
   const depthOf = new Map((items ?? []).map((i) => [String(i.code), (i.depth_in as number | null) ?? null]))
-  const lines: Line[] = rows.map((r) => ({
-    id: lineId(), section: r.section, code: r.code, name: r.name, unit: UNIT_OF[r.unit] ?? 'EA', qty: r.qty,
-    depthIn: depthOf.get(r.code) ?? null, materialId: null, placeId: null, wastePct: r.wastePct > 0 ? r.wastePct : null,
-    crewKey: null, perDay: null, subUnit: null, lowboyTrips: null, note: null,
-  }))
+  // A layered item ("3\" on 8\" stone") becomes a line per layer, each with its own depth.
+  const lines: Line[] = rows.flatMap((r) => {
+    const depth = depthOf.get(r.code) ?? null
+    const base = {
+      section: r.section, code: r.code, unit: UNIT_OF[r.unit] ?? 'EA', qty: r.qty, materialId: null, placeId: null,
+      wastePct: r.wastePct > 0 ? r.wastePct : null, crewKey: null, perDay: null, subUnit: null, lowboyTrips: null, note: null,
+    }
+    const layers = layersOf(r.name, depth)
+    if (!layers) return [{ ...base, id: lineId(), name: r.name, depthIn: depth }]
+    return layers.map((d, k) => ({
+      ...base, id: lineId(), depthIn: d,
+      name: `${r.name} — ${layers.length === 2 ? (k === 0 ? 'top' : 'base') : `layer ${k + 1}`} ${d}″`,
+    }))
+  })
   lines.unshift({ id: lineId(), section: 'General', code: 'MOB', name: 'Mobilization', unit: 'LS', qty: 1, depthIn: null, materialId: null, placeId: null, wastePct: null, crewKey: null, perDay: null, subUnit: null, lowboyTrips: 2, note: null })
   const { data: est, error } = await svc.from('estimates').insert({
     company_id: companyId, geofence_id: site.id, name: label, snapshot_id: snapshotId, lines: cleanLines(lines), created_by: userId,
   }).select('id').single()
   if (error || !est) return { ok: false, error: 'Couldn’t start the estimate — try again.' }
   const { data: d } = await svc.from('cost_markup_defaults').select('data').eq('company_id', companyId).maybeSingle()
-  await svc.from('estimate_markups').insert({ estimate_id: est.id, company_id: companyId, data: cleanMarkups(d?.data ?? {}) })
+  const { error: mkErr } = await svc.from('estimate_markups').insert({ estimate_id: est.id, company_id: companyId, data: cleanMarkups(d?.data ?? {}) })
+  if (mkErr) {
+    // Without its margins row the bid would read 0% overhead and profit — take it back and say so.
+    await svc.from('estimates').update({ deleted_at: new Date().toISOString() }).eq('id', est.id).eq('company_id', companyId)
+    return { ok: false, error: 'Couldn’t start the estimate — try again.' }
+  }
   refreshSite(site.id)
   return { ok: true, id: String(est.id) }
 }

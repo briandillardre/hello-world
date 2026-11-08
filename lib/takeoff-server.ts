@@ -5,6 +5,7 @@
  */
 import { checksFor, measuringFeet, markQty, kindFor, type ItemLike, type MarkGeom, type MarkKind } from '@/lib/plans/measure'
 import type { Corners4 } from '@/lib/plans/north'
+import { allRows } from '@/lib/db/paged'
 
 type Svc = ReturnType<typeof import('@/lib/supabase-server')['createServiceClient']>
 
@@ -34,7 +35,7 @@ export async function versionScale(svc: Svc, companyId: string, versionId: strin
 /** Re-measure every live mark on a version (after its scale changed). */
 export async function remeasureVersion(svc: Svc, companyId: string, versionId: string): Promise<void> {
   const sc = await versionScale(svc, companyId, versionId)
-  const { data: marks } = await svc.from('plan_marks').select('id, kind, geom, item_id').eq('version_id', versionId).eq('company_id', companyId).is('deleted_at', null).limit(5000)
+  const { rows: marks } = await allRows((from, to) => svc.from('plan_marks').select('id, kind, geom, item_id').eq('version_id', versionId).eq('company_id', companyId).is('deleted_at', null).order('id').range(from, to), { max: 20_000 })
   const itemIds = Array.from(new Set((marks ?? []).map((m) => m.item_id).filter((x): x is string => !!x)))
   const items = await itemsById(svc, companyId, itemIds)
   for (const m of marks ?? []) {
@@ -57,8 +58,8 @@ export async function itemsById(svc: Svc, companyId: string, ids: string[]): Pro
  * flagged for a look; nothing silently stands.
  */
 export async function carryMarks(svc: Svc, companyId: string, fromVersionId: string, toVersionId: string, drawingChanged: boolean, userId: string | null): Promise<number> {
-  const { data: marks } = await svc.from('plan_marks').select('id, sheet_id, item_id, kind, geom, label, status')
-    .eq('version_id', fromVersionId).eq('company_id', companyId).is('deleted_at', null).neq('status', 'suggested').limit(5000)
+  const { rows: marks } = await allRows((from, to) => svc.from('plan_marks').select('id, sheet_id, item_id, kind, geom, label, status')
+    .eq('version_id', fromVersionId).eq('company_id', companyId).is('deleted_at', null).neq('status', 'suggested').order('id').range(from, to), { max: 20_000 })
   if (!marks?.length) return 0
   const sc = await versionScale(svc, companyId, toVersionId)
   const items = await itemsById(svc, companyId, Array.from(new Set(marks.map((m) => m.item_id).filter((x): x is string => !!x))))

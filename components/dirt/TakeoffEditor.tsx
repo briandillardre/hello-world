@@ -241,10 +241,11 @@ export default function TakeoffEditor({ takeoff, zone, sheets, borings, canEdit 
   const boringsChanged = useMemo(() => {
     const g = saved.results?.ground
     if (!saved.results) return false
-    if (!g) return borings.length > 0
+    // No grading limits = no ground results to have (the server stores none) — not a change.
+    if (!g) return borings.length > 0 && design.features.some(f => f.kind === 'boundary')
     const at = saved.at ? Date.parse(saved.at) : 0
     return borings.length !== g.borings + g.pits + g.far.length || borings.some(b => Date.parse(b.updatedAt) > at)
-  }, [borings, saved.results, saved.at])
+  }, [borings, saved.results, saved.at, design.features])
   // The server's saved numbers stand until something changes — no preview run
   // needed (or shown) for a takeoff opened as it was saved.
   const needPreview = dirty || !saved.results || boringsChanged
