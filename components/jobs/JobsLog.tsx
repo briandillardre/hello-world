@@ -71,12 +71,12 @@ export function JobsLog({ rows, members, available, sites, template, templateCus
   return (
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="max-w-4xl mx-auto px-4 py-5 space-y-4">
-        <div className="flex items-start gap-3 flex-wrap">
-          <div className="min-w-0 flex-1">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+          <div className="min-w-0 sm:flex-1">
             <h1 className="font-display font-bold text-xl text-ink flex items-center gap-2"><Briefcase className="h-5 w-5 text-amber" /> Jobs</h1>
             <p className="text-[12.5px] text-faint">Every job from the bid to the final lien waiver — where it stands, what is left on its checklist, who runs it.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {canManage && (
               <button type="button" onClick={() => setEditingTemplate((v) => !v)} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
                 <ListChecks className="h-4 w-4" /> Checklist template

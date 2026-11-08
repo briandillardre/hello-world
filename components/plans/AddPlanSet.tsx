@@ -419,7 +419,15 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
                 </label>
               </div>
 
-              <Tally items={items} verdicts={verdicts} />
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex-1 min-w-0"><Tally items={items} verdicts={verdicts} /></div>
+                <button type="button" disabled={!items.length || items.every((it) => it.keep)}
+                  onClick={() => setItems((xs) => xs.map((it) => ({ ...it, keep: true, keepTouched: true })))}
+                  className="rounded-lg border border-navy-700 px-2.5 py-1 text-[12px] text-muted hover:text-ink disabled:opacity-40">Select all</button>
+                <button type="button" disabled={!items.some((it) => it.keep)}
+                  onClick={() => setItems((xs) => xs.map((it) => ({ ...it, keep: false, keepTouched: true })))}
+                  className="rounded-lg border border-navy-700 px-2.5 py-1 text-[12px] text-muted hover:text-ink disabled:opacity-40">Deselect all</button>
+              </div>
 
               <div className="space-y-2">
                 {items.map((it) => {
