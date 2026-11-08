@@ -13,7 +13,7 @@
  *   sub       = a sub's quote × the quantity.
  * The source is picked by delivered cost (plant + haul), cheapest first, and
  * the estimator can pin another. Distances are road miles and minutes with no
- * traffic, or the fleet's own round trips where trucks have made the run.
+ * traffic (the fleet's own round trips are board #217, not built).
  * Markups sit on the direct cost: overhead, contingency, profit, bond, and
  * sales tax on materials.
  */
@@ -87,8 +87,12 @@ export function qtyIn(qty: number, unit: LineUnit, depthIn: number | null, to: P
   if (to === 'CY') return cy
   if (to === 'TON') return tonsPerCy ? cy * tonsPerCy : null
   if (to === 'LOAD') {
-    if (tonsPerCy && s.haul.truckTons > 0) return (cy * tonsPerCy) / s.haul.truckTons
-    return s.haul.truckCy > 0 ? cy / s.haul.truckCy : null
+    // A truck fills by weight or by volume, whichever comes first — the same rule as loadsFor
+    // (topsoil at 1.1 t/CY fills a 14 CY bed before 18 t: by tons alone it under-counted loads).
+    const byTon = tonsPerCy && s.haul.truckTons > 0 ? (cy * tonsPerCy) / s.haul.truckTons : null
+    const byCy = s.haul.truckCy > 0 ? cy / s.haul.truckCy : null
+    if (byTon === null && byCy === null) return null
+    return Math.max(byTon ?? 0, byCy ?? 0)
   }
   return null
 }
@@ -97,7 +101,12 @@ export function qtyIn(qty: number, unit: LineUnit, depthIn: number | null, to: P
 export function loadsFor(q: number, unit: PriceUnit, tonsPerCy: number | null, s: Settings): number | null {
   if (!(q > 0)) return 0
   if (unit === 'LOAD') return Math.ceil(q - 1e-9)
-  if (unit === 'TON') return s.haul.truckTons > 0 ? Math.ceil(q / s.haul.truckTons - 1e-9) : null
+  if (unit === 'TON') {
+    if (!(s.haul.truckTons > 0)) return null
+    const byTon = q / s.haul.truckTons
+    const byCy = tonsPerCy && s.haul.truckCy > 0 ? q / tonsPerCy / s.haul.truckCy : 0
+    return Math.ceil(Math.max(byTon, byCy) - 1e-9)
+  }
   if (unit === 'CY') {
     // A truck fills by weight or by volume, whichever comes first.
     const byCy = s.haul.truckCy > 0 ? q / s.haul.truckCy : 0
@@ -130,13 +139,29 @@ export interface SourceOption {
   quotedOn: string
 }
 
+/**
+ * The quotes that stand: the newest per source + material + pickup/delivered.
+ * Old quotes stay listed in the cost book, but a line is never priced off one —
+ * January's $18 must not beat October's $24 at the same quarry (ship-check, Nov 8).
+ * Same day: the one listed first.
+ */
+export function currentPrices(prices: Price[]): Price[] {
+  const best = new Map<string, Price>()
+  for (const p of prices) {
+    const k = `${p.placeId}|${p.materialId}|${p.basis}`
+    const cur = best.get(k)
+    if (!cur || p.quotedOn > cur.quotedOn) best.set(k, p)
+  }
+  return prices.filter((p) => best.get(`${p.placeId}|${p.materialId}|${p.basis}`) === p)
+}
+
 /** Every source that prices a material, cheapest delivered first (unknown distance last). */
 export function sourceOptions(materialId: string, materials: Material[], prices: Price[], sources: Source[], distances: Map<string, Distance>, s: Settings): SourceOption[] {
   const m = materials.find((x) => x.id === materialId)
   if (!m) return []
   const byId = new Map(sources.map((x) => [x.id, x]))
   const out: SourceOption[] = []
-  for (const p of prices) {
+  for (const p of currentPrices(prices)) {
     if (p.materialId !== materialId) continue
     const src = byId.get(p.placeId)
     if (!src) continue
@@ -144,7 +169,9 @@ export function sourceOptions(materialId: string, materials: Material[], prices:
     let haulPerUnit: number | null = null
     if (p.basis === 'delivered') haulPerUnit = 0
     else if (d) {
-      const perLoad = p.unit === 'LOAD' ? 1 : p.unit === 'TON' ? s.haul.truckTons : p.unit === 'CY' ? Math.min(s.haul.truckCy, m.tonsPerCy ? s.haul.truckTons / m.tonsPerCy : Infinity) : null
+      const perLoad = p.unit === 'LOAD' ? 1
+        : p.unit === 'TON' ? Math.min(s.haul.truckTons, m.tonsPerCy ? s.haul.truckCy * m.tonsPerCy : Infinity)
+        : p.unit === 'CY' ? Math.min(s.haul.truckCy, m.tonsPerCy ? s.haul.truckTons / m.tonsPerCy : Infinity) : null
       haulPerUnit = perLoad && perLoad > 0 && Number.isFinite(perLoad) ? tripCost(d, s) / perLoad : null
     }
     const fuel = p.fuelPct ? 1 + p.fuelPct / 100 : 1
@@ -201,7 +228,8 @@ export function lineCost(line: Line, c: Ctx): LineCost {
         out.materialQty = r3(need)
         out.materialUnit = src.unit
         const price = c.prices.find((p) => p.id === src.priceId)
-        out.material = Math.max(need * src.plant, price?.minCharge ?? 0)
+        // A line with nothing to buy pays nothing — not the source's minimum charge.
+        out.material = need > 0 ? Math.max(need * src.plant, price?.minCharge ?? 0) : 0
         if (src.basis === 'pickup') {
           const loads = loadsFor(need, src.unit, m.tonsPerCy, s)
           out.loads = loads
@@ -267,6 +295,22 @@ export function totals(costs: { line: Line; cost: LineCost }[], mk: Markups): To
     bySection: Array.from(sec.entries()).map(([section, total]) => ({ section, total: r2(total) })),
     overhead: r2(overhead), contingency: r2(contingency), profit: r2(profit), bond: r2(bond), tax: r2(tax), bid: r2(before + bond),
   }
+}
+
+/**
+ * The layers a paving item's name spells out: "Heavy duty asphalt (3" on 8"
+ * stone)" → [3, 8]. The item's depth is the whole section the dirt takeoff
+ * deducts (11"); an estimate line takes ONE material, so a layered item becomes
+ * a line per layer — 11" of asphalt by the ton was 3.7× the real tonnage
+ * (ship-check, Nov 8). null = not layered (one material, the item's depth).
+ * The layers must add up to the item's depth when it has one.
+ */
+export function layersOf(name: string, depthIn: number | null): number[] | null {
+  const ns = Array.from(String(name).matchAll(/(\d+(?:\.\d+)?)\s*(?:"|″|''|in\b|inch(?:es)?\b)/gi)).map((m) => Number(m[1])).filter((n) => n > 0 && n <= 48)
+  if (ns.length < 2) return null
+  const sum = ns.reduce((a, b) => a + b, 0)
+  if (depthIn !== null && depthIn > 0 && Math.abs(sum - depthIn) > 0.5) return null
+  return ns
 }
 
 /** Trucks to keep a crew fed: one load every `minutesPerLoad`, each truck gone a round trip. */

@@ -140,7 +140,10 @@ export async function deleteGeofence(id: string): Promise<void> {
 
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
-  const { error } = await supabase.from('geofences').delete().eq('id', id)
+  const { data, error } = await supabase.from('geofences').delete().eq('id', id).select('id')
   // Only an Admin deletes a privacy zone (133) — say so rather than "deleted".
   if (error?.code === '42501') throw new Error(error.message)
+  if (error) throw new Error('Couldn’t delete that zone — try again.')
+  // RLS deletes nothing it refuses (151: a company zone is a Manager's) — never report that as done.
+  if (!data?.length) throw new Error('That zone is for a Manager or above to delete.')
 }

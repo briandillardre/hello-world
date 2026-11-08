@@ -51,7 +51,29 @@ export function EstimateView({ zone, book, estimate, markups, distances, snapsho
   const [status, setStatus] = useState(estimate?.status ?? 'draft')
   const [mk, setMk] = useState<Markups | null>(markups)
   const [saved, setSaved] = useState<'saved' | 'saving' | 'dirty' | 'error'>('saved')
-  useEffect(() => { setLines(estimate?.lines ?? []); setName(estimate?.name ?? ''); setStatus(estimate?.status ?? 'draft') }, [estimate?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The save waiting on the timer, so leaving the page (or switching estimates)
+  // sends it instead of dropping it (ship-check, Nov 8).
+  const pending = useRef<{ id: string; data: { lines: Line[]; name: string; status: typeof status } } | null>(null)
+  const flush = useRef(() => {})
+  flush.current = () => {
+    const p = pending.current
+    if (!p) return
+    pending.current = null
+    if (timer.current) clearTimeout(timer.current)
+    void saveEstimateAction(p.id, p.data).catch(() => null)
+  }
+  useEffect(() => {
+    const onHide = () => flush.current()
+    window.addEventListener('pagehide', onHide)
+    return () => { window.removeEventListener('pagehide', onHide); flush.current() }
+  }, [])
+  useEffect(() => {
+    flush.current()
+    setLines(estimate?.lines ?? []); setName(estimate?.name ?? ''); setStatus(estimate?.status ?? 'draft')
+    // The markups come with the estimate: a new one's (or the next one's after a delete) — never the last one's.
+    setMk(markups)
+  }, [estimate?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const dist = useMemo(() => new Map(Object.entries(distances)), [distances])
   const shop = useMemo(() => {
@@ -70,14 +92,15 @@ export function EstimateView({ zone, book, estimate, markups, distances, snapsho
   const distAge = Object.keys(distances).length
 
   // Save the choices a moment after the last change.
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const first = useRef(true)
   useEffect(() => {
     if (first.current) { first.current = false; return }
     if (!estimate || !canEdit) return
     setSaved('dirty')
     if (timer.current) clearTimeout(timer.current)
+    pending.current = { id: estimate.id, data: { lines, name, status } }
     timer.current = setTimeout(async () => {
+      pending.current = null
       setSaved('saving')
       const r = await saveEstimateAction(estimate.id, { lines, name, status }).catch(() => null)
       setSaved(r?.ok ? 'saved' : 'error')
@@ -100,7 +123,7 @@ export function EstimateView({ zone, book, estimate, markups, distances, snapsho
     const r = await refreshDistancesAction(zone.id).catch(() => null)
     setBusy(null)
     if (!r?.ok) { setErr(r && !r.ok ? r.error : 'Couldn’t measure the distances — try again.'); return }
-    if (r.missing) setErr(`${r.missing} source${r.missing === 1 ? '' : 's'} had no road route (or are more than ~150 miles away).`)
+    if (r.missing) setErr(`${r.missing} source${r.missing === 1 ? '' : 's'} had no road route (more than ~150 miles away, or past the 60 nearest sources).`)
     router.refresh()
   }
   async function saveMarkups(next: Markups) {

@@ -40,7 +40,7 @@ type Key = 'name' | 'kind' | 'lat' | 'lng' | 'northing' | 'easting' | 'groundFt'
 
 const ALIASES: Record<Key, string[]> = {
   name: ['name', 'boring', 'boringno', 'boringnumber', 'boringid', 'boringname', 'boringlocation', 'id', 'location', 'locationid', 'testlocation', 'pit', 'pitno', 'testpit', 'testpitno', 'tp', 'hole', 'holeid', 'point', 'no', 'number'],
-  kind: ['kind', 'type'],
+  kind: ['kind', 'type', 'boringorpit'],
   lat: ['lat', 'latitude'],
   lng: ['lng', 'lon', 'long', 'longitude'],
   northing: ['northing', 'north', 'n', 'y', 'spn', 'stateplanen', 'stateplanenorthing'],
@@ -48,16 +48,17 @@ const ALIASES: Record<Key, string[]> = {
   groundFt: ['ground', 'groundelev', 'groundelevation', 'groundsurface', 'groundsurfaceelev', 'groundsurfaceelevation', 'elev', 'elevation', 'surface', 'surfaceelev', 'surfaceelevation', 'gse', 'grade', 'existinggrade'],
   depthFt: ['depth', 'totaldepth', 'td', 'boringdepth', 'termination', 'terminationdepth', 'bottom', 'depthdrilled', 'maxdepth'],
   topsoilIn: ['topsoil', 'topsoilthickness', 'topsoildepth', 'organics'],
-  fillFt: ['fill', 'existingfill', 'filldepth', 'fillto'],
-  pwrFt: ['pwr', 'pwrdepth', 'depthtopwr', 'partiallyweatheredrock', 'weatheredrock'],
-  refusalFt: ['refusal', 'augerrefusal', 'refusaldepth', 'depthtorefusal', 'rock', 'rockdepth', 'depthtorock'],
+  fillFt: ['fill', 'existingfill', 'filldepth', 'fillto', 'existingfillto'],
+  pwrFt: ['pwr', 'pwrat', 'pwrdepth', 'depthtopwr', 'partiallyweatheredrock', 'weatheredrock'],
+  refusalFt: ['refusal', 'refusalat', 'augerrefusal', 'refusaldepth', 'depthtorefusal', 'rock', 'rockdepth', 'depthtorock'],
   waterFt: ['water', 'groundwater', 'gw', 'waterdepth', 'depthtowater', 'wateratdrilling', 'atdrilling', 'atcompletion', 'gwatdrilling', 'groundwateratdrilling', 'groundwateratcompletion', 'waterlevelatcompletion', 'waterlevelatdrilling', 'wl', 'waterlevel'],
-  water24hFt: ['water24', 'water24h', 'water24hr', 'water24hrs', 'water24hour', 'water24hours', '24hr', '24hrs', '24h', '24hour', 'gw24', 'gw24hr', 'wl24hr', 'waterlevel24hr', 'after24hr', 'after24hours', 'groundwater24', 'groundwater24h', 'groundwater24hr', 'groundwater24hrs', 'groundwater24hour', 'groundwater24hours'],
+  water24hFt: ['water24', 'water24h', 'water24hr', 'waterat24h', 'waterat24hr', 'waterat24hrs', 'waterat24hours', 'water24hrs', 'water24hour', 'water24hours', '24hr', '24hrs', '24h', '24hour', 'gw24', 'gw24hr', 'wl24hr', 'waterlevel24hr', 'after24hr', 'after24hours', 'groundwater24', 'groundwater24h', 'groundwater24hr', 'groundwater24hrs', 'groundwater24hour', 'groundwater24hours'],
   unsuitableFt: ['unsuitable', 'undercut', 'unsuitabledepth', 'unsuitablesoil', 'unsuitablesoildepth', 'unsuitableto', 'undercutdepth'],
   note: ['note', 'notes', 'remarks', 'remark', 'comment', 'comments', 'description'],
 }
 
-const WORDS: Record<Key, string> = {
+/** The words the panel echoes back — every one of them is also a heading it reads (harness-checked). */
+export const WORDS: Record<Key, string> = {
   name: 'name', kind: 'boring or pit', lat: 'latitude', lng: 'longitude', northing: 'northing', easting: 'easting',
   groundFt: 'ground elevation', depthFt: 'depth', topsoilIn: 'topsoil (in)', fillFt: 'existing fill to', pwrFt: 'PWR at',
   refusalFt: 'refusal at', waterFt: 'water at drilling', water24hFt: 'water at 24 h', unsuitableFt: 'unsuitable to', note: 'note',
@@ -76,6 +77,17 @@ function keyFor(heading: string): Key | null {
   return null
 }
 
+/**
+ * The unit a heading states — "Topsoil (ft)", "Depth ft", "Topsoil (in)" —
+ * so a value is converted, never read in the wrong unit (a 0.5 ft topsoil was
+ * stored as 0.5 in — ship-check, Nov 8). null = the column's own unit.
+ */
+export function unitOf(heading: string): 'ft' | 'in' | null {
+  const m = String(heading).trim().toLowerCase().match(/[\s(\[,/-](ft|feet|foot|in|inch|inches|"|'|″|′)[\])]?\.?$/)
+  if (!m) return null
+  return /^(in|inch|inches|"|″)$/.test(m[1]) ? 'in' : 'ft'
+}
+
 /** "None", "NE", "Dry", "—", blank: not encountered. */
 const NOT_FOUND = /^(none|ne|n\/?e|na|n\/a|nr|dry|not\s*encountered|no\s*\w*|nil|-+|—|–)$/i
 
@@ -83,6 +95,9 @@ const NOT_FOUND = /^(none|ne|n\/?e|na|n\/a|nr|dry|not\s*encountered|no\s*\w*|nil
 export function readNumber(raw: string): number | null | 'bad' {
   const s = raw.trim()
   if (!s || NOT_FOUND.test(s)) return null
+  // "None to 20 ft", "NE @ 15'", "Dry to 12": not encountered down to that depth —
+  // never a hit at the number (it read as refusal at 20 ft — ship-check, Nov 8).
+  if (/^(none|not\s*encountered|n\/?e|dry|nil)\b/i.test(s)) return null
   const m = s.replace(/,/g, '').match(/-?\d+(?:\.\d+)?/)
   if (!m) return 'bad'
   const v = Number(m[0])
@@ -126,6 +141,7 @@ export function parseBorings(text: string): PasteResult {
     if (has('name') && (has('depthFt') || has('lat') || has('northing'))) { head = i; cols = ks; break }
   }
   if (head < 0) return { ...out, error: 'Add a header row first — Name, Lat, Lng (or Northing, Easting), Depth, and any of Ground, Topsoil, Fill, PWR, Refusal, Water, Unsuitable.' }
+  const units = rows[head].map(unitOf)
   const seen = new Set<Key>()
   cols = cols.map((k) => (k && !seen.has(k) ? (seen.add(k), k) : null)) // the first column of each kind wins
   out.columns = cols.filter((k): k is Key => !!k).map((k) => WORDS[k])
@@ -138,6 +154,7 @@ export function parseBorings(text: string): PasteResult {
     if (cells.every((c) => !c.trim())) continue
     if (out.rows.length >= MAX_PASTE_ROWS) { out.skipped.push({ line, why: `Only ${MAX_PASTE_ROWS} borings at a time — paste the rest separately.` }); break }
     const get = (k: Key) => { const i = cols.indexOf(k); return i >= 0 ? (cells[i] ?? '').trim() : '' }
+    const unit = (k: Key) => { const i = cols.indexOf(k); return i >= 0 ? units[i] : null }
     const name = get('name').replace(/\s+/g, ' ').slice(0, 41)
     if (!name) { out.skipped.push({ line, why: 'No name.' }); continue }
     const nums: Partial<Record<Key, number | null>> = {}
@@ -145,7 +162,11 @@ export function parseBorings(text: string): PasteResult {
     for (const k of ['lat', 'lng', 'northing', 'easting', 'groundFt', 'depthFt', 'topsoilIn', 'fillFt', 'pwrFt', 'refusalFt', 'waterFt', 'water24hFt', 'unsuitableFt'] as Key[]) {
       const v = readNumber(get(k))
       if (v === 'bad') { bad = `${name}: "${get(k)}" isn't a number (${WORDS[k]}).`; break }
-      nums[k] = v
+      // Topsoil is kept in inches, every depth in feet — a heading in the other unit is converted.
+      nums[k] = v === null ? null
+        : k === 'topsoilIn' && unit(k) === 'ft' ? Math.round(v * 12 * 100) / 100
+        : k !== 'topsoilIn' && k.endsWith('Ft') && k !== 'groundFt' && unit(k) === 'in' ? Math.round((v / 12) * 1000) / 1000
+        : v
     }
     if (bad) { out.skipped.push({ line, why: bad }); continue }
     let lat = nums.lat ?? null, lng = nums.lng ?? null

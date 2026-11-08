@@ -5,6 +5,7 @@
  * ability.
  */
 import type { Measure, Unit, MarkGeom, MarkKind } from '@/lib/plans/measure'
+import { allRows } from '@/lib/db/paged'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -96,9 +97,10 @@ export async function getMarks(versionIds: string[]): Promise<PlanMark[]> {
     const db = createClient()
     const out: PlanMark[] = []
     for (let i = 0; i < versionIds.length; i += 150) {
-      const { data, error } = await db.from('plan_marks').select(MARK_COLS).in('version_id', versionIds.slice(i, i + 150)).limit(10000)
+      const chunk = versionIds.slice(i, i + 150)
+      const { rows, error } = await allRows((from, to) => db.from('plan_marks').select(MARK_COLS).in('version_id', chunk).order('id').range(from, to), { max: 20_000 })
+      for (const r of rows) out.push(markFromRow(r as Record<string, unknown>))
       if (error) return out
-      for (const r of data ?? []) out.push(markFromRow(r as Record<string, unknown>))
     }
     return out
   } catch {
@@ -140,13 +142,17 @@ export async function getBidMemo(zoneId: string): Promise<BidMemo | null> {
 export interface TakeoffLink { token: string; includeCosts: boolean; createdAt: string; lastUsedAt: string | null }
 
 /** The site's live spreadsheet links (service role — members hold no read on
- *  them; the caller has already checked it is an editor on this company). */
-export async function getTakeoffLinks(companyId: string, zoneId: string): Promise<TakeoffLink[]> {
+ *  them; the caller has already checked it is an editor on this company). A
+ *  login without the costs ability never sees a priced link — the token IS the
+ *  prices (sec-check, Nov 8). */
+export async function getTakeoffLinks(companyId: string, zoneId: string, withCosts: boolean): Promise<TakeoffLink[]> {
   if (isMock) return []
   try {
     const { createServiceClient } = await import('@/lib/supabase-server')
-    const { data } = await createServiceClient().from('takeoff_links').select('token, include_costs, created_at, last_used_at')
-      .eq('company_id', companyId).eq('geofence_id', zoneId).is('revoked_at', null).order('created_at', { ascending: false }).limit(20)
+    let q = createServiceClient().from('takeoff_links').select('token, include_costs, created_at, last_used_at')
+      .eq('company_id', companyId).eq('geofence_id', zoneId).is('revoked_at', null)
+    if (!withCosts) q = q.eq('include_costs', false)
+    const { data } = await q.order('created_at', { ascending: false }).limit(20)
     return (data ?? []).map((r) => ({ token: String(r.token), includeCosts: !!r.include_costs, createdAt: String(r.created_at), lastUsedAt: (r.last_used_at as string | null) ?? null }))
   } catch {
     return []

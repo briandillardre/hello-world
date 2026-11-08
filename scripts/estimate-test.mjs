@@ -100,6 +100,28 @@ eq(E.totals([], E.NO_MARKUPS).bid, 0, 'an empty estimate is $0')
 eq(E.trucksNeeded({ miles: 18, minutes: 30, source: 'road' }, S, 20), 4, 'trucks: a 75-min round trip, a load every 20 min → 4 trucks')
 
 // ── what a device may send ──
+// ── ship-check, Nov 8: the quote that stands, light loads, nothing to buy ──
+{
+  const quotes = [
+    { id: 'old', placeId: 'q-a', materialId: 'm-stone', price: 18, unit: 'TON', basis: 'pickup', minCharge: null, fuelPct: null, quotedOn: '2026-01-10' },
+    { id: 'new', placeId: 'q-a', materialId: 'm-stone', price: 24, unit: 'TON', basis: 'pickup', minCharge: null, fuelPct: null, quotedOn: '2026-10-02' },
+  ]
+  const o = E.sourceOptions('m-stone', mats, quotes, sources, dist, S)
+  eq(o.map((x) => [x.priceId, x.plant]), [['new', 24]], 'January’s $18 never beats October’s $24 at the same quarry — the newest quote stands')
+  const pinnedOld = E.lineCost({ ...stone, placeId: 'q-a' }, { ...ctx, prices: quotes })
+  eq(pinnedOld.source?.priceId, 'new', '…a line pinned to that quarry is priced off the newest quote too')
+  const top = { id: 'm-top', name: 'Topsoil', unit: 'LOAD', tonsPerCy: 1.1, wastePct: 0 }
+  near(E.qtyIn(140, 'CY', null, 'LOAD', 1.1, S), 10, 1e-9, '140 CY of topsoil = 10 loads by volume (14 CY beds), not 8.6 by weight')
+  eq(E.loadsFor(140 * 1.1, 'TON', 1.1, S), 10, 'tons of a light material haul by volume too')
+  const zero = E.lineCost({ ...stone, id: 'z', qty: 0 }, { ...ctx, prices: [{ ...prices[4], id: 'pz', materialId: 'm-stone' }] })
+  eq(zero.material, 0, 'a line with nothing to buy pays no minimum charge')
+  void top
+  eq(E.layersOf('Heavy duty asphalt (3" on 8" stone)', 11), [3, 8], 'a layered paving item splits into its layers (3" + 8" = the 11" section)')
+  eq(E.layersOf('Light duty asphalt (2" on 6" stone)', 8), [2, 6], '…light duty too')
+  eq(E.layersOf('Stone base (ABC), 8"', 8), null, 'one material, one layer: the item’s depth')
+  eq(E.layersOf('Odd (3" on 8" stone)', 14), null, 'layers that don’t add up to the section are never guessed')
+}
+
 const cl = E.cleanLines([
   { id: 'a1', name: 'Curb', unit: 'LF', qty: 120, crewKey: 'Bad Key', subUnit: -3, materialId: 'not-a-uuid' },
   { id: 'a1', name: 'dupe', unit: 'LF', qty: 1 },

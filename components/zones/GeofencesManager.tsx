@@ -7,7 +7,7 @@ import type { Geofence } from '@/lib/types'
 import { saveGeofenceAction, deleteGeofenceAction, setZoneCompletedAction, saveZoneFolderAction } from '@/lib/actions/zones'
 import { parseJobName, compareJobs } from '@/lib/job-code'
 import { SearchInput, SortPills } from '@/components/ui/list-controls'
-import { confirmSheet } from '@/components/ui/feedback'
+import { confirmSheet, toast } from '@/components/ui/feedback'
 import { DivisionChip, DivisionFilter, useDivisionFilter } from '@/components/divisions/DivisionBits'
 import { inDivision } from '@/lib/divisions'
 
@@ -166,7 +166,10 @@ function GeofenceRow({
     })
   const remove = async () => {
     const ok = await confirmSheet({ title: `Delete zone "${fence.name}"?`, message: "This can't be undone.", confirmLabel: 'Delete', destructive: true })
-    if (ok) start(async () => { await deleteGeofenceAction(fence.id) })
+    if (ok) start(async () => {
+      const r = await deleteGeofenceAction(fence.id).catch(() => null)
+      if (!r?.ok) toast(r && !r.ok ? r.error : 'That zone could not be deleted. Please try again.', { variant: 'error' })
+    })
   }
   // The Z flip: complete/reopen renames the job here AND (when connected)
   // the matching QuickBooks customer, so the crews' pick list follows.

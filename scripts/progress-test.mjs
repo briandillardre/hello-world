@@ -74,19 +74,52 @@ const fit = P.datumFit(diffs)
 near(fit.offsetM, -3, 0.01, `levelled on the band outside the limits (${diffs.length} samples): −3 m`)
 const levelled = P.flightGround(flightS, frame, fit.offsetM, 'flight', 1)
 const left = tk.runTakeoff(P.progressDesign(design), levelled).results
-const pr = P.progressResults({ flownOn: '2026-11-05', left, original, fit, asFlown: false, resolutionM: 1 })
+// Where the job started: the same design against the original ground, measured the way a flight is.
+const startRun = tk.runTakeoff({ ...P.progressDesign(design), existing: design.existing }, lidar)
+const start = startRun.results
+const pr = P.progressResults({ flownOn: '2026-11-05', left, start, original, fit, asFlown: false, resolutionM: 1 })
 near(pr.pctDone, 50, 1.5, 'half the pad dug: about 50% done')
-near(pr.cutLeftCy, (original.cutCy + original.topsoil.cy) / 2, 0.02 * original.cutCy, '…half of the cut and the topsoil left')
-ok(pr.cutCy === Math.round(original.cutCy + original.topsoil.cy), 'what had to come out counts the topsoil strip the takeoff booked apart')
+near(pr.cutLeftCy, start.cutCy / 2, 0.02 * start.cutCy, '…half of what had to come out is left')
+ok(pr.cutCy === Math.round(start.cutCy) && Math.abs(start.cutCy - (original.cutCy + original.topsoil.cy)) < 0.01 * start.cutCy, 'on a cut site the start is the cut plus the strip the takeoff booked apart')
 ok(pr.datum.mode === 'levelled' && Math.abs(pr.datum.offsetFt + 9.84) < 0.05, `the levelling is reported in feet (${pr.datum.offsetFt})`)
 const raw = tk.runTakeoff(P.progressDesign(design), P.flightGround(flightS, frame, 0, 'flight', 1)).results
-const prRaw = P.progressResults({ flownOn: '2026-11-05', left: raw, original, fit: null, asFlown: false, resolutionM: 1 })
+const prRaw = P.progressResults({ flownOn: '2026-11-05', left: raw, start, original, fit: null, asFlown: false, resolutionM: 1 })
 ok(prRaw.pctDone < 10 && prRaw.warnings.some((w) => /used as flown/.test(w)), `without levelling a 3 m-high flight reads as nothing done — and says it wasn't levelled (${prRaw.pctDone}%)`)
 const done = tk.runTakeoff(P.progressDesign(design), P.flightGround(toSurface(grid(() => 290, -100, -100, 300, 300)), frame, 0, 'f', 1)).results
-near(P.progressResults({ flownOn: 'x', left: done, original, fit: null, asFlown: true, resolutionM: 1 }).pctDone, 100, 0.5, 'graded to the pad everywhere: 100%')
+near(P.progressResults({ flownOn: 'x', left: done, start, original, fit: null, asFlown: true, resolutionM: 1 }).pctDone, 100, 0.5, 'graded to the pad everywhere: 100%')
+ok(P.progressResults({ flownOn: 'x', left: done, start: null, original, fit: null, asFlown: true, resolutionM: 1 }).warnings.some((w) => /start of the job couldn/.test(w)), 'no start measured: says % done is against the takeoff')
 ok(JSON.stringify(P.movedBetween([{ cutLeftCy: 400, fillLeftCy: 10 }, { cutLeftCy: 1000, fillLeftCy: 10 }, { cutLeftCy: 1500, fillLeftCy: 50 }])) === '[600,540,null]', 'yards moved between flights')
 const partial = tk.runTakeoff(P.progressDesign(design), P.flightGround(toSurface(grid(() => 290, -100, -100, 120, 300)), frame, 0, 'f', 1)).results
-ok(P.progressResults({ flownOn: 'x', left: partial, original, fit: null, asFlown: true, resolutionM: 1 }).warnings.some((w) => /covers \d+% of the grading limits/.test(w)), 'a flight that missed part of the site says so')
+ok(P.progressResults({ flownOn: 'x', left: partial, start, original, fit: null, asFlown: true, resolutionM: 1 }).warnings.some((w) => /covers \d+% of the grading limits/.test(w)), 'a flight that missed part of the site says so')
+
+// ── a FILL site (ship-check, Nov 8): untouched ground reads 0% done, not 9% ──
+{
+  const fillDesign = { v: 1, existing: { source: 'lidar', offsetFt: 0 }, settings: { shrinkPct: 0, truckCy: 12 }, features: [
+    { id: 'lim', kind: 'boundary', coords: rect(0, 0, 200, 200) },
+    { id: 'pad', kind: 'platform', coords: rect(0, 0, 200, 200), z: 310, offsetIn: 0, label: 'Pad' },
+    { id: 'ts', kind: 'topsoil', coords: rect(0, 0, 200, 200), thicknessIn: 6 },
+  ] }
+  const fStart = tk.runTakeoff({ ...P.progressDesign(fillDesign), existing: fillDesign.existing }, lidar)
+  const fOrig = tk.runTakeoff(fillDesign, lidar).results
+  const untouched = tk.runTakeoff(P.progressDesign(fillDesign), P.flightGround(toSurface(grid(() => 300, -100, -100, 300, 300)), frame, 0, 'f', 1), new Date(), { tieIn: { frame: fStart.ctx.frame, eg: fStart.ctx.eg } }).results
+  near(P.progressResults({ flownOn: 'x', left: untouched, start: fStart.results, original: fOrig, fit: null, asFlown: true, resolutionM: 1 }).pctDone, 0, 0.5, 'a 10 ft fill pad over untouched ground: 0% done')
+}
+
+// ── the tie-in stays on the original ground (ship-check, Nov 8) ──
+{
+  const sloped = { v: 1, existing: { source: 'lidar', offsetFt: 0 }, settings: { shrinkPct: 0, truckCy: 12 }, features: [
+    { id: 'lim', kind: 'boundary', coords: rect(0, 0, 300, 300) },
+    { id: 'pad', kind: 'platform', coords: rect(100, 100, 200, 200), z: 306, offsetIn: 0, label: 'Pad' },
+  ] }
+  const sStart = tk.runTakeoff({ ...P.progressDesign(sloped), existing: sloped.existing }, lidar)
+  // Nothing built — just a 6 ft berm straddling the north limit line.
+  const berm = toSurface(grid((x, y) => (y >= 290 && y <= 310 ? 306 : 300), -100, -100, 400, 400))
+  const flightB = P.flightGround(berm, frame, 0, 'f', 1)
+  const tied = tk.runTakeoff(P.progressDesign(sloped), flightB, new Date(), { tieIn: { frame: sStart.ctx.frame, eg: sStart.ctx.eg } }).results
+  const bent = tk.runTakeoff(P.progressDesign(sloped), flightB).results
+  ok(tied.fillCy <= sStart.results.fillCy * 1.01 && tied.cutCy > 50, `a berm on the limit line is cut left; the design's fill is unchanged (fill ${Math.round(tied.fillCy)} vs ${Math.round(sStart.results.fillCy)} at the start, cut ${Math.round(tied.cutCy)})`)
+  ok(bent.fillCy > tied.fillCy, `…tied into the flight instead, the design bends toward the berm (fill ${Math.round(bent.fillCy)})`)
+}
 
 console.log(`\nprogress: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

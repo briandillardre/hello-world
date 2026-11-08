@@ -55,7 +55,7 @@ export function CostBookView({ book, canEdit, canManage, canMargins, showMargins
               className={'rounded-full px-3 py-1 text-[12px] font-semibold border ' + (tab === t ? 'bg-teal/15 border-teal/40 text-teal' : 'border-navy-700 text-muted')}>{label[t]}</button>
           ))}
         </div>
-        {tab === 'prices' && <Prices book={book} canEdit={canEdit} />}
+        {tab === 'prices' && <Prices book={book} canEdit={canEdit} canManage={canManage} />}
         {tab === 'materials' && <Materials materials={book.materials} canEdit={canEdit} canManage={canManage} />}
         {tab === 'haul' && <Haul settings={book.settings} canEdit={canManage} />}
         {tab === 'margins' && showMargins && <Margins markups={book.markupDefaults} canEdit={canMargins} />}
@@ -68,7 +68,7 @@ export function CostBookView({ book, canEdit, canManage, canMargins, showMargins
 
 interface PriceDraft { id?: string; placeId: string; materialId: string; price: string; unit: PriceUnit; basis: 'pickup' | 'delivered'; minCharge: string; fuelPct: string; quotedOn: string; note: string }
 
-function Prices({ book, canEdit }: { book: CostBook; canEdit: boolean }) {
+function Prices({ book, canEdit, canManage }: { book: CostBook; canEdit: boolean; canManage: boolean }) {
   const router = useRouter()
   const [draft, setDraft] = useState<PriceDraft | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -89,7 +89,7 @@ function Prices({ book, canEdit }: { book: CostBook; canEdit: boolean }) {
     if (!draft) return
     setErr(null)
     const r = await savePriceAction({
-      id: draft.id, placeId: draft.placeId, materialId: draft.materialId, price: Number(draft.price), unit: draft.unit, basis: draft.basis,
+      id: draft.id, placeId: draft.placeId, materialId: draft.materialId, price: draft.price.trim() === '' ? null : Number(draft.price), unit: draft.unit, basis: draft.basis,
       minCharge: n(draft.minCharge), fuelPct: n(draft.fuelPct), quotedOn: draft.quotedOn, note: draft.note || null,
     }).catch(() => null)
     if (!r?.ok) { setErr(r && !r.ok ? r.error : 'Couldn’t save — try again.'); return }
@@ -155,7 +155,7 @@ function Prices({ book, canEdit }: { book: CostBook; canEdit: boolean }) {
                   <span className="font-mono text-ink whitespace-nowrap">{money(p.price)} / {p.unit}</span>
                   {canEdit && <>
                     <button type="button" aria-label="Edit price" onClick={() => setDraft({ id: p.id, placeId: p.placeId, materialId: p.materialId, price: String(p.price), unit: p.unit, basis: p.basis, minCharge: p.minCharge === null ? '' : String(p.minCharge), fuelPct: p.fuelPct === null ? '' : String(p.fuelPct), quotedOn: p.quotedOn, note: p.note ?? '' })} className="rounded p-1 text-faint hover:text-ink"><Pencil className="h-3.5 w-3.5" /></button>
-                    <button type="button" aria-label="Delete price" onClick={() => void remove(p.id)} className="rounded p-1 text-faint hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
+                    {canManage && <button type="button" aria-label="Delete price" onClick={() => void remove(p.id)} className="rounded p-1 text-faint hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>}
                   </>}
                 </div>
               )

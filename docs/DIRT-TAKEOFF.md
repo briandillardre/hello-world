@@ -303,7 +303,8 @@ revisions the takeoff was traced from:
 
 - **LandXML 1.2** — two TIN surfaces. *Finished grade*: the exact triangles the
   volumes are integrated on (traced contours, spots and pads, tied into
-  existing at the grading limits), clipped to the limits. *Subgrade*: those
+  existing at the grading limits), trimmed to the limits triangle by
+  triangle (a triangle stays when its centre is inside — the edge is ragged). *Subgrade*: those
   same triangles cut along every section and pad edge, each piece lowered by
   its section (pads at their subgrade), so inside a section subgrade is exactly
   finished grade less the thickness; the section side of each edge steps 2 cm
@@ -324,14 +325,23 @@ later is the newer one. Harness: `node scripts/machine-test.mjs`.
 
 ## Progress by drone flight (Nov 8, migration 150)
 
-Plan room → **Progress** measures every drone survey of the site (the DSMs
-uploaded on Stockpiles) against the site's saved dirt takeoff:
+Plan room → **Progress** measures any drone survey of the site (the DSMs
+uploaded on Stockpiles) against the site's saved dirt takeoff — one tap per
+flight (Measure); nothing is measured on upload by itself:
 
 - **The flight is the existing ground that day.** The server reads only the
   grading limits' window of the survey plus a 30 m band, runs the saved design
   against it with the topsoil and demo deductions dropped (the flight already
-  shows that ground), and stores cut left, fill left and % done — the share of
-  what the design had to move (cut + topsoil + demo out, fill in) that is done.
+  shows that ground), and stores cut left, fill left and % done. The yardstick
+  is the START: the same design run against the original ground (the lidar
+  with the takeoff's datum offset, or the traced contours), measured exactly
+  the way a flight is — so untouched ground reads 0% and a finished site 100%
+  (adding the takeoff's topsoil strip to its cut read a 10 ft fill pad as 9%
+  done before anyone showed up). The finished grade ties in to the ORIGINAL
+  ground at the grading limits even when the flight is the existing — a
+  stockpile or silt fence on the limit line never bends the design. With no
+  lidar for the start, the takeoff's own cut + fill stand in and the result
+  says so.
 - **Levelled before it is trusted.** A drone without survey control can sit
   metres off vertically, so the flight is shifted by the median of (lidar +
   the takeoff's datum offset − flight) on the band outside the limits — ground

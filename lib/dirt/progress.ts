@@ -110,7 +110,7 @@ export interface ProgressResults {
   /** Cut and fill still to move, CY. */
   cutLeftCy: number
   fillLeftCy: number
-  /** What the design had to take out before the job — cut plus the topsoil strip and demo (the takeoff's saved run) — and put in, CY. */
+  /** What was left to cut and to fill at the start of the job — the same design against the ORIGINAL ground, measured the way a flight is (no topsoil or demo deductions), CY. */
   cutCy: number
   fillCy: number
   /** 0–100: how much of the design's cut + fill is done. */
@@ -125,19 +125,27 @@ export interface ProgressResults {
 const r0 = (v: number) => Math.round(v)
 const r2 = (v: number) => Math.round(v * 100) / 100
 
-/** The numbers for one flight, from the design's run against it and the takeoff's original run. */
+/**
+ * The numbers for one flight. The yardstick is `start` — the same design run
+ * against the ORIGINAL ground, measured exactly the way the flight is — so a
+ * flight of untouched ground reads 0% and a finished site 100%. (Adding the
+ * takeoff's topsoil strip to its cut read a 10 ft fill pad as 9% done before
+ * anyone showed up — ship-check, Nov 8.) Without a start (no lidar for the
+ * original ground) the takeoff's own cut + fill stand in, and the result says so.
+ */
 export function progressResults(o: {
   flownOn: string; left: Pick<DirtResults, 'cutCy' | 'fillCy' | 'coveredPct' | 'warnings'>
-  original: Pick<DirtResults, 'cutCy' | 'fillCy'> & Partial<Pick<DirtResults, 'topsoil' | 'demo'>>
+  start: Pick<DirtResults, 'cutCy' | 'fillCy'> | null
+  original: Pick<DirtResults, 'cutCy' | 'fillCy'>
   fit: DatumFit | null; asFlown: boolean; resolutionM: number
 }): ProgressResults {
-  // A flight over untouched ground still carries the topsoil and the pavement the
-  // takeoff booked apart from its cut, so they count in what had to come out.
-  const out0 = Math.max(0, o.original.cutCy) + Math.max(0, o.original.topsoil?.cy ?? 0) + (o.original.demo ?? []).reduce((a, d) => a + Math.max(0, d.cy), 0)
-  const total = out0 + Math.max(0, o.original.fillCy)
+  const base = o.start ?? o.original
+  const cut0 = Math.max(0, base.cutCy), fill0 = Math.max(0, base.fillCy)
+  const total = cut0 + fill0
   const left = Math.max(0, o.left.cutCy) + Math.max(0, o.left.fillCy)
   const pct = total > 0 ? Math.max(0, Math.min(100, 100 * (1 - left / total))) : 0
   const warnings: string[] = []
+  if (!o.start) warnings.push('The start of the job couldn’t be measured the way the flight is (no lidar for the original ground here) — % done is against the takeoff’s own cut and fill.')
   const FT = 0.3048
   if (!o.asFlown && !o.fit) warnings.push('This flight couldn’t be levelled on the ground around the grading limits (too little untouched ground there, or no lidar to compare) — it is used as flown. A drone without survey control can sit feet off; check a known spot before trusting these numbers.')
   if (o.fit && o.fit.spreadM / FT > LOOSE_FT) warnings.push(`The ground around the limits disagreed with the flight by ±${(o.fit.spreadM / FT).toFixed(1)} ft (trees, piles or edges in the band) — the levelling is rough.`)
@@ -145,7 +153,7 @@ export function progressResults(o: {
   warnings.push(...o.left.warnings.filter((w) => !/lidar/i.test(w)))
   return {
     v: 1, flownOn: o.flownOn, cutLeftCy: r0(Math.max(0, o.left.cutCy)), fillLeftCy: r0(Math.max(0, o.left.fillCy)),
-    cutCy: r0(out0), fillCy: r0(o.original.fillCy), pctDone: Math.round(pct * 10) / 10, coveredPct: Math.round(o.left.coveredPct * 10) / 10,
+    cutCy: r0(cut0), fillCy: r0(fill0), pctDone: Math.round(pct * 10) / 10, coveredPct: Math.round(o.left.coveredPct * 10) / 10,
     datum: o.asFlown || !o.fit
       ? { mode: 'as-flown', offsetFt: null, spreadFt: null, samples: o.fit?.samples ?? 0 }
       : { mode: 'levelled', offsetFt: r2(o.fit.offsetM / FT), spreadFt: r2(o.fit.spreadM / FT), samples: o.fit.samples },

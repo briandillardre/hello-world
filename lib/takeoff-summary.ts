@@ -7,6 +7,7 @@
 import { currentOf, revLabel } from '@/lib/plans/room'
 import { versionFromRow } from '@/lib/db/plans'
 import type { Measure, Unit } from '@/lib/plans/measure'
+import { allRows } from '@/lib/db/paged'
 
 type Db = ReturnType<typeof import('@/lib/supabase-server')['createServiceClient']>
 
@@ -60,13 +61,15 @@ export async function buildTakeoff(db: Db, companyId: string, zoneId: string, wi
   const marks: { item_id: string | null; qty: number | null; status: string; version_id: string }[] = []
   const vids = cur.map((c) => c.versionId)
   for (let i = 0; i < vids.length; i += 150) {
-    const { data } = await db.from('plan_marks').select('item_id, qty, status, version_id')
-      .in('version_id', vids.slice(i, i + 150)).eq('company_id', companyId).is('deleted_at', null).limit(20000)
-    for (const r of data ?? []) marks.push(r as typeof marks[number])
+    const chunk = vids.slice(i, i + 150)
+    // Paged: one .limit() is cut to the API's ~1,000-row cap and the totals came up short (ship-check, Nov 8).
+    const { rows } = await allRows((from, to) => db.from('plan_marks').select('id, item_id, qty, status, version_id')
+      .in('version_id', chunk).eq('company_id', companyId).is('deleted_at', null).order('id').range(from, to))
+    for (const r of rows) marks.push(r as typeof marks[number])
   }
   const itemIds = Array.from(new Set(marks.map((m) => m.item_id).filter((x): x is string => !!x)))
   const { data: items } = itemIds.length
-    ? await db.from('takeoff_items').select(`id, code, name, measure, unit, section, color, waste_pct, sort${withPrices ? ', unit_price' : ''}`).in('id', itemIds).eq('company_id', companyId)
+    ? await db.from('takeoff_items').select(`id, code, name, measure, unit, section, color, waste_pct, sort${withPrices ? ', unit_price' : ''}`).in('id', itemIds).eq('company_id', companyId).is('deleted_at', null) // a deleted item's marks lose their item (the delete says so)
     : { data: [] as Record<string, unknown>[] }
   const byVersion = new Map(cur.map((c) => [c.versionId, c]))
   const rows = new Map<string, TakeoffRow & { sort: number }>()

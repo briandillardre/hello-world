@@ -31,7 +31,7 @@ export default async function Page({ params }: { params: { zoneId: string } }) {
     const [{ createServiceClient }, { buildTakeoff }] = await Promise.all([import('@/lib/supabase-server'), import('@/lib/takeoff-summary')])
     ;[summary, links] = await Promise.all([
       buildTakeoff(createServiceClient(), companyId, fence.id, perms.canViewCosts),
-      canEdit ? getTakeoffLinks(companyId, fence.id) : Promise.resolve([]),
+      canEdit ? getTakeoffLinks(companyId, fence.id, perms.canViewCosts) : Promise.resolve([]),
     ])
   }
   const [snapshots, memo] = await Promise.all([getSnapshots(fence.id), isProspect(perms) ? Promise.resolve(null) : getBidMemo(fence.id)])

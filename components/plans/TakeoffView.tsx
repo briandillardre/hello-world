@@ -7,6 +7,8 @@ import { ArrowLeft, Layers, FileSpreadsheet, Snowflake, Link2, Copy, Trash2, Spa
 import type { TakeoffSummary, TakeoffRow } from '@/lib/takeoff-summary'
 import type { TakeoffSnapshot, BidMemo, TakeoffLink } from '@/lib/db/takeoff'
 import { revLabel } from '@/lib/plans/room'
+import { isNativeApp } from '@/lib/native'
+import { publishExport } from '@/lib/export-upload'
 import { revisionReport } from '@/lib/plans/measure'
 import {
   freezeTakeoffAction, deleteSnapshotAction, createTakeoffLinkAction, revokeTakeoffLinkAction,
@@ -134,6 +136,27 @@ export function TakeoffView({ zone, summary, snapshots, memo, links, canEdit, ca
   }
 
   const xlsxHref = `/api/takeoff/${zone.id}/xlsx${snap ? `?snapshot=${snap.id}` : ''}`
+  // Inside the Android app a link to an attachment does nothing (the WebView has no
+  // download door — the Sep 12 lesson): the workbook goes up as a private export
+  // link and the phone's browser downloads it (ship-check, Nov 8).
+  async function downloadInApp(e: React.MouseEvent) {
+    if (!isNativeApp()) return
+    e.preventDefault()
+    setBusy('xlsx'); setErr(null)
+    try {
+      const res = await fetch(xlsxHref)
+      if (!res.ok) throw new Error('fetch')
+      const blob = await res.blob()
+      const name = `${zone.name} takeoff.xlsx`.replace(/[^A-Za-z0-9 ._-]+/g, '')
+      const r = await publishExport(blob, name, 'xlsx', `${zone.name} — takeoff`)
+      if (!r.ok) { setErr(r.error); return }
+      window.location.href = r.link.fileUrl
+    } catch {
+      setErr('Couldn’t make the workbook — check your signal and try again.')
+    } finally {
+      setBusy(null)
+    }
+  }
 
   return (
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
@@ -163,9 +186,9 @@ export function TakeoffView({ zone, summary, snapshots, memo, links, canEdit, ca
               <Calculator className="h-4 w-4" /> Estimate
             </Link>
           )}
-          <a href={demo ? undefined : xlsxHref} aria-disabled={demo}
+          <a href={demo ? undefined : xlsxHref} aria-disabled={demo} onClick={(e) => void downloadInApp(e)}
             className={'inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink ' + (demo ? 'opacity-50 pointer-events-none' : '')}>
-            <FileSpreadsheet className="h-4 w-4" /> Download Excel{snap ? ' (with the revision report)' : ''}
+            <FileSpreadsheet className="h-4 w-4" /> {busy === 'xlsx' ? 'Making the workbook…' : `Download Excel${snap ? ' (with the revision report)' : ''}`}
           </a>
           {canEdit && freezeName === null && (
             <button type="button" disabled={!rows.length} onClick={() => setFreezeName(`Bid · ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`)}
@@ -228,7 +251,7 @@ export function TakeoffView({ zone, summary, snapshots, memo, links, canEdit, ca
                 {canCosts && priced > 0 && (
                   <tfoot>
                     <tr className="border-t border-navy-700">
-                      <td className="px-3 py-2 text-faint" colSpan={5}>Priced items ({priced} of {rows.length}) — the estimate&apos;s markups come later</td>
+                      <td className="px-3 py-2 text-faint" colSpan={5}>Priced items ({priced} of {rows.length}) — markups are on the Estimate page</td>
                       <td className="text-right font-mono font-bold text-ink pr-3">{money(total)}</td>
                     </tr>
                   </tfoot>

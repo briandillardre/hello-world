@@ -15,8 +15,8 @@ import { mintExportUploadAction, finalizeExportAction } from '@/lib/actions/shar
  * system browser, which downloads it) and the short /x/<id> for texting.
  */
 
-export type ExportFileKind = 'gif' | 'png' | 'pdf'
-export const EXPORT_MIME: Record<ExportFileKind, string> = { gif: 'image/gif', png: 'image/png', pdf: 'application/pdf' }
+export type ExportFileKind = 'gif' | 'png' | 'pdf' | 'xlsx'
+export const EXPORT_MIME: Record<ExportFileKind, string> = { gif: 'image/gif', png: 'image/png', pdf: 'application/pdf', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
 
 export interface ExportLink {
   id: string

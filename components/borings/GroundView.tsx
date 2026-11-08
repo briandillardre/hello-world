@@ -163,7 +163,7 @@ export function GroundView({ zone, borings, takeoff, dirtAddon, canEdit, canDele
                 </button>
                 {note && <span className="text-faint">{note}</span>}
               </div>
-              <Field label="Ground elev. (ft)" hint="blank = the lidar's" value={draft.groundFt} onChange={(v) => setDraft({ ...draft, groundFt: v })} />
+              <Field label="Ground elev. (ft)" hint="blank = the takeoff's existing ground" value={draft.groundFt} onChange={(v) => setDraft({ ...draft, groundFt: v })} />
               <Field label="Depth (ft)" hint="how deep it went" value={draft.depthFt} onChange={(v) => setDraft({ ...draft, depthFt: v })} />
               <Field label="Topsoil (in)" value={draft.topsoilIn} onChange={(v) => setDraft({ ...draft, topsoilIn: v })} />
               <Field label="Existing fill to (ft)" hint="blank = none" value={draft.fillFt} onChange={(v) => setDraft({ ...draft, fillFt: v })} />
@@ -238,7 +238,7 @@ export function GroundView({ zone, borings, takeoff, dirtAddon, canEdit, canDele
                       <span className={TONE_TEXT[v.tone]}>{v.words}</span>
                     </div>
                     <div className="text-muted">
-                      Depth {b.depthFt}′{b.groundFt !== null ? ` · ground ${b.groundFt}′` : ' · ground from the lidar'}{b.topsoilIn !== null ? ` · topsoil ${b.topsoilIn}″` : ''}{b.fillFt ? ` · fill to ${b.fillFt}′` : ''}{b.unsuitableFt ? ` · unsuitable to ${b.unsuitableFt}′` : ''}
+                      Depth {b.depthFt}′{b.groundFt !== null ? ` · ground ${b.groundFt}′` : ' · ground from the takeoff'}{b.topsoilIn !== null ? ` · topsoil ${b.topsoilIn}″` : ''}{b.fillFt ? ` · fill to ${b.fillFt}′` : ''}{b.unsuitableFt ? ` · unsuitable to ${b.unsuitableFt}′` : ''}
                       {` · water ${b.waterFt !== null || b.water24hFt !== null ? [b.waterFt !== null ? ft(b.waterFt) : null, b.water24hFt !== null ? `${ft(b.water24hFt)} at 24 h` : null].filter(Boolean).join(', ') : 'dry'}`}
                     </div>
                     {b.note && <div className="text-faint">{b.note}</div>}
@@ -362,6 +362,7 @@ function PhotoButton({ id, onDone, onError }: { id: string; onDone: () => void; 
       const c = document.createElement('canvas')
       c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k)
       c.getContext('2d')?.drawImage(bmp, 0, 0, c.width, c.height)
+      bmp.close()
       const b = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/jpeg', 0.85))
       return b ?? f
     } catch { return f }
