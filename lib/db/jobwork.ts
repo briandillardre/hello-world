@@ -86,7 +86,8 @@ export async function getCloseoutFacts(companyId: string, job: { id: string; zon
     const { createServiceClient } = await import('@/lib/supabase-server')
     const svc = createServiceClient()
     const since = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10)
-    const [punch, check, cos, iss, apps, clock, ud] = await Promise.all([
+    const [job0, punch, check, cos, iss, apps, clock, ud] = await Promise.all([
+      svc.from('jobs').select('billing_type, contract_type').eq('company_id', companyId).eq('id', job.id).maybeSingle(),
       svc.from('project_tasks').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('geofence_id', job.zoneId).eq('status', 'open'),
       svc.from('job_checklist').select('text').eq('company_id', companyId).eq('job_id', job.id).eq('stage', 'closeout').eq('required', true).is('done_at', null).is('deleted_at', null).order('sort').limit(100),
       svc.from('job_change_orders').select('number, title').eq('company_id', companyId).eq('job_id', job.id).in('status', ['potential', 'pricing', 'submitted']).is('deleted_at', null).order('number').limit(200),
@@ -95,13 +96,16 @@ export async function getCloseoutFacts(companyId: string, job: { id: string; zon
       svc.from('time_entries').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('project_geofence_id', job.zoneId).is('clock_out_at', null),
       svc.from('usage_daily').select('asset_id').eq('company_id', companyId).eq('geofence_id', job.zoneId).gte('day', since).gte('on_site_secs', 3600).limit(1000),
     ])
-    if (punch.error || check.error || cos.error || iss.error || apps.error) return null
+    if (job0.error || punch.error || check.error || cos.error || iss.error || apps.error) return null
     const ids = Array.from(new Set((ud.data ?? []).map((x) => String(x.asset_id)))).slice(0, 500)
     let machines = 0
     if (ids.length) {
-      const { data } = await svc.from('assets').select('id').eq('company_id', companyId).in('id', ids).in('type', ['vehicle', 'equipment']).is('deleted_at', null)
+      // Through the caller's own RLS: a machine hidden from them (111) is never counted on their page.
+      const { createClient } = await import('@/lib/supabase-server')
+      const { data } = await createClient().from('assets').select('id').eq('company_id', companyId).in('id', ids).in('type', ['vehicle', 'equipment']).is('deleted_at', null)
       machines = (data ?? []).length
     }
+    const bt = job0.data?.billing_type as string | null | undefined, ct = job0.data?.contract_type as string | null | undefined
     return {
       punchOpen: punch.count ?? 0,
       mustDos: (check.data ?? []).map((x) => String(x.text)),
@@ -115,6 +119,7 @@ export async function getCloseoutFacts(companyId: string, job: { id: string; zon
       })),
       clockedIn: clock.count ?? 0,
       machinesOnSite: machines,
+      billedOutside: (!!bt && bt !== 'progress') || ct === 'internal',
     }
   } catch {
     return null

@@ -629,7 +629,8 @@ export async function GET(req: NextRequest) {
 /**
  * Uploads under <company>/<id> in a private bucket that no live row of
  * `table` points at (its `path`), two hours after they landed: an upload
- * whose filing never finished. At most 50 companies and 200 objects each per run.
+ * whose filing never finished. Pages through up to 2,000 company folders and
+ * 10,000 objects each; removes at most 200 per company per run.
  */
 async function sweepUnfiled(bucket: string, table: string): Promise<number> {
   const { createServiceClient: svcClient } = await import('@/lib/supabase-server')
@@ -638,11 +639,20 @@ async function sweepUnfiled(bucket: string, table: string): Promise<number> {
   const PATH = new RegExp(`^${U}/${U}$`)
   const old = (o: { created_at?: string | null }) => Date.parse(o.created_at ?? '') < Date.now() - 2 * 3_600_000
   let swept = 0
-  const { data: cos } = await svc.storage.from(bucket).list('', { limit: 50 })
-  for (const co of cos ?? []) {
+  const all = async (prefix: string, pageSize: number, pages: number) => {
+    const out: { id: string | null; name: string; created_at?: string | null }[] = []
+    for (let i = 0; i < pages; i++) {
+      const { data } = await svc.storage.from(bucket).list(prefix, { limit: pageSize, offset: i * pageSize })
+      out.push(...((data ?? []) as { id: string | null; name: string; created_at?: string | null }[]))
+      if (!data || data.length < pageSize) break
+    }
+    return out
+  }
+  const cos = await all('', 100, 20)
+  for (const co of cos) {
     if (co.id || !new RegExp(`^${U}$`).test(co.name)) continue
-    const { data: objs } = await svc.storage.from(bucket).list(co.name, { limit: 1000 })
-    const stale = (objs ?? []).filter((o) => o.id && o.name && old(o)).map((o) => `${co.name}/${o.name}`).filter((p) => PATH.test(p))
+    const objs = await all(co.name, 1000, 10)
+    const stale = objs.filter((o) => o.id && o.name && old(o)).map((o) => `${co.name}/${o.name}`).filter((p) => PATH.test(p))
     if (!stale.length) continue
     const live = new Set<string>()
     let failed = false

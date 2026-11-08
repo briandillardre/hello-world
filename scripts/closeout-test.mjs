@@ -29,7 +29,7 @@ const today = '2026-11-08'
   ok(b.issue && !('costExposure' in b.issue), 'without costs the dollars are never written (left as stored)')
   eq(I.cleanIssue({ ...base, title: ' ' }, { money: true }).error, 'Give it a title.', 'a title is required')
   eq(I.cleanIssue({ ...base, category: 'gossip' }, { money: true }).error, 'Pick what kind of issue it is.', 'the category must be one of the list')
-  eq(I.cleanIssue({ ...base, scheduleDays: '2.5' }, { money: true }).error, 'Schedule days must be a whole number.', 'schedule days are whole')
+  eq(I.cleanIssue({ ...base, scheduleDays: '2.5' }, { money: true }).error, 'Schedule days must be a whole number, up to 1,000.', 'schedule days are whole')
   eq(I.cleanIssue({ ...base, dueOn: '2026-02-30' }, { money: true }).error, 'That due date can’t be read.', 'a day that does not exist is refused')
   eq(I.cleanIssue({ ...base, costExposure: '(4,000)' }, { money: true }).issue?.costExposure, -4000, 'a saving in parentheses is negative')
   eq(I.cleanIssue({ ...base, costExposure: '' }, { money: true }).issue?.costExposure, null, 'a blank amount clears it')
@@ -49,6 +49,8 @@ const today = '2026-11-08'
   eq(I.issueSummary(list, today, false).exposure, null, 'no dollars without costs')
   const co = I.changeOrderFromIssue({ number: 7, title: 'Extra undercut', detail: 'Unsuitable at pad B', scheduleDays: 3, costExposure: 8200 }, today)
   eq([co.title, co.description, co.status, co.costImpact, co.scheduleDays, co.identifiedOn], ['Extra undercut', 'From issue I-7. Unsuitable at pad B', 'potential', 8200, 3, today], 'an issue becomes a potential change order with its words, cost and days')
+  eq([I.changeOrderFromIssue({ number: 8, title: 't', detail: null, scheduleDays: 2400, costExposure: null }, today).scheduleDays, I.changeOrderFromIssue({ number: 9, title: 't', detail: null, scheduleDays: -1500, costExposure: null }, today).scheduleDays], [1000, -1000], 'a change order takes ±1,000 days — an older issue with more is clamped, never refused')
+  eq(I.cleanIssue({ title: 'x', category: 'site', scheduleDays: '1200' }, { money: false }).error, 'Schedule days must be a whole number, up to 1,000.', 'new issues keep to the change orders’ limit')
 }
 
 // ── documents ──
@@ -110,6 +112,10 @@ const today = '2026-11-08'
 
   const noBilling = { ...clean, apps: [] }
   eq(C.closeoutChecks(noBilling, { money: true }).checks.find((c) => c.key === 'final').detail, 'No application sent from Pay apps', 'a job billed outside Pay apps is told so (a Manager can close it with a reason)')
+  const tm = C.closeoutChecks({ ...clean, apps: [], billedOutside: true }, { money: true })
+  ok(tm.ready, 'a T&M / unit-price / internal job with no pay apps can close — its final invoice and waiver are checked where it is billed')
+  eq(tm.checks.filter((c) => c.key === 'final' || c.key === 'waiver').map((c) => c.level), ['warn', 'warn'], '…as warnings, never silently dropped')
+  eq(C.closeoutChecks({ ...clean, apps: [{ ...clean.apps[0] }], billedOutside: true }, { money: true }).blocking.map((c) => c.key), ['final', 'waiver'], 'once it bills through Pay apps, Pay apps decide')
   const waiverMissing = { ...clean, apps: [{ ...clean.apps[0] }, { ...clean.apps[1], waiver: 'partial' }] }
   eq(C.closeoutChecks(waiverMissing, { money: true }).blocking.map((c) => c.detail), ['Not marked on application #2'], 'the final waiver is read off the final application')
   eq([C.owedCents({ status: 'paid', currentDue: 100, paidAmount: null }), C.owedCents({ status: 'submitted', currentDue: 100.1, paidAmount: 100 }), C.owedCents({ status: 'approved', currentDue: 50, paidAmount: 80 })], [0, 10, 0], 'owed: marked paid = settled, a short pay to the cent, an overpay owes nothing')

@@ -77,6 +77,12 @@ eq([P.addDays('2026-10-25', 30), P.daysFrom('2026-11-24', today)], ['2026-11-24'
   eq([s.rows[1].w.estimatedCost, s.rows[1].w.pctComplete, s.rows[1].w.earned, s.rows[1].w.overUnder, s.rows[1].w.forecastMargin], [90000, 66.7, 66666.67, -16666.67, 10000], 'job B: the PM’s estimate at completion drives % complete and margin')
   eq([s.totals.contract, s.totals.costToDate, s.totals.earned, s.totals.billed, s.totals.underbilled, s.totals.overbilled, s.totals.retainageHeld, s.totals.forecastMargin, s.totals.leftToBill],
     [500000, 210000, 266666.67, 230000, 36666.67, 0, 23000, 110000, 270000], 'the totals a bank asks for — over and under billing kept apart, never netted')
+  const nb = P.wipSchedule([
+    { jobId: 'A', contract: 400000, currentBudget: 300000, costToDate: 150000, billed: 180000, retainageHeld: 18000, eac: null },
+    { jobId: 'N', contract: 1000000, currentBudget: 0, costToDate: 5000, billed: 40000, retainageHeld: 4000, eac: null },
+  ])
+  eq([nb.totals.noBudget, nb.totals.earned, nb.totals.underbilled, nb.totals.estimatedCost, nb.totals.forecastMargin, nb.totals.contract, nb.totals.billed, nb.totals.costToDate, nb.totals.leftToBill],
+    [1, 200000, 20000, 300000, 100000, 1400000, 220000, 155000, 1180000], 'a job with no budget stays out of earned, over / under, estimated cost and margin — never "100% done"; its contract, cost and billing still count')
 }
 
 console.log(`portfolio: ${pass} passed, ${fail} failed`)

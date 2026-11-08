@@ -113,20 +113,26 @@ export function cashByMonth(apps: PApp[], today: string, months: number): CashMo
 }
 
 export interface WipInput { jobId: string; contract: number; currentBudget: number; costToDate: number; billed: number; retainageHeld: number; eac: number | null }
-export interface WipTotals { contract: number; estimatedCost: number; costToDate: number; earned: number; billed: number; overbilled: number; underbilled: number; retainageHeld: number; forecastMargin: number; leftToBill: number }
+export interface WipTotals {
+  contract: number; estimatedCost: number; costToDate: number; earned: number; billed: number; overbilled: number; underbilled: number
+  retainageHeld: number; forecastMargin: number; leftToBill: number
+  /** Jobs with no budget and no estimate at completion — left out of estimated cost, earned, over / under and margin. */
+  noBudget: number
+}
 
 /** The WIP schedule: each running job cost to cost (the job cost page's own `wip`), and the totals a bank asks for. */
 export function wipSchedule(lines: WipInput[]): { rows: (WipInput & { w: Wip })[]; totals: WipTotals } {
   const rows = lines.map((l) => ({ ...l, w: wip({ contract: l.contract, currentBudget: l.currentBudget, costToDate: l.costToDate, billed: l.billed, retainageHeld: l.retainageHeld, estimateAtCompletion: l.eac }) }))
-  const sum = (f: (w: Wip) => number) => Math.round(rows.reduce((s, r) => s + Math.round(f(r.w) * 100), 0)) / 100
+  const sum = (f: (w: Wip) => number, measured = false) => Math.round(rows.reduce((s, r) => s + (measured && !r.w.known ? 0 : Math.round(f(r.w) * 100)), 0)) / 100
   return {
     rows,
     totals: {
-      contract: sum((w) => w.contract), estimatedCost: sum((w) => w.estimatedCost), costToDate: sum((w) => w.costToDate),
-      earned: sum((w) => w.earned), billed: sum((w) => w.billed),
-      overbilled: sum((w) => Math.max(0, w.overUnder)), underbilled: sum((w) => Math.max(0, -w.overUnder)),
-      retainageHeld: sum((w) => w.retainageHeld), forecastMargin: sum((w) => w.forecastMargin),
+      contract: sum((w) => w.contract), estimatedCost: sum((w) => w.estimatedCost, true), costToDate: sum((w) => w.costToDate),
+      earned: sum((w) => w.earned, true), billed: sum((w) => w.billed),
+      overbilled: sum((w) => Math.max(0, w.overUnder), true), underbilled: sum((w) => Math.max(0, -w.overUnder), true),
+      retainageHeld: sum((w) => w.retainageHeld), forecastMargin: sum((w) => w.forecastMargin, true),
       leftToBill: sum((w) => Math.max(0, w.contract - w.billed)),
+      noBudget: rows.filter((r) => !r.w.known).length,
     },
   }
 }

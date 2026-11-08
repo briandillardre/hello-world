@@ -24,6 +24,12 @@ export interface CloseoutFacts {
   clockedIn: number
   /** Trucks and machines with an hour or more on the site in the last few days. */
   machinesOnSite: number
+  /**
+   * The job is billed outside Pay apps — T&M, unit price or milestone
+   * billing, or an internal job. With no application ever sent, the final
+   * application and its waiver are then warnings (checked where it is billed).
+   */
+  billedOutside?: boolean
 }
 
 export type CheckKey = 'punch' | 'mustdos' | 'cos' | 'issues' | 'final' | 'paid' | 'waiver' | 'charging'
@@ -52,6 +58,7 @@ export function owedCents(a: Pick<CloseoutFacts['apps'][number], 'status' | 'cur
 export function closeoutChecks(f: CloseoutFacts, opts: { money: boolean }): { checks: CloseCheck[]; blocking: CloseCheck[]; ready: boolean } {
   const sent = f.apps.filter((a) => counts(a.status)).sort((a, b) => a.appNo - b.appNo)
   const final = [...sent].reverse().find((a) => a.release) ?? null
+  const outside = !!f.billedOutside && sent.length === 0
   const unpaid = sent.filter((a) => owedCents(a) > 0)
   const owed = unpaid.reduce((s, a) => s + owedCents(a), 0) / 100
   const checks: CloseCheck[] = [
@@ -59,12 +66,12 @@ export function closeoutChecks(f: CloseoutFacts, opts: { money: boolean }): { ch
     { key: 'mustdos', level: 'block', ok: f.mustDos.length === 0, title: 'Closeout must-dos checked off', detail: f.mustDos.length ? `Still to do: ${list(f.mustDos)}` : null },
     { key: 'cos', level: 'block', ok: f.cosPending.length === 0, title: 'Change orders settled', detail: f.cosPending.length ? `${list(f.cosPending.map((c) => `CO ${c.number}`))} not approved, rejected or voided` : null },
     { key: 'issues', level: 'block', ok: f.issuesOpen.length === 0, title: 'Issues resolved', detail: f.issuesOpen.length ? `${list(f.issuesOpen.map((i) => `I-${i.number}`))} still open` : null },
-    { key: 'final', level: 'block', ok: !!final, title: 'Final application sent — retainage released', detail: final ? null : sent.length ? 'No application marked final yet' : 'No application sent from Pay apps' },
+    { key: 'final', level: outside ? 'warn' : 'block', ok: !!final, title: 'Final application sent — retainage released', detail: final ? null : outside ? 'Billed outside Pay apps — check the final invoice and retainage where it was billed' : sent.length ? 'No application marked final yet' : 'No application sent from Pay apps' },
     {
       key: 'paid', level: 'block', ok: unpaid.length === 0, title: 'Every application paid',
       detail: unpaid.length ? `${opts.money ? `${usd(owed)} still owed on ` : 'Not paid in full: '}${list(unpaid.map((a) => `#${a.appNo}`))}` : null,
     },
-    { key: 'waiver', level: 'block', ok: final?.waiver === 'final', title: 'Final lien waiver in', detail: final ? (final.waiver === 'final' ? null : `Not marked on application #${final.appNo}`) : 'Comes with the final application' },
+    { key: 'waiver', level: outside ? 'warn' : 'block', ok: final?.waiver === 'final', title: 'Final lien waiver in', detail: final ? (final.waiver === 'final' ? null : `Not marked on application #${final.appNo}`) : outside ? 'Billed outside Pay apps — file the final waiver in Documents' : 'Comes with the final application' },
     {
       key: 'charging', level: 'warn', ok: f.clockedIn === 0 && f.machinesOnSite === 0, title: 'Nothing still charging the job',
       detail: [f.clockedIn ? `${plural(f.clockedIn, 'person', 'people')} clocked in to the site` : '', f.machinesOnSite ? `${plural(f.machinesOnSite, 'machine', 'machines')} on the site in the last 3 days` : ''].filter(Boolean).join(' · ') || null,

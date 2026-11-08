@@ -91,7 +91,8 @@ export async function createJobAction(zoneId: string, opts: { stage?: Stage } = 
   if (!site) return { ok: false, error: 'That site wasn’t found — a job goes on a company site (not a personal zone, a yard or a supplier).' }
   const existing = await jobOf(svc, companyId, site.id)
   if (existing) return { ok: true, id: existing.id }
-  const stage: Stage = opts.stage && isStage(opts.stage) ? opts.stage : 'estimating'
+  // Only these two: a job created straight into Closed would skip the closeout checks.
+  const stage: Stage = opts.stage === 'awarded' ? 'awarded' : 'estimating'
   const { data, error } = await svc.from('jobs').insert({
     company_id: companyId, geofence_id: site.id, stage, number: parseJobName(site.name).code,
     ...(stage === 'awarded' ? { award_date: today() } : {}), created_by: userId,
@@ -113,10 +114,13 @@ export async function saveJobAction(zoneId: string, raw: unknown): Promise<Res> 
   if (!job) return { ok: false, error: 'That job wasn’t found.' }
   const { patch, error } = cleanJobPatch(raw)
   if (error) return { ok: false, error }
-  // The PM and the superintendent are people on this company's team.
+  // The PM and the superintendent are people on this company's team — checked
+  // when they change; one who has since left stays on record until replaced.
+  const { data: cur } = await svc.from('jobs').select('pm_id, super_id').eq('id', job.id).eq('company_id', companyId).maybeSingle()
   for (const k of ['pmId', 'superId'] as const) {
     const id = patch[k]
     if (!id) continue
+    if (id === (k === 'pmId' ? cur?.pm_id : cur?.super_id)) continue
     const { data } = await svc.from('profiles').select('id, role').eq('id', id).eq('company_id', companyId).maybeSingle()
     if (!data || data.role === 'prospect') return { ok: false, error: 'Pick someone from the team.' }
   }
@@ -152,8 +156,9 @@ export async function setStageAction(zoneId: string, stage: string, lostReason?:
     if (blocking.length && rankOf(perms) < RANK.manager) return { ok: false, error: `Not yet — ${blockWords(blocking)}. A Manager can close it anyway with a reason.` }
     if (blocking.length && !note) return { ok: false, error: `Still open: ${blockWords(blocking)}. Say why it closes anyway.` }
     row.closed_at = new Date().toISOString(); row.closed_by = userId; row.closed_note = blocking.length ? note : null
-  } else if (stage !== 'closed' && job.stage === 'closed') {
-    row.closed_at = null; row.closed_by = null; row.closed_note = null
+  } else if (stage !== 'closed' && job.stage === 'closed' && rankOf(perms) < RANK.manager) {
+    // Who closed it, when and why stay on the job; a later close writes its own.
+    return { ok: false, error: 'Reopening a closed job is for Managers and above.' }
   }
   const { error } = await svc.from('jobs').update(row).eq('id', job.id).eq('company_id', companyId)
   if (error) return { ok: false, error: 'Couldn’t move it — try again.' }

@@ -7,12 +7,12 @@
  * stored material); sending it freezes the numbers on the server. PDF and
  * Excel come straight off the screen.
  */
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, FileText, FileSpreadsheet, Plus, Send, Trash2, Pencil, AlertTriangle, Receipt } from 'lucide-react'
 import {
-  APP_STATUS_WORDS, CO_STATUSES, CO_STATUS_WORDS, CO_TYPES, CO_TYPE_WORDS, counts, lineMath, linesFor, money, thisPeriodFromPct, totalsFor, appWarnings,
+  APP_STATUS_WORDS, CO_STATUSES, CO_STATUS_WORDS, CO_TYPES, CO_TYPE_WORDS, counts, lineMath, linesFor, money, readDollars, thisPeriodFromPct, totalsFor, appWarnings,
   type AppView, type ChangeOrder, type SovLine,
 } from '@/lib/jobs/payapp'
 import type { DocInfo } from '@/lib/jobs/payapp-docs'
@@ -75,6 +75,10 @@ export function BillingView({ zone, info, contract, billing, canEdit, canManage,
     if (!r?.ok) { setErr((r && 'error' in r && r.error) || fail); return false }
     after?.(); router.refresh(); return true
   }
+  // The open draft's unsaved entries live in its panel — leaving the tab or opening another application unmounts it.
+  const draftDirty = useRef(false)
+  const onDirty = useCallback((d: boolean) => { draftDirty.current = d }, [])
+  const leaveOk = () => !draftDirty.current || window.confirm('This pay app has changes that aren’t saved. Leave them?')
 
   return (
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
@@ -96,7 +100,7 @@ export function BillingView({ zone, info, contract, billing, canEdit, canManage,
 
         <div className="flex items-center gap-2 flex-wrap">
           {([['apps', `Applications ${apps.filter((a) => a.status !== 'void').length}`], ['sov', `Schedule of values ${billing.sov.length}`], ['cos', `Change orders ${billing.cos.length}`]] as [Tab, string][]).map(([k, label]) => (
-            <button key={k} type="button" onClick={() => setTab(k)} className={'rounded-full px-3 py-1 text-[12px] font-semibold border ' + (tab === k ? 'bg-teal/15 border-teal/40 text-teal' : 'border-navy-700 text-muted')}>{label}</button>
+            <button key={k} type="button" onClick={() => { if (k !== tab && leaveOk()) setTab(k) }} className={'rounded-full px-3 py-1 text-[12px] font-semibold border ' + (tab === k ? 'bg-teal/15 border-teal/40 text-teal' : 'border-navy-700 text-muted')}>{label}</button>
           ))}
         </div>
         {err && <p className="flex items-start gap-2 rounded-xl border border-red-400/40 bg-red-950/30 px-3 py-2 text-[12.5px] text-red-200"><AlertTriangle className="h-4 w-4 mt-0.5 flex-none" /> {err}</p>}
@@ -110,7 +114,7 @@ export function BillingView({ zone, info, contract, billing, canEdit, canManage,
             )}
             <div className="space-y-1.5">
               {[...apps].reverse().map((a) => (
-                <button key={a.id} type="button" onClick={() => setOpenId(a.id)}
+                <button key={a.id} type="button" onClick={() => { if (a.id !== openId && leaveOk()) setOpenId(a.id) }}
                   className={'w-full flex items-center gap-3 rounded-xl border px-3 py-2 text-left text-[12.5px] ' + (a.id === openId ? 'border-amber/50 bg-navy-900' : 'border-navy-800 bg-navy-900/60')}>
                   <span className="text-ink font-semibold">Pay app {a.appNo}</span>
                   <span className="text-faint">to {fmtDay(a.periodTo)}</span>
@@ -120,7 +124,7 @@ export function BillingView({ zone, info, contract, billing, canEdit, canManage,
                 </button>
               ))}
             </div>
-            {open && <AppPanel key={open.id} app={open} apps={apps} sov={billing.sov} cos={billing.cos} contract={contract} info={info} canEdit={canEdit} canManage={canManage} run={run} busy={busy} />}
+            {open && <AppPanel key={open.id} app={open} apps={apps} sov={billing.sov} cos={billing.cos} contract={contract} info={info} canEdit={canEdit} canManage={canManage} run={run} busy={busy} onDirty={onDirty} />}
           </section>
         )}
 
@@ -142,9 +146,9 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 type Run = (key: string, fn: () => Promise<{ ok: boolean; error?: string } | null | undefined>, fail: string, after?: () => void) => Promise<boolean>
 
-function AppPanel({ app, apps, sov, cos, contract, info, canEdit, canManage, run, busy }: {
+function AppPanel({ app, apps, sov, cos, contract, info, canEdit, canManage, run, busy, onDirty }: {
   app: AppView; apps: AppView[]; sov: SovLine[]; cos: ChangeOrder[]; contract: number | null; info: DocInfo
-  canEdit: boolean; canManage: boolean; run: Run; busy: string | null
+  canEdit: boolean; canManage: boolean; run: Run; busy: string | null; onDirty: (dirty: boolean) => void
 }) {
   const isDraft = app.status === 'draft'
   const edit = isDraft && canEdit
@@ -154,13 +158,22 @@ function AppPanel({ app, apps, sov, cos, contract, info, canEdit, canManage, run
     Object.fromEntries(app.lines.map((l) => [l.key, { thisPeriod: l.thisPeriod ? String(l.thisPeriod) : '', stored: l.stored ? String(l.stored) : '' }])))
   const [byPct, setByPct] = useState(false)
   const [dirty, setDirty] = useState(false)
+  // Every edit counts; a save only clears "unsaved" when nothing changed while it was on its way.
+  const edits = useRef(0)
+  const touch = () => { edits.current += 1; setDirty(true) }
+  useEffect(() => { onDirty(dirty) }, [dirty, onDirty])
+  useEffect(() => () => onDirty(false), [onDirty])
+  // "% complete to date" as typed — only a cell someone typed in changes the dollars, on leaving it.
+  const [pctText, setPctText] = useState<Record<string, string>>({})
   const [paid, setPaid] = useState({ on: app.paidOn ?? '', amount: app.paidAmount !== null ? String(app.paidAmount) : '' })
   const n = (s: string) => { const v = Number(String(s).replace(/[$,\s]/g, '')); return Number.isFinite(v) ? v : 0 }
+  // Dollars exactly as the server reads them: "(1,250.00)" and "−500" are negative.
+  const amt = (s: string) => { const v = readDollars(s); return v === 'bad' || v === null ? 0 : v }
 
   // A draft is computed live from what is typed; a sent one is shown as sent.
   const view = useMemo(() => {
     if (!isDraft) return { lines: app.lines, totals: app.totals, warnings: app.warnings }
-    const ents = Object.fromEntries(Object.entries(entries).map(([k, e]) => [k, { thisPeriod: n(e.thisPeriod), stored: n(e.stored) }]))
+    const ents = Object.fromEntries(Object.entries(entries).map(([k, e]) => [k, { thisPeriod: amt(e.thisPeriod), stored: amt(e.stored) }]))
     const lines = linesFor({ sov, cos, periodTo: hdr.periodTo, prior: prior?.lines ?? null, entries: ents })
     const totals = totalsFor({ lines, retPct: n(hdr.retPct), storedRetPct: n(hdr.storedRetPct), prevCerts: prior?.totals.earnedLessRet ?? 0, cos, periodTo: hdr.periodTo, prevPeriodTo: prior?.periodTo ?? null, release: hdr.release })
     return { lines, totals, warnings: appWarnings(lines, totals, contract) }
@@ -168,12 +181,12 @@ function AppPanel({ app, apps, sov, cos, contract, info, canEdit, canManage, run
   const shown: AppView = { ...app, ...view, appDate: hdr.appDate, periodTo: hdr.periodTo, retPct: n(hdr.retPct), storedRetPct: n(hdr.storedRetPct), release: hdr.release, invoiceNo: hdr.invoiceNo || null, note: hdr.note || null }
   const t = view.totals
 
-  const setEntry = (key: string, k: 'thisPeriod' | 'stored', v: string) => { setEntries((e) => ({ ...e, [key]: { ...(e[key] ?? { thisPeriod: '', stored: '' }), [k]: v } })); setDirty(true) }
-  const save = () => run('save', () => savePayAppAction(app.id, {
+  const setEntry = (key: string, k: 'thisPeriod' | 'stored', v: string) => { setEntries((e) => ({ ...e, [key]: { ...(e[key] ?? { thisPeriod: '', stored: '' }), [k]: v } })); touch() }
+  const save = () => { const at = edits.current; return run('save', () => savePayAppAction(app.id, {
     appDate: hdr.appDate, periodTo: hdr.periodTo, retPct: n(hdr.retPct), storedRetPct: n(hdr.storedRetPct), release: hdr.release,
     invoiceNo: hdr.invoiceNo, note: hdr.note,
     entries: Object.fromEntries(Object.entries(entries).map(([k, e]) => [k, { thisPeriod: e.thisPeriod || 0, stored: e.stored || 0 }])),
-  }), 'Couldn’t save — try again.', () => setDirty(false))
+  }), 'Couldn’t save — try again.', () => { if (edits.current === at) setDirty(false) }) }
 
   async function download(kind: 'pdf' | 'xlsx') {
     const D = await import('@/lib/jobs/payapp-docs')
@@ -190,12 +203,12 @@ function AppPanel({ app, apps, sov, cos, contract, info, canEdit, canManage, run
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <L label="Application date"><input type="date" disabled={!edit} className={inp} value={hdr.appDate} onChange={(e) => { setHdr({ ...hdr, appDate: e.target.value }); setDirty(true) }} /></L>
-        <L label="Period to"><input type="date" disabled={!edit} className={inp} value={hdr.periodTo} onChange={(e) => { setHdr({ ...hdr, periodTo: e.target.value }); setDirty(true) }} /></L>
-        <L label="Retainage on work %"><input inputMode="decimal" disabled={!edit || hdr.release} className={inp} value={hdr.retPct} onChange={(e) => { setHdr({ ...hdr, retPct: e.target.value }); setDirty(true) }} /></L>
-        <L label="On stored material %"><input inputMode="decimal" disabled={!edit || hdr.release} className={inp} value={hdr.storedRetPct} onChange={(e) => { setHdr({ ...hdr, storedRetPct: e.target.value }); setDirty(true) }} /></L>
-        <L label="Invoice no."><input disabled={!edit} className={inp} value={hdr.invoiceNo} onChange={(e) => { setHdr({ ...hdr, invoiceNo: e.target.value }); setDirty(true) }} maxLength={40} /></L>
-        <label className="col-span-2 sm:col-span-3 inline-flex items-center gap-1.5 text-muted self-end pb-1.5"><input type="checkbox" disabled={!edit} checked={hdr.release} onChange={(e) => { setHdr({ ...hdr, release: e.target.checked }); setDirty(true) }} /> Final application — release all retainage</label>
+        <L label="Application date"><input type="date" disabled={!edit} className={inp} value={hdr.appDate} onChange={(e) => { setHdr({ ...hdr, appDate: e.target.value }); touch() }} /></L>
+        <L label="Period to"><input type="date" disabled={!edit} className={inp} value={hdr.periodTo} onChange={(e) => { setHdr({ ...hdr, periodTo: e.target.value }); touch() }} /></L>
+        <L label="Retainage on work %"><input inputMode="decimal" disabled={!edit || hdr.release} className={inp} value={hdr.retPct} onChange={(e) => { setHdr({ ...hdr, retPct: e.target.value }); touch() }} /></L>
+        <L label="On stored material %"><input inputMode="decimal" disabled={!edit || hdr.release} className={inp} value={hdr.storedRetPct} onChange={(e) => { setHdr({ ...hdr, storedRetPct: e.target.value }); touch() }} /></L>
+        <L label="Invoice no."><input disabled={!edit} className={inp} value={hdr.invoiceNo} onChange={(e) => { setHdr({ ...hdr, invoiceNo: e.target.value }); touch() }} maxLength={40} /></L>
+        <label className="col-span-2 sm:col-span-3 inline-flex items-center gap-1.5 text-muted self-end pb-1.5"><input type="checkbox" disabled={!edit} checked={hdr.release} onChange={(e) => { setHdr({ ...hdr, release: e.target.checked }); touch() }} /> Final application — release all retainage</label>
       </div>
 
       {edit && (
@@ -228,8 +241,17 @@ function AppPanel({ app, apps, sov, cos, contract, info, canEdit, canManage, run
                   <td className="py-1 pr-2 text-right font-mono text-muted">{money(l.prev)}</td>
                   <td className="py-1 pr-2 text-right">
                     {edit ? (byPct ? (
-                      <input inputMode="decimal" className={inp + ' text-right w-24'} defaultValue={l.scheduled ? (((l.prev + l.thisPeriod + l.stored) / l.scheduled) * 100).toFixed(1) : ''}
-                        onBlur={(ev) => { const p = Number(ev.target.value); if (Number.isFinite(p)) setEntry(l.key, 'thisPeriod', String(thisPeriodFromPct({ scheduled: l.scheduled, prev: l.prev, stored: n(e.stored) }, p))) }} />
+                      <input inputMode="decimal" className={inp + ' text-right w-24'}
+                        value={pctText[l.key] ?? (l.scheduled ? String(Math.round(((l.prev + l.thisPeriod + l.stored) / l.scheduled) * 10000) / 100) : '')}
+                        onChange={(ev) => { const v = ev.target.value; setPctText((p) => ({ ...p, [l.key]: v })) }}
+                        onBlur={() => {
+                          const typed = pctText[l.key]
+                          setPctText((p) => { const next = { ...p }; delete next[l.key]; return next })
+                          // Tabbing through, or a cell left blank, changes nothing.
+                          if (typed === undefined || !typed.trim()) return
+                          const p = Number(typed.replace(/[%\s]/g, ''))
+                          if (Number.isFinite(p)) setEntry(l.key, 'thisPeriod', String(thisPeriodFromPct({ scheduled: l.scheduled, prev: l.prev, stored: amt(e.stored) }, p)))
+                        }} />
                     ) : (
                       <input inputMode="decimal" className={inp + ' text-right w-28'} value={e.thisPeriod} onChange={(ev) => setEntry(l.key, 'thisPeriod', ev.target.value)} />
                     )) : <span className="font-mono">{money(l.thisPeriod)}</span>}
@@ -260,7 +282,7 @@ function AppPanel({ app, apps, sov, cos, contract, info, canEdit, canManage, run
         </dl>
         <div className="space-y-2">
           {view.warnings.length > 0 && <ul className="space-y-1 text-amber">{view.warnings.map((w) => <li key={w} className="flex gap-1.5"><AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-none" /> {w}</li>)}</ul>}
-          {edit && <L label="Note"><textarea className={inp} rows={2} value={hdr.note} onChange={(e) => { setHdr({ ...hdr, note: e.target.value }); setDirty(true) }} maxLength={1000} /></L>}
+          {edit && <L label="Note"><textarea className={inp} rows={2} value={hdr.note} onChange={(e) => { setHdr({ ...hdr, note: e.target.value }); touch() }} maxLength={1000} /></L>}
           {!edit && app.note && <p className="text-muted">Note: {app.note}</p>}
         </div>
       </div>
@@ -290,8 +312,8 @@ function AppPanel({ app, apps, sov, cos, contract, info, canEdit, canManage, run
           </div>
           <div className="flex items-end gap-2 flex-wrap">
             <L label="Paid on"><input type="date" className={inp} value={paid.on} onChange={(e) => setPaid({ ...paid, on: e.target.value })} /></L>
-            <L label="Amount received"><input inputMode="decimal" className={inp} value={paid.amount} placeholder={String(t.currentDue)} onChange={(e) => setPaid({ ...paid, amount: e.target.value })} /></L>
-            <button type="button" className={btn} disabled={!!busy} onClick={() => void run('paid', () => payAppStatusAction(app.id, { paidOn: paid.on || null, paidAmount: paid.amount === '' ? null : n(paid.amount) }), 'Couldn’t save — try again.')}>Save payment</button>
+            <L label="Amount received (blank = in full)"><input inputMode="decimal" className={inp} value={paid.amount} placeholder={String(t.currentDue)} onChange={(e) => setPaid({ ...paid, amount: e.target.value })} /></L>
+            <button type="button" className={btn} disabled={!!busy} onClick={() => void run('paid', () => payAppStatusAction(app.id, { paidOn: paid.on || null, paidAmount: paid.amount.trim() === '' ? null : amt(paid.amount) }), 'Couldn’t save — try again.')}>Save payment</button>
             {canManage && apps.every((a) => a.appNo <= app.appNo || a.status === 'void') && (
               <button type="button" className={btn + ' ml-auto'} disabled={!!busy} onClick={() => { if (window.confirm(`Void pay app ${app.appNo}? The next application builds on the one before it.`)) void run('void', () => voidPayAppAction(app.id), 'Couldn’t void it — try again.') }}>Void</button>
             )}
@@ -342,7 +364,7 @@ function SovPanel({ zoneId, sov, total, contract, canEdit, run, busy }: { zoneId
           </div>
         </div>
       )}
-      {canEdit && !d && <button type="button" onClick={() => setD({ id: null, itemNo: String(sov.length + 1), area: '', description: '', scheduled: '', retPct: '' })} className="inline-flex items-center gap-1 text-teal"><Plus className="h-3.5 w-3.5" /> Add a line</button>}
+      {canEdit && !d && <button type="button" onClick={() => setD({ id: null, itemNo: String(Math.max(0, ...sov.map((l) => parseInt(l.itemNo, 10)).filter((x) => Number.isFinite(x))) + 1), area: '', description: '', scheduled: '', retPct: '' })} className="inline-flex items-center gap-1 text-teal"><Plus className="h-3.5 w-3.5" /> Add a line</button>}
     </section>
   )
 }

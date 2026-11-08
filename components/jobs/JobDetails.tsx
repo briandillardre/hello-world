@@ -25,8 +25,10 @@ const TEXT_KEYS = ['customer', 'customerJobNo', 'ownerName', 'contractNo', 'cont
   'bidDue', 'awardDate', 'ntpDate', 'startDate', 'targetCompletion', 'actualCompletion', 'pmId', 'superId', 'address', 'city', 'county', 'state', 'zip', 'notes'] as const
 type Draft = Record<(typeof TEXT_KEYS)[number], string> & { bid: string; contract: string; ret: string; stored: string; bonded: boolean }
 
-function draftOf(job: Job, money: JobMoney | null): Draft {
+function draftOf(job: Job, money: JobMoney | null, members: Member[]): Draft {
   const d = Object.fromEntries(TEXT_KEYS.map((k) => [k, (job[k as keyof JobFields] as string | null) ?? ''])) as unknown as Draft
+  // Someone who has left the team can't be picked again — the form starts at "—" for them.
+  for (const k of ['pmId', 'superId'] as const) if (d[k] && !members.some((m) => m.id === d[k])) d[k] = ''
   d.bid = money?.bidAmount != null ? String(money.bidAmount) : ''
   d.contract = money?.contractAmount != null ? String(money.contractAmount) : ''
   d.ret = String(money?.retainagePct ?? 10)
@@ -45,7 +47,7 @@ export function JobDetails({ zoneId, job, money, members, canEdit, canCosts }: {
 }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
-  const [d, setD] = useState<Draft>(() => draftOf(job, money))
+  const [d, setD] = useState<Draft>(() => draftOf(job, money, members))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const nameOf = (id: string | null) => (id ? members.find((m) => m.id === id)?.name ?? 'Someone who left' : null)
@@ -92,7 +94,7 @@ export function JobDetails({ zoneId, job, money, members, canEdit, canCosts }: {
           </dl>
         ) : <p className="text-faint">Nothing written down yet — the customer, the contract, the dates and who runs it go here.</p>}
         {job.notes && <p className="text-muted whitespace-pre-wrap"><span className="text-faint">Notes · </span>{job.notes}</p>}
-        {canEdit && <button type="button" onClick={() => { setD(draftOf(job, money)); setEditing(true) }} className="inline-flex items-center gap-1 text-teal"><Pencil className="h-3.5 w-3.5" /> Edit</button>}
+        {canEdit && <button type="button" onClick={() => { setD(draftOf(job, money, members)); setEditing(true) }} className="inline-flex items-center gap-1 text-teal"><Pencil className="h-3.5 w-3.5" /> Edit</button>}
       </div>
     )
   }

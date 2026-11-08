@@ -92,7 +92,9 @@ export async function saveSovLineAction(zoneId: string, raw: unknown, id?: strin
   } else {
     const { count } = await svc.from('job_sov').select('id', { count: 'exact', head: true }).eq('job_id', job.id).is('deleted_at', null)
     if ((count ?? 0) >= 400) return { ok: false, error: 'That’s a long schedule — 400 lines at most.' }
-    const { error: e } = await svc.from('job_sov').insert({ ...row, company_id: companyId, job_id: job.id, sort: (count ?? 0) + 1 })
+    // After the last line, wherever lines were removed (a count would reuse a place).
+    const { data: last } = await svc.from('job_sov').select('sort').eq('job_id', job.id).is('deleted_at', null).order('sort', { ascending: false }).limit(1).maybeSingle()
+    const { error: e } = await svc.from('job_sov').insert({ ...row, company_id: companyId, job_id: job.id, sort: Number(last?.sort ?? 0) + 1 })
     if (e) return { ok: false, error: 'Couldn’t save — try again.' }
   }
   refresh(zoneId)
@@ -301,8 +303,15 @@ export async function payAppStatusAction(appId: string, patch: { approved?: bool
   const row: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (patch.approved === true && own.row.status === 'submitted') { row.status = 'approved'; row.approved_at = new Date().toISOString() }
   if (patch.paidOn !== undefined || patch.paidAmount !== undefined) {
-    const on = patch.paidOn ?? null, amt = patch.paidAmount ?? null
+    const on = patch.paidOn ?? null
+    let amt = patch.paidAmount ?? null
     if (on !== null && (!DAY.test(on) || Number.isNaN(Date.parse(`${on}T00:00:00Z`)))) return { ok: false, error: 'The paid date isn’t a real date.' }
+    // A paid date with no amount = paid in full: the payment due it was sent for (frozen when sent).
+    if (on && amt === null) {
+      const due = Number((own.row.totals as { currentDue?: number } | null)?.currentDue)
+      if (!Number.isFinite(due)) return { ok: false, error: 'Enter the amount received.' }
+      amt = due
+    }
     if (amt !== null && !(Number.isFinite(amt) && Math.abs(amt) <= 1e9)) return { ok: false, error: 'The paid amount can’t be read.' }
     row.paid_on = on
     row.paid_amount = amt === null ? null : Math.round(amt * 100) / 100

@@ -184,6 +184,24 @@ jobcost.ts` writes (service role after the edit + Jobs + costs checks).
 The checklist's COIs, submittals, approvals, as-builts and warranty items
 open Documents; the final lien waiver opens Pay apps.
 
+From the review pass (Nov 8, migration 157):
+- A job billed outside Pay apps (T&M, unit price or milestone billing, or an
+  internal job) with no application sent: the final application and its
+  waiver are warnings at closeout, not blocks.
+- Reopening a closed job is a Manager's; who closed it, when and why stay on
+  the job.
+- A site that holds a job can't be deleted (157) — the cascade used to take
+  every sent application, change order, cost and document with it. Close the
+  job instead. A personal zone's punch list and milestones are its owner's.
+- Pay apps: *Mark sent* freezes the numbers (it never sent anything); a paid
+  date with no amount is paid in full; a % complete cell changes the dollars
+  only when someone typed in it; leaving an application with unsaved changes
+  asks first.
+- Job cost: with no budget and no estimate at completion, % complete reads
+  "no budget yet" — never 100% — and the job stays out of earned, over / under
+  and margin on Money across jobs. Hourly rates are read through the viewer's
+  own access, so a phone or machine hidden from them is never priced in.
+
 ## Money across jobs (board #233)
 
 Jobs → **Money across jobs** (`/jobs/portfolio`, costs only) — the Invoice
