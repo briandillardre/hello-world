@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { FileStack, ChevronRight } from 'lucide-react'
+import { FileStack, ChevronRight, BookOpen } from 'lucide-react'
 import { requireFeature, getRealPermissions } from '@/lib/permissions-server'
 import { getPlanSites } from '@/lib/db/plans'
 import { getGeofences } from '@/lib/db/zones'
@@ -38,9 +38,16 @@ export default async function Page() {
   return (
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
-        <div>
-          <h1 className="font-display font-bold text-xl text-ink flex items-center gap-2"><FileStack className="h-5 w-5 text-amber" /> Plans</h1>
-          <p className="text-[12.5px] text-faint">Every site’s plan sets, sheets and revisions. The newest version of a sheet is always the one that opens.</p>
+        <div className="flex items-start gap-3 flex-wrap">
+          <div className="flex-1 min-w-[200px]">
+            <h1 className="font-display font-bold text-xl text-ink flex items-center gap-2"><FileStack className="h-5 w-5 text-amber" /> Plans</h1>
+            <p className="text-[12.5px] text-faint">Every site’s plan sets, sheets and revisions. The newest version of a sheet is always the one that opens.</p>
+          </div>
+          {perms.canViewCosts && (
+            <Link href="/costbook" className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
+              <BookOpen className="h-4 w-4" /> Cost book
+            </Link>
+          )}
         </div>
 
         {mine.length === 0 ? (

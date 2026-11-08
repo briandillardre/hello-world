@@ -19,6 +19,12 @@ export const PLACE_KIND_META: Record<PlaceKind, { label: string; emoji: string; 
   shop:     { label: 'Shop',     emoji: '🔧', color: '#2dd4bf' },
   customer: { label: 'Customer', emoji: '🏠', color: '#34d399' },
   rental:   { label: 'Rental',   emoji: '🚜', color: '#a78bfa' },
+  // Estimating sources (Plans & Takeoff phase 3): price lists hang on these.
+  quarry:   { label: 'Quarry',         emoji: '🪨', color: '#a8a29e' },
+  asphalt:  { label: 'Asphalt plant',  emoji: '🛣', color: '#64748b' },
+  concrete: { label: 'Concrete plant', emoji: '🏭', color: '#cbd5e1' },
+  borrow:   { label: 'Borrow pit',     emoji: '⛰', color: '#b45309' },
+  landfill: { label: 'Landfill',       emoji: '🚮', color: '#6b7280' },
   other:    { label: 'Other',    emoji: '📍', color: '#ff9e16' },
 }
 

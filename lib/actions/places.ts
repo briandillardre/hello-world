@@ -10,7 +10,7 @@ import type { Place, PlaceKind } from '@/lib/types'
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
-const KINDS: PlaceKind[] = ['supplier', 'fuel', 'dump', 'shop', 'customer', 'rental', 'other']
+const KINDS: PlaceKind[] = ['supplier', 'fuel', 'dump', 'shop', 'customer', 'rental', 'quarry', 'asphalt', 'concrete', 'borrow', 'landfill', 'other']
 
 function clean(input: { name: string; kind: string; lat: number; lng: number; address?: string | null; notes?: string | null }):
   { ok: true; name: string; kind: PlaceKind; lat: number; lng: number; address: string | null; notes: string | null } | { ok: false; error: string } {
