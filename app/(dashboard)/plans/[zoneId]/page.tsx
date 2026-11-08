@@ -4,6 +4,7 @@ import { rankOf, RANK } from '@/lib/permissions'
 import { getGeofence } from '@/lib/db/zones'
 import { getPlanRoom } from '@/lib/db/plans'
 import { PlanRoom } from '@/components/plans/PlanRoom'
+import { getTakeoffItems } from '@/lib/db/takeoff'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,11 +22,11 @@ export default async function Page({ params }: { params: { zoneId: string } }) {
   const fence = await getGeofence(params.zoneId)
   if (!fence || fence.kind === 'boundary' || fence.kind === 'vendor') notFound()
   const real = await getRealPermissions()
-  const data = await getPlanRoom(fence.id, real.userId)
+  const [data, items] = await Promise.all([getPlanRoom(fence.id, real.userId), getTakeoffItems(perms.canViewCosts)])
   const ring = (fence.geometry?.coordinates?.[0] as [number, number][] | undefined) ?? null
   return (
     <PlanRoom zone={{ id: fence.id, name: fence.name }} data={data}
-      canEdit={perms.canEdit && !perms.viewingAs && !isMock} ring={ring} demo={isMock}
+      canEdit={perms.canEdit && !perms.viewingAs && !isMock} ring={ring} demo={isMock} items={items} canCosts={perms.canViewCosts}
       canDelete={perms.canEdit && !perms.viewingAs && !isMock && rankOf(perms) >= RANK.manager} />
   )
 }

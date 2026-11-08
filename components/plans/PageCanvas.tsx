@@ -21,7 +21,7 @@ const MAX_DETAIL_PX = 16_000_000
  * once the zoom settles, so the drawing stays sharp at any zoom without
  * holding a 100-megapixel canvas.
  */
-export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, onReady }: {
+export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, onReady, onTap, drawing = false }: {
   src: PageSource | null
   pageW: number
   pageH: number
@@ -32,6 +32,10 @@ export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, 
   /** Fit this page-unit box when it changes (Next change). */
   focus?: Box | null
   onReady?: () => void
+  /** A tap (no drag) on the page, in page units — measuring and picking. */
+  onTap?: (pt: [number, number], cam: Camera) => void
+  /** Drawing: no double-tap zoom, a crosshair. */
+  drawing?: boolean
 }) {
   const wrap = useRef<HTMLDivElement>(null)
   const baseHost = useRef<HTMLDivElement>(null)
@@ -194,6 +198,7 @@ export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, 
 
   // ── gestures ──
   const pointers = useRef(new Map<number, { x: number; y: number }>())
+  const downAt = useRef(new Map<number, { x: number; y: number; t: number; moved: number }>())
   const pinch = useRef<{ d: number; mx: number; my: number } | null>(null)
   const lastTap = useRef(0)
 
@@ -215,10 +220,11 @@ export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, 
   function onPointerDown(e: React.PointerEvent) {
     wrap.current?.setPointerCapture(e.pointerId)
     pointers.current.set(e.pointerId, local(e))
+    downAt.current.set(e.pointerId, { ...local(e), t: Date.now(), moved: 0 })
     if (pointers.current.size === 2) {
       const [a, b] = Array.from(pointers.current.values())
       pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }
-    } else if (pointers.current.size === 1) {
+    } else if (pointers.current.size === 1 && !drawing) {
       const now = Date.now()
       if (now - lastTap.current < 300) { const p = local(e); zoomAt(p.x, p.y, 2); lastTap.current = 0 } else lastTap.current = now
     }
@@ -228,6 +234,8 @@ export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, 
     if (!prev) return
     const p = local(e)
     pointers.current.set(e.pointerId, p)
+    const d0 = downAt.current.get(e.pointerId)
+    if (d0) d0.moved = Math.max(d0.moved, Math.hypot(p.x - d0.x, p.y - d0.y))
     if (pointers.current.size === 1) {
       const dx = p.x - prev.x, dy = p.y - prev.y
       if (dx || dy) lastTap.current = 0
@@ -244,8 +252,16 @@ export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, 
     }
   }
   function onPointerUp(e: React.PointerEvent) {
+    const wasOnly = pointers.current.size === 1
     pointers.current.delete(e.pointerId)
     if (pointers.current.size < 2) pinch.current = null
+    const d0 = downAt.current.get(e.pointerId)
+    downAt.current.delete(e.pointerId)
+    // A tap: one finger, barely moved, quick — never the end of a pan or a pinch.
+    if (onTap && wasOnly && d0 && d0.moved < 6 && Date.now() - d0.t < 600 && camRef.current.s) {
+      const p = local(e)
+      onTap(toPage(p.x, p.y, camRef.current, vw, vh, cos, sin), camRef.current)
+    }
   }
 
   // Wheel zoom needs a non-passive listener to keep the page from scrolling.
@@ -266,7 +282,7 @@ export function PageCanvas({ src, pageW, pageH, rotation, base, overlay, focus, 
     : 'scale(0)'
 
   return (
-    <div ref={wrap} className="relative h-full w-full overflow-hidden bg-[#3b4652] touch-none select-none cursor-grab active:cursor-grabbing"
+    <div ref={wrap} className={'relative h-full w-full overflow-hidden bg-[#3b4652] touch-none select-none ' + (drawing ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing')}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
       <div className="absolute left-0 top-0 origin-top-left shadow-2xl" style={{ width: pageW, height: pageH, transform: t }}>
         <div ref={baseHost} className="absolute inset-0 bg-white" />

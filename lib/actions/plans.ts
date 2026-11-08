@@ -141,6 +141,14 @@ async function followCurrentOnMap(svc: Svc, companyId: string, sheetId: string, 
   await flagOnly(svc, companyId, imgIds, cur?.imageId ?? null)
 }
 
+/** Marks on these versions measured again (after their placement changed). */
+async function remeasure(svc: Svc, companyId: string, versionIds: string[]) {
+  try {
+    const { remeasureVersion } = await import('@/lib/takeoff-server')
+    for (const id of versionIds.slice(0, 100)) await remeasureVersion(svc, companyId, id)
+  } catch { /* pre-146: no marks yet */ }
+}
+
 /** The map flag on exactly one of these pictures (or none). */
 async function flagOnly(svc: Svc, companyId: string, imgIds: string[], keep: string | null) {
   const others = imgIds.filter((id) => id !== keep)
@@ -401,7 +409,7 @@ const GRID_PLACE_FT = 3
  * old placement carries over when it is the same plot, and the map follows.
  */
 export async function addPlanVersionAction(input: AddVersionInput): Promise<Res<{
-  versionId: string; sheetId: string; carried: 'exact' | 'check' | 'none'; isCurrent: boolean; placed: boolean
+  versionId: string; sheetId: string; carried: 'exact' | 'check' | 'none'; isCurrent: boolean; placed: boolean; marksCarried: number
 }>> {
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { companyId, userId, svc } = await writer()
@@ -500,8 +508,16 @@ export async function addPlanVersionAction(input: AddVersionInput): Promise<Res<
     }
   }
   if (isCurrent) await followCurrentOnMap(svc, companyId, sheet.id, pin)
+  // The marks follow a revision on the same paper (144); a changed drawing
+  // flags every one of them for a look.
+  let marksCarried = 0
+  if (isCurrent && prevCurrent && carryRule(prevCurrent, v) !== 'none') {
+    const { carryMarks } = await import('@/lib/takeoff-server')
+    const changed = !v.signature || !prevCurrent.signature || v.signature !== prevCurrent.signature
+    marksCarried = await carryMarks(svc, companyId, prevCurrent.id, v.id, changed, userId).catch(() => 0)
+  }
   refresh(zoneId)
-  return { ok: true, versionId: v.id, sheetId: sheet.id, carried, isCurrent, placed }
+  return { ok: true, versionId: v.id, sheetId: sheet.id, carried, isCurrent, placed, marksCarried }
 }
 
 /** Pin a version as current (null = the newest one again). */
@@ -613,6 +629,8 @@ export async function notePlacementAction(versionId: string, source: 'manual' | 
   const placement = source === 'copied' ? { source: 'carried', from: fromVersionId ?? null, check: true } : { source: 'manual' }
   const { error } = await svc.from('plan_versions').update({ placement }).eq('id', versionId).eq('company_id', companyId)
   if (error) return { ok: false, error: 'Couldn’t save — try again.' }
+  // New corners can change the sheet's measuring scale: its marks follow.
+  await remeasure(svc, companyId, [versionId])
   return { ok: true }
 }
 
@@ -636,6 +654,7 @@ export async function copyPlacementAction(fromVersionId: string, toVersionIds: s
     await svc.from('plan_versions').update({ placement: { source: 'carried', from: fromVersionId, check: true } }).eq('id', t.id)
     copied++
   }
+  await remeasure(svc, companyId, (targets ?? []).map((t) => String(t.id)))
   refresh(String(src.geofence_id))
   return { ok: true, copied }
 }

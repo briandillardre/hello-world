@@ -3,16 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Compass, LocateFixed, Ruler, Crop as CropIcon, FileDown, Pin, PinOff, Trash2, ChevronRight, X } from 'lucide-react'
+import { ArrowLeft, Compass, LocateFixed, Ruler, Crop as CropIcon, PencilRuler, FileDown, Pin, PinOff, Trash2, ChevronRight, X } from 'lucide-react'
 import { PageCanvas, type PageSource, type Box, type Camera } from './PageCanvas'
 import { loadPdfjs, type PdfDoc } from './pdf'
 import { statusOf, revLabel, newestFirst, placementWords, type RoomVersion } from '@/lib/plans/room'
-import { scaleVerdict, scaleWords, placementFeetPerInch, SCALE_LABEL, type ScaleCheck, type ScaleKey } from '@/lib/plans/scale'
+import { scaleVerdict, scaleWords, SCALE_LABEL, type ScaleCheck } from '@/lib/plans/scale'
 import { pageUpBearing, uvOf, metresPerUnit, scGridConvergence, convergenceWords, type Corners4 } from '@/lib/plans/north'
 import { composite, changeBoxes } from '@/lib/plans/compare'
 import type { PlanImage, PlanSheetRow } from '@/lib/db/plans'
 import { planPdfLinkAction, markPlanSeenAction, setSheetPinAction, deletePlanVersionAction, setVersionCropAction } from '@/lib/actions/plans'
 import type { Crop } from '@/lib/plans/crop'
+import type { PlanMark, TakeoffItem } from '@/lib/db/takeoff'
+import { checksFor, measuringFeet } from '@/lib/plans/measure'
+import { setVersionScaleAction, firstPassAction, suggestMarksAction } from '@/lib/actions/takeoff'
+import { useMeasure } from './useMeasure'
 
 const fmtDay = (d: string) => {
   const t = Date.parse(`${d}T12:00:00Z`)
@@ -112,7 +116,7 @@ async function pixelsOf(r: Resolved, pxW: number, pxH: number): Promise<Uint8Cla
  * is placed); Plan up shows it as drawn. Where am I puts the phone's blue dot
  * on a placed sheet.
  */
-export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEdit, canDelete = false, canPdf = true }: {
+export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEdit, canDelete = false, canPdf = true, items = [], marks = [], canCosts = false }: {
   zone: { id: string; name: string }
   sheet: PlanSheetRow
   initialVersionId: string
@@ -123,6 +127,11 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
   canDelete?: boolean
   /** The original PDF (never for a prospect — pictures only). */
   canPdf?: boolean
+  /** The company's item library (prices only when canCosts). */
+  items?: TakeoffItem[]
+  /** Every mark on this sheet's versions. */
+  marks?: PlanMark[]
+  canCosts?: boolean
 }) {
   const router = useRouter()
   const versions = useMemo(() => [...sheet.versions].sort(newestFirst), [sheet.versions])
@@ -235,16 +244,67 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
 
   // ── The scale card: the page's own evidence + where it sits on the map ──
   const [scaleOpen, setScaleOpen] = useState(false)
-  const checks = useMemo(() => {
-    const out: ScaleCheck[] = (v.scaleChecks ?? []).filter((c) => c.key in SCALE_LABEL).map((c) => ({ ...c, key: c.key as ScaleKey }))
-    if (!out.length && v.feetPerInch) out.push({ key: 'stated', feetPerInch: v.feetPerInch, detail: `${v.scaleText ?? ''} in the title block`.trim() })
-    // Placement against the page's own size — a PDF page's points; a picture
-    // upload's width is in pixels, which say nothing about inches.
-    if (bounds && v.pageW && v.fileId && v.placement?.source !== 'grid') {
-      out.push({ key: 'placement', feetPerInch: placementFeetPerInch(metresPerUnit(bounds, v.pageW)), detail: placementWords(v.placement, true) })
+  const checks: ScaleCheck[] = useMemo(() => checksFor(v, bounds ?? null, placementWords(v.placement, true)), [v, bounds])
+  // The same scale the server measures with (lib/takeoff-server.ts).
+  const measuring = useMemo(() => measuringFeet(v, checks, bounds ?? null), [v, checks, bounds])
+  const [scaleInput, setScaleInput] = useState('')
+  async function setScale(fpi: number | null) {
+    const r = await setVersionScaleAction(v.id, fpi).catch(() => null)
+    if (!r?.ok) { setErr(r && !r.ok ? r.error : 'Couldn’t save — try again.'); return }
+    setScaleInput('')
+    router.refresh()
+  }
+
+  // ── Measuring (146) ──
+  const [allMarks, setAllMarks] = useState<PlanMark[]>(marks)
+  useEffect(() => { setAllMarks(marks) }, [marks])
+  const prevVersionId = useMemo(() => {
+    const i = versions.findIndex((x) => x.id === v.id)
+    return i >= 0 && i + 1 < versions.length ? versions[i + 1].id : null
+  }, [versions, v.id])
+  // ── The first pass: which layer is which item (the AI, or the layer-name
+  // rules), then the marks those layers draw, measured on the server and
+  // left SUGGESTED until somebody accepts them (lib/plans/first-pass.ts).
+  const [fp, setFp] = useState<{ busy: boolean; note: string | null }>({ busy: false, note: null })
+  useEffect(() => { setFp({ busy: false, note: null }) }, [v.id])
+  async function runFirstPass() {
+    if (!res || res.src.kind !== 'pdf') return
+    const src = res.src
+    setFp({ busy: true, note: null })
+    const done = (note: string) => setFp({ busy: false, note })
+    try {
+      const [{ readVectors }, FP] = await Promise.all([import('./pdf'), import('@/lib/plans/first-pass')])
+      const pdfjs = await loadPdfjs()
+      const vec = await readVectors(pdfjs, src.doc, src.page)
+      const box = v.crop && v.crop.on !== false ? v.crop : null
+      const lines = FP.inBox(vec.lines, vec.size, box)
+      const stats = FP.penStats(vec.pens, lines)
+      if (!stats.length) return done('No linework on this sheet — it may be a scan. Measure by hand.')
+      const r = await firstPassAction(v.id, stats).catch(() => null)
+      if (!r?.ok) return done(r && !r.ok ? r.error : 'The first pass didn’t answer — try again.')
+      if (!r.assign.length) {
+        return done(stats.some((s) => s.layer)
+          ? 'None of this sheet’s layers matched an item in the library. Items named like the layers (curb, silt fence, 15" RCP…) get picked up.'
+          : 'This PDF carries no CAD layer names, so the first pass can’t tell curb from contours. Measure by hand.')
+      }
+      const lib = items.map((it) => ({ id: it.id, code: it.code, name: it.name, measure: it.measure, section: it.section }))
+      const penOf = new Map(vec.pens.map((p) => [p.id, p]))
+      const { marks: proposed, dropped } = FP.proposeMarks(r.assign, lib, lines, vec.size, (a) => `First pass · ${penOf.get(a.pen)?.layer ?? `pen ${a.pen}`}`)
+      if (!proposed.length) return done('The matched layers drew nothing measurable.')
+      const saved = await suggestMarksAction(v.id, proposed).catch(() => null)
+      if (!saved?.ok) return done(saved && !saved.ok ? saved.error : 'Couldn’t save the suggestions — try again.')
+      setAllMarks((ms) => [...ms.filter((m) => !(m.versionId === v.id && m.status === 'suggested')), ...saved.marks])
+      const nItems = new Set(saved.marks.map((m) => m.itemId)).size
+      done(`${saved.marks.length} suggested mark${saved.marks.length === 1 ? '' : 's'} for ${nItems} item${nItems === 1 ? '' : 's'} from ${r.assign.length} layer${r.assign.length === 1 ? '' : 's'} (${r.source === 'ai' ? 'AI' : 'layer names'})${dropped ? ` · ${dropped} small pieces left out` : ''}. Dashed until you accept them — tap one to check it.`)
+    } catch {
+      done('The first pass couldn’t read this sheet.')
     }
-    return out
-  }, [v, bounds])
+  }
+  const measure = useMeasure({
+    versionId: v.id, prevVersionId, items, allMarks, setAllMarks, feet: measuring.feet, blocked: measuring.blocked,
+    canEdit, canCosts, pageW: res?.w ?? 1, pageH: res?.h ?? 1,
+    firstPass: res?.src.kind === 'pdf' ? { run: () => void runFirstPass(), busy: fp.busy, note: fp.note } : null,
+  })
   const verdict = scaleVerdict(checks)
   const toneDot = verdict.tone === 'green' ? 'bg-emerald-400' : verdict.tone === 'red' ? 'bg-red-500' : verdict.tone === 'amber' ? 'bg-amber' : 'bg-navy-600'
 
@@ -329,6 +389,7 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
             ))}
           </svg>
         )}
+        {!cmp && !cropEdit && measure.overlay(cam)}
         {status.kind !== 'current' && !cmp && (
           <div className="absolute inset-0 grid place-items-center pointer-events-none overflow-hidden">
             <span className="font-display font-black text-red-600/20 whitespace-nowrap -rotate-[28deg] tracking-widest"
@@ -417,6 +478,10 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
             </select>
           )
         )}
+        <button type="button" onClick={() => { measure.setOn(!measure.on); setCmp(null); setCropEdit(false) }} aria-pressed={measure.on}
+          className={'flex-none inline-flex items-center gap-1 rounded-lg border px-2 py-1 ' + (measure.on ? 'border-amber/70 text-amber' : 'border-navy-700 text-muted')}>
+          <PencilRuler className="h-3.5 w-3.5" /> Measure{measure.count ? ` · ${measure.count}` : ''}
+        </button>
         <button type="button" onClick={() => setScaleOpen((x) => !x)} aria-expanded={scaleOpen}
           className={'flex-none inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 ' + (scaleOpen ? 'border-teal/60 text-teal' : 'border-navy-700 text-muted')}>
           <Ruler className="h-3.5 w-3.5" /> Scale <span className={'h-2 w-2 rounded-full ' + toneDot} />
@@ -443,6 +508,8 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
         {canDelete && <button type="button" onClick={() => void deleteIt()} aria-label="Delete this version" className="flex-none ml-auto rounded-lg p-1.5 text-faint hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>}
       </div>
 
+      {measure.panel}
+
       {cropEdit && (
         <div className="flex items-center gap-2 px-3 py-1.5 bg-navy-900 border-b border-navy-800 text-[12px] flex-wrap">
           <span className="text-muted flex-1 min-w-[12rem]">Drag the teal edges to the drawing — the border and title block outside it hide on the map.</span>
@@ -468,7 +535,21 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
               </tbody>
             </table>
           )}
-          <p className="text-[10.5px] text-faint">Green: two or more checks agree within 0.5 %. Amber: only one. Red: two disagree by more than 1 % — check before measuring.</p>
+          {canEdit && !v.fileId && (
+            <p className="text-[11px] text-faint">This version is a picture (no PDF), so its paper size is unknown: it measures from where it sits on the map. Place it to measure on it.</p>
+          )}
+          {canEdit && !!v.fileId && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {verdict.suggest && <button type="button" onClick={() => void setScale(verdict.suggest!)} className="rounded-lg bg-amber text-[#1a1100] font-bold px-2.5 py-1">Use {scaleWords(verdict.suggest)}</button>}
+              <span className="text-faint">Set the scale by hand: 1&quot; =</span>
+              <input value={scaleInput} onChange={(e) => setScaleInput(e.target.value.replace(/[^0-9.]/g, '').slice(0, 7))} inputMode="decimal" aria-label="Feet per inch"
+                className="w-16 rounded bg-navy-950 border border-navy-700 px-1.5 py-1 text-ink font-mono" placeholder="30" />
+              <span className="text-faint">&apos;</span>
+              <button type="button" disabled={!(Number(scaleInput) > 0)} onClick={() => void setScale(Number(scaleInput))} className="rounded-lg border border-navy-700 px-2 py-1 text-muted disabled:opacity-40">Use</button>
+              {checks.some((c) => c.key === 'set') && <button type="button" onClick={() => void setScale(null)} className="text-faint underline">Clear the hand-set scale</button>}
+            </div>
+          )}
+          <p className="text-[10.5px] text-faint">Green: two or more checks agree within 0.5 %. Amber: only one. Red: two disagree by more than 1 % — measuring stops until the scale is set.</p>
         </div>
       )}
 
@@ -489,7 +570,8 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
 
       <div className="relative flex-1 min-h-0">
         {res ? (
-          <PageCanvas src={cmp ? null : src} base={cmp ? cmpCanvas : null} pageW={res.w} pageH={res.h} rotation={rotation} overlay={overlay} focus={focus} />
+          <PageCanvas src={cmp ? null : src} base={cmp ? cmpCanvas : null} pageW={res.w} pageH={res.h} rotation={rotation} overlay={overlay} focus={focus}
+            onTap={measure.on && !cmp && !cropEdit ? measure.onTap : undefined} drawing={measure.drawing && !cmp && !cropEdit} />
         ) : (
           <div className="h-full grid place-items-center text-sm text-faint">{err ?? 'Opening the sheet…'}</div>
         )}
