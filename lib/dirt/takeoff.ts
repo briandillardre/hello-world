@@ -33,6 +33,7 @@ import {
   polyPosNeg, ringSelfCrosses, segmentCrosses, splitByLine, type Box, type Poly,
 } from './geom'
 import { buildTin, GridSurface, OffsetSurface, type PlaneTri, type Surface, type TinPoint } from './surface'
+import type { GroundResults } from '../borings/ground'
 
 export const FT = 0.3048
 export const IN = 0.0254
@@ -131,6 +132,8 @@ export interface DirtResults {
   warnings: string[]
   /** Band width (ft) of the stored cut/fill picture — set by the server run. */
   heatBandFt?: number
+  /** The site's borings against this run (lib/borings/ground.ts) — absent when the site has none. */
+  ground?: GroundResults
 }
 
 // ── Limits ────────────────────────────────────────────────────────────────

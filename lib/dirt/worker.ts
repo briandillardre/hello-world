@@ -5,11 +5,14 @@
  */
 import { runTakeoff, type DirtDesign, type GroundGrid } from './takeoff'
 import { heatRaster } from './heat'
+import { groundResults, type BoringIn } from '../borings/ground'
 
 let ground: GroundGrid | null = null
+let borings: BoringIn[] = []
 
 type In =
   | { type: 'ground'; ground: GroundGrid | null }
+  | { type: 'borings'; borings: BoringIn[] }
   | { type: 'run'; seq: number; design: DirtDesign }
 
 const post = (msg: unknown, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(msg, transfer)
@@ -17,10 +20,14 @@ const post = (msg: unknown, transfer: Transferable[] = []) => (self as unknown a
 self.onmessage = (e: MessageEvent<In>) => {
   const m = e.data
   if (m.type === 'ground') { ground = m.ground; return }
+  if (m.type === 'borings') { borings = m.borings; return }
   if (m.type !== 'run') return
   try {
     // A design too big to run says so instead of pinning a phone's CPU for minutes.
     const { results, ctx } = runTakeoff(m.design, ground, new Date(), { deadline: Date.now() + 120_000 })
+    // The site's borings, measured the same way the server's Save does.
+    const g = borings.length ? groundResults(ctx, borings) : null
+    if (g) results.ground = g
     const heat = heatRaster(ctx, { maxPx: 1000 })
     post({ type: 'done', seq: m.seq, results, heat }, heat ? [heat.rgba.buffer] : [])
   } catch (err) {

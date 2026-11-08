@@ -25,6 +25,8 @@ import { keyRateLimited } from '@/lib/rate-limit'
 import { checkDesign } from '@/lib/dirt/schema'
 import { emptyDesign, runTakeoff, type DirtDesign, type DirtResults, type GroundGrid } from '@/lib/dirt/takeoff'
 import { heatRaster } from '@/lib/dirt/heat'
+import { groundResults } from '@/lib/borings/ground'
+import { BORING_COLS, boringFromRow } from '@/lib/db/borings'
 import { boxInside, boxTooBig, groundBoxFor, growBox, parseBox, type LngLatBox } from '@/lib/dirt/ground-box'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -173,6 +175,13 @@ export async function saveTakeoffAction(id: string, input: { name?: string; desi
       const run = runTakeoff(design, ground, new Date(), { deadline: Date.now() + RUN_MS })
       results = run.results
       results.warnings = [...warnings, ...results.warnings]
+      // The site's borings in the cut (148) — the same measure the editor previews.
+      if (row.geofence_id) {
+        const { data: bs } = await svc.from('borings').select(BORING_COLS).eq('company_id', g.companyId).eq('geofence_id', row.geofence_id).is('deleted_at', null).limit(500)
+        const logs = (bs ?? []).map((b) => boringFromRow(b as Record<string, unknown>))
+        const gr = logs.length ? groundResults(run.ctx, logs) : null
+        if (gr) results.ground = gr
+      }
       heat = heatRaster(run.ctx, { maxPx: 1400 })
       if (heat) results.heatBandFt = heat.bandFt
     } catch (e) {

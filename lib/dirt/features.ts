@@ -139,8 +139,10 @@ export function snapVertices(design: DirtDesign, tool: { kind: DirtKind; z?: num
 export function estimateText(r: {
   topsoil: { cy: number; sf: number }; cutCy: number; fillCy: number; onsiteCy: number; exportCy: number; importCy: number
   shrinkPct: number; loads: number; truckCy: number; demo: { label: string; thicknessIn: number; sf: number; cy: number }[]
+  ground?: { borings: number; pits: number; rock: { rockCy: number; pwrCy: number; unexploredCy: number; undercutCy: number } | null }
 }, name: string): string {
   const n = (v: number) => Math.round(v).toLocaleString()
+  const g = r.ground?.rock
   const lines = [
     `${name} — dirt takeoff (HammerTrack)`,
     `Topsoil: ${n(r.topsoil.cy)} CY (${n(r.topsoil.sf)} SF)`,
@@ -148,6 +150,9 @@ export function estimateText(r: {
     `Onsite: ${n(r.onsiteCy)} CY`,
     r.exportCy > 0 ? `Export: ${n(r.exportCy)} CY (${r.loads} loads @ ${r.truckCy} CY)` : `Import: ${n(r.importCy)} CY (${r.loads} loads @ ${r.truckCy} CY)`,
     ...r.demo.map(d => `Demo ${d.label} ${d.thicknessIn}": ${n(d.sf)} SF · ${n(d.cy)} CY`),
+    ...(g ? [
+      `From ${r.ground!.borings + r.ground!.pits} logs — rock (below refusal): ${n(g.rockCy)} CY · PWR: ${n(g.pwrCy)} CY · unexplored: ${n(g.unexploredCy)} CY · undercut: ${n(g.undercutCy)} CY`,
+    ] : []),
   ]
   return lines.join('\n')
 }

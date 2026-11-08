@@ -4,6 +4,7 @@ import { isProspect } from '@/lib/permissions'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { dirtAddonActive, getPlanSheets, getTakeoff } from '@/lib/db/dirt'
 import { getGeofence } from '@/lib/db/zones'
+import { getBorings } from '@/lib/db/borings'
 import TakeoffEditor from '@/components/dirt/TakeoffEditor'
 
 export const dynamic = 'force-dynamic'
@@ -21,9 +22,10 @@ export default async function DirtTakeoffPage({ params }: { params: { id: string
   if (!(await dirtAddonActive(companyId))) notFound()
   const takeoff = await getTakeoff(params.id)
   if (!takeoff) notFound()
-  const [zone, sheets] = await Promise.all([
+  const [zone, sheets, borings] = await Promise.all([
     takeoff.geofenceId ? getGeofence(takeoff.geofenceId) : Promise.resolve(null),
     takeoff.geofenceId ? getPlanSheets(takeoff.geofenceId) : Promise.resolve([]),
+    takeoff.geofenceId ? getBorings(takeoff.geofenceId) : Promise.resolve([]),
   ])
   const ring = (zone?.geometry?.coordinates?.[0] ?? null) as [number, number][] | null
   return (
@@ -31,6 +33,7 @@ export default async function DirtTakeoffPage({ params }: { params: { id: string
       takeoff={takeoff}
       zone={{ id: zone?.id ?? '', name: zone?.name ?? 'Site', ring }}
       sheets={sheets}
+      borings={borings}
       canEdit={perms.canEdit && !perms.viewingAs}
     />
   )

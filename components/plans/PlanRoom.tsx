@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, FileStack, Plus, MapPin, Pencil, Trash2, RotateCcw, Map as MapIcon, Layers } from 'lucide-react'
+import { ArrowLeft, FileStack, Plus, MapPin, Pencil, Trash2, RotateCcw, Map as MapIcon, Layers, Drill } from 'lucide-react'
 import {
   groupSheets, revLabel, setKindLabel, SET_KINDS, placementWords, type PlanSetKind,
 } from '@/lib/plans/room'
@@ -38,7 +38,7 @@ export const fmtDay = (d: string) => {
  * (grading and utilities side by side); the map always shows the current
  * version, so a revision can never hide behind an old picture.
  */
-export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false, items = [], canCosts = false }: {
+export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false, items = [], canCosts = false, canGround = false }: {
   zone: { id: string; name: string }
   data: PlanRoomData
   canEdit: boolean
@@ -48,6 +48,8 @@ export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false, i
   canDelete?: boolean
   items?: TakeoffItem[]
   canCosts?: boolean
+  /** The site's borings and test pits (not for a prospect). */
+  canGround?: boolean
 }) {
   const router = useRouter()
   const [tab, setTab] = useState<'sheets' | 'sets' | 'items'>('sheets')
@@ -95,6 +97,11 @@ export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false, i
             <Link href={`/plans/${zone.id}/takeoff`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
               <Layers className="h-4 w-4" /> Takeoff
             </Link>
+            {canGround && (
+              <Link href={`/plans/${zone.id}/ground`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
+                <Drill className="h-4 w-4" /> Ground
+              </Link>
+            )}
             <Link href={`/zones/${zone.id}`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
               <MapIcon className="h-4 w-4" /> Site page
             </Link>
