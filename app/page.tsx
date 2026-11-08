@@ -282,7 +282,7 @@ export default function HomePage() {
               {
                 step: '4', name: 'Fully integrated', price: 'the endgame', fee: 'everything connected',
                 who: 'The company runs itself on the data.',
-                items: ['Factory feeds from Cat/Komatsu — no hardware', 'Margins vs your trade + live valuation', { t: 'Estimates → invoices → paid', roadmap: true }, 'One system instead of five subscriptions'] as LadderItem[],
+                items: ['Factory feeds from Cat/Komatsu — no hardware', 'Margins vs your trade + live valuation', 'Estimates → AIA-style pay apps → who owes what', 'One system instead of five subscriptions'] as LadderItem[],
                 hot: false,
               },
             ].map((t) => (
