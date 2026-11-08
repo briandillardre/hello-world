@@ -261,3 +261,36 @@ Brian: a stockpile option like Propeller's — "point, click and calculate from 
 - **Over time:** each measurement is a row dated by the survey's flight; the same pile name groups them (`lib/dirt/pile-history.ts`) and shows the change.
 - **Tables:** `dirt_surfaces`, `dirt_stockpiles` — company read (live rows only), service-role writes, `ht_prospect_lockdown(…, false)`. Not yet: purging soft-deleted rows/files in the health cron, deleting a survey from the UI.
 - Harness: `node scripts/dirt-test.mjs` (cone / pyramid / sloped base / pit / k² / UTM-feet resample / GeoKeys).
+
+## The ground — borings and test pits (Nov 8, migration 148)
+
+Plan room → **Ground** holds the site's borings and test pits: paste the
+geotech report's boring table (Name, Lat/Lng or SC State Plane
+Northing/Easting, Depth, and any of Ground elev., Topsoil (in), Fill to, PWR at,
+Refusal at, Water at drilling, Water at 24 h, Unsuitable to), type one in, or
+log a test pit where you stand with a photo.
+
+What the takeoff does with them, on every run (the editor's preview and the
+server's Save call the same `groundResults`):
+
+- **Spread.** Inside the borings each value passes through every log exactly
+  (inverse-distance weighting); beyond them the nearest log holds and the area
+  is counted "beyond the borings". Rock, PWR and water spread by elevation;
+  topsoil, existing fill and unsuitable soil as depths below the ground.
+- **No rock found is not "no rock".** A log that stopped without refusal says
+  "soil down to my bottom". The cut below its bottom is **unexplored** —
+  reported apart, never priced as common or as rock. The three kinds of
+  evidence (hit refusal · PWR only · found neither) keep their own lines and
+  share the weight at each point, so a single refusal among clean borings
+  that went deeper stays rock near it and never smears across the site.
+- **Measured in the cut** on the takeoff's own surfaces: rock below refusal,
+  PWR (rippable), unexplored, undercut (unsuitable soil left under the work),
+  unsuitable soil the cut digs (waste it), existing fill dug and left, the area
+  graded below the water the borings found.
+- **Checked.** Each log's ground elevation against the takeoff's existing
+  ground — more than a foot apart is named (another datum, or the site changed).
+  Logs more than 1 km from the grading limits are left out by name.
+
+The Topsoil step offers the borings' average as a one-tap strip; the bid memo
+carries the quantities and qualifies its rock and undercut exclusions with
+them. Harness: `node scripts/borings-test.mjs`.

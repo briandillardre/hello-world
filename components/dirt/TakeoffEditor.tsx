@@ -26,6 +26,8 @@ import {
 import { CUT_STEPS, FILL_STEPS, NEUTRAL, legendRows } from '@/lib/dirt/heat'
 import type { DirtDesign, DirtFeature, DirtKind, DirtResults, GroundGrid } from '@/lib/dirt/takeoff'
 import type { PlanSheet, TakeoffFull } from '@/lib/db/dirt'
+import type { BoringRow } from '@/lib/db/borings'
+import { groundWords, type GroundResults } from '@/lib/borings/ground'
 import type { MapSheet } from './TakeoffMap'
 import NumField from './NumField'
 
@@ -36,6 +38,8 @@ interface Props {
   takeoff: TakeoffFull
   zone: { id: string; name: string; ring: [number, number][] | null }
   sheets: PlanSheet[]
+  /** The site's borings and test pits (148) — the preview measures them like the server's Save. */
+  borings: BoringRow[]
   canEdit: boolean
 }
 
@@ -92,7 +96,7 @@ function normalized(d: DirtDesign | null | undefined): DirtDesign {
   }
 }
 
-export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props) {
+export default function TakeoffEditor({ takeoff, zone, sheets, borings, canEdit }: Props) {
   const [design, setDesign] = useState<DirtDesign>(() => normalized(takeoff.design))
   const [history, setHistory] = useState<DirtDesign[]>([])
   const [name, setName] = useState(takeoff.name)
@@ -222,9 +226,27 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
   useEffect(() => {
     worker.current?.postMessage({ type: 'ground', ground: ground.grid })
   }, [ground.grid])
+  useEffect(() => {
+    worker.current?.postMessage({
+      type: 'borings',
+      borings: borings.map(b => ({
+        id: b.id, name: b.name, kind: b.kind, lat: b.lat, lng: b.lng, groundFt: b.groundFt, depthFt: b.depthFt, topsoilIn: b.topsoilIn,
+        fillFt: b.fillFt, pwrFt: b.pwrFt, refusalFt: b.refusalFt, waterFt: b.waterFt, water24hFt: b.water24hFt, unsuitableFt: b.unsuitableFt,
+      })),
+    })
+  }, [borings])
+  // The saved run measured other borings than the site has now (one added,
+  // changed or removed since): preview against today's logs until Save.
+  const boringsChanged = useMemo(() => {
+    const g = saved.results?.ground
+    if (!saved.results) return false
+    if (!g) return borings.length > 0
+    const at = saved.at ? Date.parse(saved.at) : 0
+    return borings.length !== g.borings + g.pits + g.far.length || borings.some(b => Date.parse(b.updatedAt) > at)
+  }, [borings, saved.results, saved.at])
   // The server's saved numbers stand until something changes — no preview run
   // needed (or shown) for a takeoff opened as it was saved.
-  const needPreview = dirty || !saved.results
+  const needPreview = dirty || !saved.results || boringsChanged
   useEffect(() => {
     if (!needPreview) return
     const t = setTimeout(() => postRun(designRef.current), 300)
@@ -435,6 +457,14 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
   const mapSheets: MapSheet[] = useMemo(() => sheets.map(s => ({ id: s.id, url: s.url, corners: s.corners, visible: !!sheetState[s.id]?.visible, opacity: sheetState[s.id]?.opacity ?? 0.8 })), [sheets, sheetState])
   const savedHeat = saved.heatUrl && saved.heatCorners ? { url: saved.heatUrl, corners: saved.heatCorners, bandFt: saved.results?.heatBandFt ?? 1 } : null
   const results = needPreview ? (live?.results ?? saved.results) : saved.results
+  // The borings' topsoil: the average, and the strip it suggests (to the half inch).
+  const boringTopsoil = useMemo(() => {
+    const t = borings.map(b => b.topsoilIn).filter((v): v is number => v !== null && Number.isFinite(v))
+    if (!t.length) return null
+    const avg = Math.round((10 * t.reduce((a, b) => a + b, 0)) / t.length) / 10
+    const spread = results?.ground?.rock?.topsoilIn ?? avg
+    return { avg, lo: Math.min(...t), hi: Math.max(...t), n: t.length, pick: Math.max(0.5, Math.round(spread * 2) / 2) }
+  }, [borings, results])
   const heat = needPreview ? (live?.heat ?? savedHeat) : savedHeat
   const sel = design.features.find(f => f.id === selected) ?? null
   const boundary = design.features.find(f => f.kind === 'boundary')
@@ -709,6 +739,18 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
 
             {step === 'topsoil' && (
               <Section title="Topsoil strip" hint={TOPSOIL_HINT}>
+                {boringTopsoil && (
+                  <p className="text-xs text-muted">
+                    Borings: <span className="text-ink">{boringTopsoil.avg}&quot; average</span> ({boringTopsoil.lo}–{boringTopsoil.hi}&quot;, {boringTopsoil.n} log{boringTopsoil.n === 1 ? '' : 's'})
+                    {results?.ground?.rock?.topsoilIn != null ? ` · ${results.ground.rock.topsoilIn}" spread over the grading limits` : ''}
+                  </p>
+                )}
+                {canEdit && boringTopsoil && (
+                  <button onClick={() => startTool({ kind: 'topsoil', thicknessIn: boringTopsoil.pick })}
+                    className={`rounded-lg border px-3 py-1.5 text-xs ${tool?.kind === 'topsoil' && tool.thicknessIn === boringTopsoil.pick ? 'border-amber text-amber' : 'border-amber/50 text-amber hover:bg-navy-800'}`}>
+                    {`${boringTopsoil.pick}" area — from the borings`}
+                  </button>
+                )}
                 {canEdit && (
                   <div className="flex flex-wrap gap-2">
                     {[1, 2, 3, 5, 6].map(t => (
@@ -756,7 +798,7 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
             )}
 
             {step === 'results' && (
-              <Results results={results} live={!!live} dirty={dirty} saved={saved.results} name={name}
+              <Results results={results} live={!!live} dirty={dirty || boringsChanged} saved={saved.results} name={name} zoneId={zone.id} logs={borings.length}
                 design={design} canEdit={canEdit} onSettings={s => commit({ ...designRef.current, settings: { ...designRef.current.settings, ...s } })}
                 heatVisible={heatVisible} setHeatVisible={setHeatVisible} heatOpacity={heatOpacity} setHeatOpacity={setHeatOpacity}
                 copied={copied} onCopy={async (text) => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { /* clipboard blocked */ } }} />
@@ -927,6 +969,7 @@ function SelectedCard({ f, canEdit, onChange, onDelete, onClose }: { f: DirtFeat
 
 function Results(p: {
   results: DirtResults | null; live: boolean; dirty: boolean; saved: DirtResults | null; name: string; design: DirtDesign; canEdit: boolean
+  zoneId: string; logs: number
   onSettings: (s: Partial<DirtDesign['settings']>) => void
   heatVisible: boolean; setHeatVisible: (b: boolean) => void; heatOpacity: number; setHeatOpacity: (n: number) => void
   copied: boolean; onCopy: (t: string) => void
@@ -987,11 +1030,49 @@ function Results(p: {
         Grading limits {n0(r.boundarySf)} SF · existing: {r.existing.detail}{r.existing.offsetFt ? ` (offset ${r.existing.offsetFt} ft)` : ''}
         {r.datum.proposedMinusExistingFt != null ? ` · proposed sits ${r.datum.proposedMinusExistingFt > 0 ? '+' : ''}${r.datum.proposedMinusExistingFt.toFixed(1)} ft from existing on average` : ''}
       </div>
+      <GroundCard ground={r.ground ?? null} boundarySf={r.boundarySf} zoneId={p.zoneId} logs={p.logs} />
       {r.warnings.length > 0 && (
         <ul className="space-y-1 rounded-lg border border-amber/40 bg-amber/5 p-2 text-xs text-amber">
           {r.warnings.map(w => <li key={w}>• {w}</li>)}
         </ul>
       )}
+    </div>
+  )
+}
+
+/** The site's borings in the cut: rock, PWR, unexplored, undercut, and what to watch. */
+function GroundCard({ ground, boundarySf, zoneId, logs }: { ground: GroundResults | null; boundarySf: number; zoneId: string; logs: number }) {
+  const link = zoneId ? <Link href={`/plans/${zoneId}/ground`} className="text-amber">{logs ? 'Borings' : 'Add borings'}</Link> : null
+  if (!ground) {
+    return (
+      <div className="rounded-lg border border-navy-800 bg-navy-950 p-2.5 text-xs text-muted">
+        No borings on this site yet — rock, PWR and undercut stay unpriced. {link}
+      </div>
+    )
+  }
+  const r = ground.rock
+  const cell = (label: string, v: number, sub: string) => (
+    <div className="rounded-lg border border-navy-800 bg-navy-900 p-2">
+      <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">{label}</div>
+      <div className="text-base font-semibold tabular-nums text-ink">{n0(v)} <span className="text-[11px] font-normal text-muted">CY</span></div>
+      <div className="text-[10.5px] text-muted">{sub}</div>
+    </div>
+  )
+  return (
+    <div className="space-y-2 rounded-lg border border-navy-800 bg-navy-950 p-2.5 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">The ground · {ground.borings + ground.pits} log{ground.borings + ground.pits === 1 ? '' : 's'}</span>
+        {link}
+      </div>
+      {r && (
+        <div className="grid grid-cols-2 gap-2">
+          {cell('Rock', r.rockCy, 'below refusal')}
+          {cell('PWR', r.pwrCy, 'rippable')}
+          {cell('Unexplored', r.unexploredCy, 'deeper than the borings')}
+          {cell('Undercut', r.undercutCy, 'unsuitable under the work')}
+        </div>
+      )}
+      <ul className="space-y-1 text-muted">{groundWords(ground, boundarySf).map(w => <li key={w}>• {w}</li>)}</ul>
     </div>
   )
 }

@@ -527,8 +527,9 @@ export async function GET(req: NextRequest) {
   } catch (err) { out.ai = err instanceof Error ? err.message : 'failed' }
 
   // 11 — plan uploads nobody filed (143/144; sec-check Nov 7): a PDF under a
-  // set's folder with no plan_files row, or a sheet picture under img/ with
-  // no zone_imagery row, two hours after it landed, goes — and a picture
+  // set's folder with no plan_files row, a sheet picture under img/ with no
+  // zone_imagery row, or a test pit photo under pits/ no live boring points
+  // at (148), two hours after it landed, goes — and a picture
   // filed a day ago that no version ever took (an import that stopped before
   // its page filed) goes with its row. Bounded: 50 company folders per run,
   // 1000 objects per folder, only paths of our own shape are ever handed to
@@ -539,6 +540,7 @@ export async function GET(req: NextRequest) {
     const U = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
     const PDF_PATH = new RegExp(`^${U}/${U}/${U}\\.pdf$`)
     const IMG_PATH = new RegExp(`^${U}/img/${U}$`)
+    const PIT_PATH = new RegExp(`^${U}/pits/${U}$`)
     const old = (o: { created_at?: string | null }) => Date.parse(o.created_at ?? '') < Date.now() - 2 * 3_600_000
     let swept = 0
     const { data: cos } = await svc.storage.from('plans').list('', { limit: 50 })
@@ -569,6 +571,11 @@ export async function GET(req: NextRequest) {
                 else unversioned.push(String(r.id))
               }
             }
+          } else if (k.name === 'pits') {
+            // A test pit's photo (148) stays while a live boring points at it.
+            const { data, error } = await svc.from('borings').select('photo_path').in('photo_path', slice).is('deleted_at', null)
+            if (error) live = null
+            else for (const r of data ?? []) live.add(String(r.photo_path))
           } else {
             const { data, error } = await svc.from('plan_files').select('path').in('path', slice)
             if (error) live = null
@@ -576,7 +583,7 @@ export async function GET(req: NextRequest) {
           }
         }
         if (!live) continue
-        const gone = stale.filter((p) => !live!.has(p) && (k.name === 'img' ? IMG_PATH.test(p) : PDF_PATH.test(p))).slice(0, 200)
+        const gone = stale.filter((p) => !live!.has(p) && (k.name === 'img' ? IMG_PATH.test(p) : k.name === 'pits' ? PIT_PATH.test(p) : PDF_PATH.test(p))).slice(0, 200)
         if (gone.length) {
           const { error } = await svc.storage.from('plans').remove(gone)
           if (!error) {

@@ -19,7 +19,7 @@ export interface TakeoffSummary {
   geofenceId: string | null
   updatedAt: string
   computedAt: string | null
-  results: Pick<DirtResults, 'cutCy' | 'fillCy' | 'exportCy' | 'importCy' | 'onsiteCy' | 'topsoil' | 'warnings'> | null
+  results: Pick<DirtResults, 'cutCy' | 'fillCy' | 'exportCy' | 'importCy' | 'onsiteCy' | 'topsoil' | 'warnings' | 'ground' | 'boundarySf'> | null
   /** The design changed after the last run. */
   stale: boolean
 }
@@ -105,7 +105,7 @@ function summaryOf(row: { id: string; name: string; geofence_id: string | null; 
     geofenceId: row.geofence_id,
     updatedAt: row.updated_at,
     computedAt: row.computed_at,
-    results: r ? { cutCy: r.cutCy, fillCy: r.fillCy, exportCy: r.exportCy, importCy: r.importCy, onsiteCy: r.onsiteCy, topsoil: r.topsoil, warnings: r.warnings ?? [] } : null,
+    results: r ? { cutCy: r.cutCy, fillCy: r.fillCy, exportCy: r.exportCy, importCy: r.importCy, onsiteCy: r.onsiteCy, topsoil: r.topsoil, warnings: r.warnings ?? [], boundarySf: r.boundarySf, ...(r.ground ? { ground: r.ground } : {}) } : null,
     stale: !row.computed_at || new Date(row.updated_at).getTime() > new Date(row.computed_at).getTime() + 1000,
   }
 }
