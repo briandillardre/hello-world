@@ -64,7 +64,7 @@ export function sectionsNow(stage: Stage): CheckStage[] {
 /** Where an item's work is done in the app. */
 export const LINK_KEYS = [
   'log', 'folder', 'plans', 'takeoff', 'dirt', 'ground', 'estimate', 'machine', 'progress',
-  'imagery', 'contract', 'contacts', 'schedule', 'punch', 'billing', 'qbo', 'logs', 'time',
+  'imagery', 'contract', 'contacts', 'schedule', 'punch', 'billing', 'qbo', 'logs', 'time', 'issues', 'documents',
 ] as const
 export type LinkKey = (typeof LINK_KEYS)[number]
 export const isLinkKey = (v: unknown): v is LinkKey => typeof v === 'string' && (LINK_KEYS as readonly string[]).includes(v)
@@ -73,6 +73,7 @@ export const LINK_WORDS: Record<LinkKey, string> = {
   log: 'Project log', folder: 'Folder', plans: 'Plan room', takeoff: 'Takeoff', dirt: 'Dirt takeoff', ground: 'Borings',
   estimate: 'Estimate', machine: 'Machine files', progress: 'Drone progress', imagery: 'Site photos', contract: 'Contract',
   contacts: 'Contacts', schedule: 'Milestones', punch: 'Punch list', billing: 'Pay apps', qbo: 'QuickBooks', logs: 'Daily logs', time: 'Time cards',
+  issues: 'Issues & actions', documents: 'Documents',
 }
 
 /** The page an item opens, or null where there is none yet. `features` = what the viewer may open. */
@@ -93,6 +94,8 @@ export function linkHref(key: LinkKey, zoneId: string, opts: { billing?: boolean
     case 'qbo': return '/accounting'
     case 'logs': return '/logs'
     case 'time': return '/timecards'
+    case 'issues': return `/jobs/${z}/issues`
+    case 'documents': return `/jobs/${z}/documents`
   }
 }
 
@@ -115,8 +118,8 @@ export const DEFAULT_CHECKLIST: TemplateItem[] = [
   t('bid', 'Time spent estimating written down'),
   t('won', 'Contract matches the final proposal — contract amount entered', 'contract', true),
   t('won', 'Same job number and customer in QuickBooks (exact name) so the crew can clock in', 'qbo', true),
-  t('won', 'COIs and W-9 to the GC / owner', null, true),
-  t('won', 'Shop drawings and submittals from suppliers'),
+  t('won', 'COIs and W-9 to the GC / owner', 'documents', true),
+  t('won', 'Shop drawings and submittals from suppliers', 'documents'),
   t('won', 'CAD file from the GC / owner'),
   t('won', 'Survey control — at least 5 points around the site (northing, easting, elevation)'),
   t('won', 'CAD and control to the dealer for the machine model — price and timing', 'machine'),
@@ -131,12 +134,12 @@ export const DEFAULT_CHECKLIST: TemplateItem[] = [
   t('monthly', 'This month’s pay app — change orders, GC portal, PDF, partial lien waiver', 'billing'),
   t('monthly', 'Schedule and punch list brought up to date', 'punch'),
   t('closeout', 'Punch list finished', 'punch', true),
-  t('closeout', 'As-built and pond verification grades'),
-  t('closeout', 'Sewer, water and fire approvals'),
-  t('closeout', 'Warranty letters'),
+  t('closeout', 'As-built and pond verification grades', 'documents'),
+  t('closeout', 'Sewer, water and fire approvals', 'documents'),
+  t('closeout', 'Warranty letters', 'documents'),
   t('closeout', 'Change orders reconciled and final', 'billing', true),
   t('closeout', 'Final retainage invoice', 'billing', true),
-  t('closeout', 'Final lien waiver', null, true),
+  t('closeout', 'Final lien waiver', 'billing', true),
   t('closeout', 'Post-construction photos and drone flight', 'imagery'),
 ]
 

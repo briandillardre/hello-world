@@ -76,6 +76,7 @@ eq(J.cleanContact({ role: 'surveyor', companyName: ' Survey Co ', phone: '864-55
 eq(J.linkHref('takeoff', 'z1'), '/plans/z1/takeoff', 'items open the page the work is done on')
 eq(J.linkHref('billing', 'z1'), null, 'no link to a page that isn’t there yet')
 eq(J.linkHref('billing', 'z1', { billing: true }), '/jobs/z1/billing', '…and one once it is')
+eq([J.linkHref('issues', 'z1'), J.linkHref('documents', 'z1')], ['/jobs/z1/issues', '/jobs/z1/documents'], 'issues and documents open their pages (156)')
 
 console.log(`\njobs: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

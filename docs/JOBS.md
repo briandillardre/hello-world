@@ -145,6 +145,45 @@ WIP, with most of the actuals filling themselves in:
 `parseCosts`, `pcatOfReceipt`); `lib/db/jobcost.ts` reads, `lib/actions/
 jobcost.ts` writes (service role after the edit + Jobs + costs checks).
 
+## Issues & actions, documents, closeout (migration 156)
+
+- **Issues & actions** (`job_issues`; Jobs → a job → Issues & actions): the
+  PM Master's tab — numbered I-1, I-2… per job; kind (design / RFI, scope
+  change, schedule, site condition, utilities, permit / inspection, safety,
+  quality, payment, other), priority, open / waiting on a decision /
+  resolved, owner (someone on the team), who has to decide, due date,
+  schedule days, what it could cost (`job_issue_money`, costs only, the
+  job_money pattern), the detail and how it was settled. High and late ones
+  first. *Make it a change order* (costs) starts a potential change order
+  with the issue's words, cost and days and links the two — Pay apps prices
+  and sends it. Deleting is a Manager's.
+- **Documents** (`job_documents`, the private `jobdocs` bucket at
+  `<company>/<id>`, 50 MB, signed upload, 10-minute download — the machine
+  files pattern; unfinished uploads swept by health step 13): every paper by
+  type — contract & proposal, signed change orders, lien waivers (against an
+  application), invoices, W-9, bonds, COIs, permits, submittals, RFIs,
+  inspections & tests, warranties & O&M, as-builts, letters, safety, other.
+  The money papers (contract, change orders, lien waivers, invoices, W-9,
+  bonds) are costs only — `costs_only` is CHECKed against the type in the
+  database and the read policy hides them. Insurance, permits and bonds
+  carry an expiry; the job page warns 30 days out and once they've run out.
+  The type is guessed from the file name ("COI - …" → insurance). Plans stay
+  in the plan room, photos on the site page.
+- **Closeout that checks itself**: from Substantially complete on, the job
+  page shows what still stands between the job and Closed — punch list
+  finished, closeout must-dos checked off, change orders settled, issues
+  resolved, the final application sent (retainage released), every
+  application paid (to the cent, dollars only with costs), the final lien
+  waiver in — each line opening the page where it is settled; plus a
+  warning (never a block) when someone is still clocked in to the site or a
+  truck or machine spent an hour there in the last 3 days. Moving the job
+  to Closed is refused on the server while any of those is open; a Manager
+  may close it anyway with a reason, kept on the job with who and when
+  (`jobs.closed_note`, `closed_by`, `closed_at`; cleared if it reopens).
+
+The checklist's COIs, submittals, approvals, as-builts and warranty items
+open Documents; the final lien waiver opens Pay apps.
+
 ## Permissions
 
 View level **Jobs** (`jobs`): on for Admin, Manager and Foreman; off for the
@@ -155,10 +194,10 @@ write is a server action on the service role after the edit + Jobs checks
 
 ## Still to build
 
-- **Issues & actions, documents, closeout that checks itself** (board #232).
 - **The portfolio** — AR aging, WIP schedule, cash (board #233).
 
 Harnesses: `node scripts/jobs-test.mjs` — after ANY change to
 `lib/jobs/job.ts`; `node scripts/payapp-test.mjs` — after ANY change to
 `lib/jobs/payapp.ts` (these are invoices); `node scripts/jobcost-test.mjs` —
-after ANY change to `lib/jobs/cost.ts`.
+after ANY change to `lib/jobs/cost.ts`; `node scripts/closeout-test.mjs` —
+after ANY change to `lib/jobs/issues.ts`, `documents.ts` or `closeout.ts`.

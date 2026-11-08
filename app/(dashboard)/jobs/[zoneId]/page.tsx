@@ -1,9 +1,10 @@
 import { notFound } from 'next/navigation'
 import { requireFeature } from '@/lib/permissions-server'
-import { isProspect } from '@/lib/permissions'
+import { isProspect, rankOf, RANK } from '@/lib/permissions'
 import { getGeofence } from '@/lib/db/zones'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getJob } from '@/lib/db/jobs'
+import { getJobExtras } from '@/lib/db/jobwork'
 import { JobView } from '@/components/jobs/JobView'
 
 export const dynamic = 'force-dynamic'
@@ -25,12 +26,20 @@ export default async function Page({ params }: { params: { zoneId: string } }) {
   if (!fence || fence.owner_id || fence.kind === 'boundary' || fence.kind === 'vendor') notFound()
   const companyId = await getCurrentCompanyId()
   const page = await getJob(companyId, fence.id, perms.canViewCosts)
+  const today = new Date().toISOString().slice(0, 10)
+  // Issues, papers running out and — once the job is closing — what closeout still waits on.
+  const extras = page.job
+    ? await getJobExtras(companyId, { id: page.job.id, zoneId: fence.id }, { closing: ['substantial', 'closeout', 'closed'].includes(page.job.stage), money: perms.canViewCosts, today })
+    : null
   const canEdit = perms.canEdit && !perms.viewingAs && !isMock
   return (
     <JobView
       zone={{ id: fence.id, name: fence.name, kind: fence.kind ?? null }}
       page={page}
+      extras={extras}
+      today={today}
       canEdit={canEdit}
+      canManage={canEdit && rankOf(perms) >= RANK.manager}
       canCosts={perms.canViewCosts}
       canPlans={perms.features.includes('plans')}
       demo={isMock}
