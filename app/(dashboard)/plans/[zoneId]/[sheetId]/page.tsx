@@ -4,6 +4,7 @@ import { isProspect, rankOf, RANK } from '@/lib/permissions'
 import { getGeofence } from '@/lib/db/zones'
 import { getPlanRoom } from '@/lib/db/plans'
 import { SheetViewer } from '@/components/plans/SheetViewer'
+import { getTakeoffItems, getMarks } from '@/lib/db/takeoff'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +22,7 @@ export default async function Page({ params, searchParams }: { params: { zoneId:
   const room = await getPlanRoom(fence.id, real.userId)
   const sheet = room.sheets.find((s) => s.id === params.sheetId)
   if (!sheet || !sheet.versions.length) notFound()
+  const [items, marks] = await Promise.all([getTakeoffItems(perms.canViewCosts), getMarks(sheet.versions.map((v) => v.id))])
   const want = typeof searchParams.v === 'string' && sheet.versions.some((v) => v.id === searchParams.v) ? searchParams.v : null
   return (
     <SheetViewer
@@ -33,6 +35,9 @@ export default async function Page({ params, searchParams }: { params: { zoneId:
       canEdit={perms.canEdit && !perms.viewingAs && !isMock}
       canDelete={perms.canEdit && !perms.viewingAs && !isMock && rankOf(perms) >= RANK.manager}
       canPdf={!isProspect(perms)}
+      items={items}
+      marks={marks}
+      canCosts={perms.canViewCosts}
     />
   )
 }

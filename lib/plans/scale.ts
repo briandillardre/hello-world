@@ -17,7 +17,7 @@
 import type { PdfLine, PdfText } from '../dirt/pdf-vectors'
 import { lines } from './title-block'
 
-export type ScaleKey = 'stated' | 'bar' | 'dims' | 'grid' | 'placement'
+export type ScaleKey = 'stated' | 'bar' | 'dims' | 'grid' | 'placement' | 'set'
 
 export interface ScaleCheck {
   key: ScaleKey
@@ -32,6 +32,7 @@ export const SCALE_LABEL: Record<ScaleKey, string> = {
   dims: 'Labelled distances',
   grid: 'Grid ticks',
   placement: 'Placement on the map',
+  set: 'Set by hand',
 }
 
 /** "1\" = 30'" for a feet-per-inch number. */
@@ -198,6 +199,9 @@ export interface ScaleVerdict {
 const rel = (a: number, b: number) => Math.abs(a - b) / Math.min(a, b)
 
 export function scaleVerdict(checks: ScaleCheck[]): ScaleVerdict {
+  // A person who set the scale has decided; the other checks still show.
+  const set = checks.find((c) => c.key === 'set' && c.feetPerInch > 0)
+  if (set) return { tone: 'green', words: `Set by hand: ${scaleWords(set.feetPerInch)}`, suggest: null }
   const cs = checks.filter((c) => Number.isFinite(c.feetPerInch) && c.feetPerInch > 0)
   if (!cs.length) return { tone: 'none', words: 'No scale found on this sheet — place it on the map to measure it.', suggest: null }
   if (cs.length === 1) {

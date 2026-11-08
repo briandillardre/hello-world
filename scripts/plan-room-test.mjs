@@ -33,6 +33,7 @@ const SP = await import(transpile('../lib/plans/stateplane.ts'))
 const GF = await import(transpile('../lib/plans/gridfit.ts', { './title-block': tbUrl, './stateplane': transpile('../lib/plans/stateplane.ts') }))
 const SC = await import(transpile('../lib/plans/scale.ts', { './title-block': tbUrl }))
 const CR = await import(transpile('../lib/plans/crop.ts'))
+const ME = await import(transpile('../lib/plans/measure.ts', { './scale': transpile('../lib/plans/scale.ts', { './title-block': tbUrl }), './north': transpile('../lib/plans/north.ts') }))
 
 let pass = 0, fail = 0
 const ok = (c, msg) => { if (c) pass++; else { fail++; console.log('FAIL', msg) } }
@@ -359,6 +360,42 @@ eq(F.carryRule({ pageW: null, pageH: null, inkBox: null }, { pageW: 1728, pageH:
   eq(sid('2026-09-01'), 't1,u0', 'before the first issue: what that first day shows')
 }
 
+// ── measuring on a sheet ──
+{
+  const ck = (key, fpi) => ({ key, feetPerInch: fpi, detail: '' })
+  eq(ME.measureScale([ck('stated', 30), ck('bar', 30)]).feetPerInch, 30, 'agreeing checks → measure at 30')
+  ok(ME.measureScale([ck('stated', 30), ck('bar', 60)]).blocked, 'disagreeing checks stop measuring')
+  eq(ME.measureScale([ck('stated', 30), ck('bar', 60), ck('set', 60)]).feetPerInch, 60, 'a scale set by hand wins')
+  ok(ME.measureScale([]).blocked, 'no scale → blocked')
+  eq(SC.scaleVerdict([ck('stated', 30), ck('bar', 60), ck('set', 60)]).tone, 'green', 'set by hand reads green')
+  // A 36 × 24 in sheet at 1" = 30' is 1080 × 720 ft.
+  const sf = ME.sheetFeet(2592, 1728, 30)
+  eq([sf.w, sf.h], [1080, 720], 'sheet in feet from the paper and the scale')
+  const placed = ME.sheetFeet(null, null, null, [[-82.4, 34.851], [-82.398, 34.851], [-82.398, 34.85], [-82.4, 34.85]])
+  ok(placed && placed.w > 580 && placed.w < 620 && placed.h > 350 && placed.h < 370, `picture-only sheet sized from its placement (${placed?.w.toFixed(0)} × ${placed?.h.toFixed(0)})`)
+  // A 100 ft × 50 ft rectangle on that sheet.
+  const rect = { pts: [[0.1, 0.1], [0.1 + 100 / 1080, 0.1], [0.1 + 100 / 1080, 0.1 + 50 / 720], [0.1, 0.1 + 50 / 720]] }
+  const item = (measure, unit, extra = {}) => ({ measure, unit, ...extra })
+  eq(ME.markQty(item('area', 'SF'), 'area', rect, sf), 5000, 'area in SF')
+  eq(ME.markQty(item('area', 'SY'), 'area', rect, sf), 555.6, 'area in SY')
+  eq(ME.markQty(item('area', 'AC'), 'area', rect, sf), 0.115, 'area in acres')
+  eq(ME.markQty(item('perimeter', 'LF'), 'area', rect, sf), 300, 'perimeter')
+  eq(ME.markQty(item('volume', 'CY', { depth_in: 6 }), 'area', rect, sf), 92.6, '6 in over 5,000 SF = 92.6 CY')
+  eq(ME.markQty(item('volume', 'TON', { depth_in: 8, tons_per_cy: 1.9 }), 'area', rect, sf), 234.6, 'stone tons')
+  eq(ME.markQty(item('volume', 'CY'), 'area', rect, sf), null, 'a volume with no depth has no quantity')
+  const hole = { ...rect, holes: [[[0.12, 0.12], [0.12 + 10 / 1080, 0.12], [0.12 + 10 / 1080, 0.12 + 10 / 720], [0.12, 0.12 + 10 / 720]]] }
+  eq(ME.markQty(item('area', 'SF'), 'area', hole, sf), 4900, 'an island is cut out')
+  eq(ME.markQty(item('length', 'LF'), 'line', { pts: [[0, 0], [100 / 1080, 0], [100 / 1080, 50 / 720]] }, sf), 150, 'polyline length')
+  eq(ME.markQty(item('count', 'EA'), 'count', { pts: [[0.1, 0.1], [0.2, 0.2], [0.3, 0.3]] }, sf), 3, 'count')
+  eq(ME.markQty(item('length', 'LF'), 'area', rect, sf), null, 'a length item never measures an area shape')
+  eq(ME.cleanGeom({ pts: [[0, 0], [1, 1]] }, 'area'), null, 'an area needs three points')
+  eq(ME.cleanGeom({ pts: [[0, 0], [9, 1]] }, 'line'), null, 'off the page refused')
+  ok(ME.cleanGeom({ pts: [[0.1, 0.1], [0.2, 0.1], [0.2, 0.2]], holes: [[[0.12, 0.12], [0.13, 0.12], [0.13, 0.13]]] }, 'area')?.holes?.length === 1, 'holes kept on areas')
+  const r = ME.rollup([{ itemId: 'a', qty: 10, status: 'ok' }, { itemId: 'a', qty: 5, status: 'check' }, { itemId: 'a', qty: 99, status: 'suggested' }, { itemId: null, qty: 3, status: 'ok' }])
+  eq(r, [{ itemId: 'a', qty: 15, marks: 2, check: 1, suggested: 1 }], 'rollup: suggested marks wait to be accepted')
+  ok(ME.STARTER_ITEMS.every((i) => /^[A-Z0-9][A-Z0-9.\-]{0,15}$/.test(i.code) && ME.MEASURE_UNITS[i.measure].includes(i.unit)), 'starter items fit the schema')
+}
+
 // ── the fingerprint on the real fixture PDF ──
 {
   const pdfjs = await import(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs'))
@@ -427,6 +464,95 @@ eq(F.carryRule({ pageW: null, pageH: null, inkBox: null }, { pageW: 1728, pageH:
     ok(v.tone === 'green' || v.tone === 'amber', `fixture: four checks agree (${v.tone}: ${v.words})`)
     await doc.loadingTask?.destroy?.()
   }
+}
+
+// ── the first pass (lib/plans/first-pass.ts) and the revision report ──
+{
+  const geomUrl = transpile('../lib/dirt/geom.ts')
+  const prUrl = transpile('../lib/dirt/plan-read.ts', { './geom': geomUrl })
+  const pr = await import(prUrl)
+  const meUrl = transpile('../lib/plans/measure.ts', { './scale': transpile('../lib/plans/scale.ts', { './title-block': tbUrl }), './north': transpile('../lib/plans/north.ts') })
+  const FP = await import(transpile('../lib/plans/first-pass.ts', { '../dirt/plan-read': prUrl, './measure': meUrl }))
+  const lib = ME.STARTER_ITEMS.map((i) => ({ id: i.code, code: i.code, name: i.name, measure: i.measure, section: i.section }))
+  const st = (pen, layer, o = {}) => ({ pen, layer, color: '#000000', width: 0.5, dash: '', pieces: 3, lengthIn: 6, areas: 0, symbols: 0, ...o })
+  const pick = (stats) => Object.fromEntries(FP.ruleAssign(stats, lib).map((a) => [a.pen, a.itemId]))
+  eq(pick([st(1, 'C-CURB')]), { 1: 'CURB' }, 'rules: a plain curb layer → the plain curb item, not curb and gutter')
+  eq(pick([st(1, 'C-CURB-AND-GUTTER')]), { 1: 'CG-24' }, 'rules: curb and gutter → CG')
+  eq(pick([st(1, 'C-ESC-SF')]), { 1: 'SF-FENCE' }, 'rules: SF layer → silt fence')
+  eq(pick([st(1, 'C-STRM-24')]), { 1: 'RCP-24' }, 'rules: the size in the layer picks 24" RCP over 15"')
+  eq(pick([st(1, 'C-TOPO-MAJR'), st(2, 'V-PROP-LINE')]), {}, 'rules: contours and property lines stay out')
+  eq(pick([st(1, 'C-PAVE-HD', { areas: 4 })]), { 1: 'PAV-HD' }, 'rules: heavy-duty paving outlines → PAV-HD')
+  eq(pick([st(1, 'C-PAVE-HD')]), {}, 'rules: a paving layer with no closed outlines measures nothing')
+  eq(pick([st(1, 'C-STRM-INLET', { symbols: 5 })]), { 1: 'CB' }, 'rules: inlet symbols → catch basins (counts)')
+  eq(pick([st(1, null)]), {}, 'rules: no layer name, no guess')
+  const cleaned = FP.cleanAssignments({ assign: [
+    { pen: 1, item: 'CURB', why: 'curb layer' }, { pen: 1, item: 'SF-FENCE' }, { pen: 2, item: 'NOPE' }, { pen: 3, item: 'PAV-HD' }, { pen: 99, item: 'CURB' },
+  ] }, [st(1, 'A'), st(2, 'B'), st(3, 'C')], lib)
+  eq(cleaned.map((a) => [a.pen, a.itemId]), [[1, 'CURB']], 'the model\'s answer: unknown items, unknown pens, a second answer for one pen and an area item on a pen with no outlines are dropped')
+  eq(FP.cleanPenStats([{ pen: 1, layer: 'X\u0000Y', color: 'red', width: 1e9, pieces: 2 }, { pen: -1 }, 'junk']).map((s) => [s.pen, s.layer, s.color, s.width]), [[1, 'XY', '#000000', 0]], 'pen stats from a device are bounded and typed')
+
+  // On the real fixture PDF: its C-CURB and C-STRM layers measure out to the drawn lengths.
+  const pdfjs = await import(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs'))
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(buildPlanPdf(pr.chainLines).bytes), verbosity: 0 }).promise
+  const page = await doc.getPage(1)
+  const vp = page.getViewport({ scale: 1 })
+  const [ops, oc] = await Promise.all([page.getOperatorList({ annotationMode: pdfjs.AnnotationMode.DISABLE }), doc.getOptionalContentConfig()])
+  const names = new Map()
+  try { for (const [id, g] of oc) names.set(id, g?.name ?? id) } catch { /* none */ }
+  const { pens, lines } = PV.extractVectors(ops, pdfjs.OPS, (id) => names.get(id) ?? null)
+  const vl = F.linesToViewed(lines, Array.from(vp.transform), vp.height)
+  const size = { width: vp.width, height: vp.height }
+  const stats = FP.penStats(pens, vl)
+  ok(stats.some((s) => s.layer === 'C-CURB') && stats.some((s) => s.layer === 'C-STRM'), `fixture: the curb and storm layers are read (${stats.map((s) => s.layer).join(', ')})`)
+  const assign = FP.ruleAssign(stats, lib)
+  const byLayer = Object.fromEntries(assign.map((a) => [stats.find((s) => s.pen === a.pen).layer, a.itemId]))
+  ok(byLayer['C-CURB'] === 'CURB' && byLayer['C-STRM'] === 'RCP-15', `fixture: curb → CURB, storm → an RCP (${JSON.stringify(byLayer)})`)
+  ok(!Object.keys(byLayer).some((l) => /TOPO|BLDG|ANNO|TTLB|LEGEND|LIMT/.test(l)), 'fixture: contours, the building, notes and the title block are never assigned')
+  const { marks, dropped } = FP.proposeMarks(assign, lib, vl, size, (a) => `First pass · ${a.why}`)
+  const sf = ME.sheetFeet(size.width, size.height, 30)
+  const curbFt = marks.filter((m) => m.itemId === 'CURB').reduce((t, m) => t + ME.lengthFt(m.geom.pts, sf), 0)
+  let exact = 0
+  for (let k = 1; k <= 4000; k++) {
+    const a = (k - 1) / 4000, b = k / 4000
+    exact += Math.hypot(100 * (b - a), 30 * (Math.sin(b * 2.2) - Math.sin(a * 2.2)))
+  }
+  ok(Math.abs(curbFt - exact) / exact < 0.01, `fixture: the first pass's curb measures ${curbFt.toFixed(1)} LF vs the drawn ${exact.toFixed(1)}`)
+  const pipeFt = marks.filter((m) => m.itemId === 'RCP-15').reduce((t, m) => t + ME.lengthFt(m.geom.pts, sf), 0)
+  ok(Math.abs(pipeFt - Math.hypot(130, 10)) < 1.5, `fixture: the storm run measures ${pipeFt.toFixed(1)} LF vs 130.4`)
+  ok(marks.every((m) => m.geom.pts.every((p) => p[0] >= 0 && p[0] <= 1 && p[1] >= 0 && p[1] <= 1)) && dropped === 0, 'fixture: marks are page fractions on the page, nothing dropped')
+  ok(marks.every((m) => ME.cleanGeom(m.geom, m.kind)), 'fixture: every proposed mark passes the server\'s shape check')
+  await doc.loadingTask?.destroy?.()
+
+  // Count symbols: two pieces of one symbol count once; a big outline is not a symbol.
+  const sq = (x, y, d) => [x, y, x + d, y, x + d, y + d, x, y + d, x, y]
+  const symLines = [
+    { pen: 7, pts: sq(100, 100, 10), closed: true }, { pen: 7, pts: sq(102, 102, 6), closed: true },
+    { pen: 7, pts: sq(300, 200, 10), closed: true }, { pen: 7, pts: sq(400, 300, 200), closed: true },
+  ]
+  const cm = FP.proposeMarks([{ pen: 7, itemId: 'CB', why: 'inlets' }], lib, symLines, { width: 1000, height: 800 }, () => 'x')
+  eq(cm.marks.map((m) => [m.kind, m.geom.pts.length]), [['count', 2]], 'counts: one mark, one point per symbol (a symbol drawn twice counts once)')
+
+  // A dense layer is held to the points budget (and a monster polyline is thinned, not choked on).
+  const runs = []
+  for (let r = 0; r < 130; r++) {
+    const w = []
+    for (let k = 0; k < 700; k++) w.push(10 + k * 1.5, 10 + r * 6 + (k % 2) * 3)
+    runs.push({ pen: 9, pts: w, closed: false })
+  }
+  const monster = []
+  for (let k = 0; k < 150000; k++) monster.push(k * 0.007, 880 + (k % 2) * 3)
+  runs.push({ pen: 9, pts: monster, closed: false })
+  const t0 = Date.now()
+  const big = FP.proposeMarks([{ pen: 9, itemId: 'CURB', why: 'x' }], lib, runs, { width: 1200, height: 900 }, () => 'x')
+  ok(big.marks.reduce((t, m) => t + m.geom.pts.length, 0) <= FP.MAX_POINTS && big.dropped > 0, `a dense layer stays inside the points budget (${big.marks.length} marks, ${big.dropped} left out)`)
+  ok(Date.now() - t0 < 15000, `…in reasonable time (${Date.now() - t0} ms)`)
+
+  // The revision report: by code, Δ $ at today's price, moved rows first.
+  const rep = ME.revisionReport(
+    [{ code: 'A', name: 'Curb', unit: 'LF', qty: 10 }, { code: 'B', name: 'Fence', unit: 'LF', qty: 5 }, { code: 'D', name: 'Same', unit: 'EA', qty: 2 }],
+    [{ code: 'A', name: 'Curb', unit: 'LF', qty: 12, unitPrice: 2 }, { code: 'C', name: 'Pipe', unit: 'LF', qty: 3, unitPrice: null }, { code: 'D', name: 'Same', unit: 'EA', qty: 2, unitPrice: 1 }],
+  )
+  eq(rep.map((r) => [r.code, r.then, r.now, r.delta, r.deltaUsd]), [['A', 10, 12, 2, 4], ['B', 5, 0, -5, null], ['C', 0, 3, 3, null], ['D', 2, 2, 0, 0]], 'revision report rows')
 }
 
 console.log(`\nplan-room: ${pass} passed, ${fail} failed`)

@@ -17,6 +17,8 @@ import {
 import { thumbUrl, fallbackToRaw } from '@/lib/img'
 import type { Corners } from '@/components/zones/OverlayPlacer'
 import { AddPlanSet } from './AddPlanSet'
+import { ItemLibrary } from './ItemLibrary'
+import type { TakeoffItem } from '@/lib/db/takeoff'
 
 const OverlayPlacer = dynamic(
   () => import('@/components/zones/OverlayPlacer').then((m) => ({ default: m.OverlayPlacer })),
@@ -36,7 +38,7 @@ export const fmtDay = (d: string) => {
  * (grading and utilities side by side); the map always shows the current
  * version, so a revision can never hide behind an old picture.
  */
-export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false }: {
+export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false, items = [], canCosts = false }: {
   zone: { id: string; name: string }
   data: PlanRoomData
   canEdit: boolean
@@ -44,9 +46,11 @@ export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false }:
   demo: boolean
   /** Managers and above: delete a set, void sheets. */
   canDelete?: boolean
+  items?: TakeoffItem[]
+  canCosts?: boolean
 }) {
   const router = useRouter()
-  const [tab, setTab] = useState<'sheets' | 'sets'>('sheets')
+  const [tab, setTab] = useState<'sheets' | 'sets' | 'items'>('sheets')
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [placing, setPlacing] = useState<{ sheet: PlanSheetRow; versionId: string; imageId: string; url: string; bounds: Corners | null; rough: string | null } | null>(null)
@@ -88,6 +92,9 @@ export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false }:
                 {newCount > 0 && <> · <span className="text-amber font-semibold">{newCount} new to you</span></>}
               </p>
             </div>
+            <Link href={`/plans/${zone.id}/takeoff`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
+              <Layers className="h-4 w-4" /> Takeoff
+            </Link>
             <Link href={`/zones/${zone.id}`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
               <MapIcon className="h-4 w-4" /> Site page
             </Link>
@@ -101,10 +108,10 @@ export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false }:
         </div>
 
         <div className="flex gap-1.5">
-          {(['sheets', 'sets'] as const).map((t) => (
+          {(['sheets', 'sets', 'items'] as const).map((t) => (
             <button key={t} type="button" onClick={() => setTab(t)}
               className={'rounded-full px-3 py-1 text-[12px] font-semibold border ' + (tab === t ? 'bg-teal/15 border-teal/40 text-teal' : 'border-navy-700 text-muted')}>
-              {t === 'sheets' ? `Sheets (${live.length})` : `Sets (${data.sets.length})`}
+              {t === 'sheets' ? `Sheets (${live.length})` : t === 'sets' ? `Sets (${data.sets.length})` : `Items (${items.length})`}
             </button>
           ))}
         </div>
@@ -159,6 +166,8 @@ export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false }:
             </div>
           )
         )}
+
+        {tab === 'items' && <ItemLibrary items={items} canEdit={canDelete} canSeed={canEdit} canCosts={canCosts} />}
 
         {tab === 'sets' && (
           data.sets.length === 0 ? <Empty canEdit={canEdit} onAdd={() => setAdding(true)} demo={demo} /> : (

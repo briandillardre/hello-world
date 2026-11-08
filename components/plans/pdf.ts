@@ -7,7 +7,7 @@
  * whole set's full-size pictures at once crash-reloads iPad Safari, Aug 7).
  */
 
-import { extractVectors, textFromContent, textFromShx } from '@/lib/dirt/pdf-vectors'
+import { extractVectors, textFromContent, textFromShx, type PdfPen, type PdfLine } from '@/lib/dirt/pdf-vectors'
 import { readTitleBlock, type TitleBlock } from '@/lib/plans/title-block'
 import { wordsToViewed, linesToViewed, fingerprintSource, sha256Hex, inkBox, type ViewTransform } from '@/lib/plans/fingerprint'
 import { rasterScale } from '@/lib/dirt/plan-geo'
@@ -66,6 +66,21 @@ export async function layerNames(doc: PdfDoc): Promise<Map<string, string>> {
     for (const [id, g] of Array.from(oc as unknown as Iterable<[string, { name?: string }]>)) names.set(id, g?.name ?? id)
   } catch { /* no layers */ }
   return names
+}
+
+/** One page's pens and stroked lines in viewed space (y up, points) — the
+ *  first pass's input (lib/plans/first-pass.ts). */
+export async function readVectors(pdfjs: PdfjsModule, doc: PdfDoc, n: number): Promise<{ pens: PdfPen[]; lines: PdfLine[]; size: { width: number; height: number } }> {
+  const page = await doc.getPage(n)
+  try {
+    const vp = page.getViewport({ scale: 1 })
+    const t = Array.from(vp.transform) as ViewTransform
+    const [ops, names] = await Promise.all([page.getOperatorList({ annotationMode: pdfjs.AnnotationMode.DISABLE }), layerNames(doc)])
+    const { pens, lines } = extractVectors(ops, pdfjs.OPS as unknown as Record<string, number>, (id) => names.get(id) ?? null)
+    return { pens, lines: linesToViewed(lines, t, vp.height), size: { width: vp.width, height: vp.height } }
+  } finally {
+    page.cleanup()
+  }
 }
 
 /** Read one page: size, thumbnail, title block, fingerprint, ink box. */
