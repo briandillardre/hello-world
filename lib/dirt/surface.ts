@@ -274,6 +274,10 @@ export class TinSurface implements Surface {
   private index: BinIndex
   private hits: number[] = []
   private seen = new Set<number>()
+  /** The vertices and each triangle's corners (CCW) — for exporting the mesh. */
+  private xy: Float64Array
+  private zs: number[]
+  private corners: Uint32Array
 
   constructor(xy: Float64Array, z: number[], tris: Uint32Array) {
     const n = tris.length / 3
@@ -281,6 +285,9 @@ export class TinSurface implements Surface {
     this.v = new Float64Array(n * 6)
     this.pl = new Float64Array(n * 3)
     this.live = new Uint8Array(n)
+    this.xy = xy
+    this.zs = z
+    this.corners = new Uint32Array(n * 3)
     const box = boxOf(xy)
     const span = Math.max(box.x1 - box.x0, box.y1 - box.y0, 1)
     // ~4 triangles per bin on average.
@@ -297,6 +304,7 @@ export class TinSurface implements Surface {
       const p = planeOf(ax, ay, z[a], bx, by, z[b], cx, cy, z[c])
       if (!p) continue
       this.live[t] = 1
+      this.corners[3 * t] = a; this.corners[3 * t + 1] = b; this.corners[3 * t + 2] = c
       this.v.set([ax, ay, bx, by, cx, cy], t * 6)
       this.pl[3 * t] = p.p0; this.pl[3 * t + 1] = p.p1; this.pl[3 * t + 2] = p.p2
       this.index.insert(t, {
@@ -319,6 +327,13 @@ export class TinSurface implements Surface {
       return this.pl[3 * t] + this.pl[3 * t + 1] * x + this.pl[3 * t + 2] * y
     }
     return NaN
+  }
+
+  /** The mesh: vertex positions and heights, and the live triangles as vertex indices (CCW). */
+  mesh(): { xy: Float64Array; z: number[]; faces: number[] } {
+    const faces: number[] = []
+    for (let t = 0; t < this.count; t++) if (this.live[t]) faces.push(this.corners[3 * t], this.corners[3 * t + 1], this.corners[3 * t + 2])
+    return { xy: this.xy, z: this.zs, faces }
   }
 
   each(box: Box, cb: (t: PlaneTri) => void): void {

@@ -294,3 +294,30 @@ server's Save call the same `groundResults`):
 The Topsoil step offers the borings' average as a one-tap strip; the bid memo
 carries the quantities and qualifies its rock and undercut exclusions with
 them. Harness: `node scripts/borings-test.mjs`.
+
+## For the machines — the design out, and machine files by revision (Nov 8, migration 149)
+
+Results → **For the machines** writes the SAVED design as two files and files
+them in the site's **Machine files** (plan room → Machines), with the plan
+revisions the takeoff was traced from:
+
+- **LandXML 1.2** — two TIN surfaces. *Finished grade*: the exact triangles the
+  volumes are integrated on (traced contours, spots and pads, tied into
+  existing at the grading limits), clipped to the limits. *Subgrade*: those
+  same triangles cut along every section and pad edge, each piece lowered by
+  its section (pads at their subgrade), so inside a section subgrade is exactly
+  finished grade less the thickness; the section side of each edge steps 2 cm
+  in, so the step is a thin wall a machine can follow.
+- **DXF (R12)** — the grading limits, proposed and existing contours (3D), spot
+  grades, pads with FFE and SG, section areas with their thickness, and both
+  surfaces as 3D faces, on named `HT-` layers.
+- **Grid** — SC State Plane (NAD83, EPSG:2273, international feet) by default
+  inside South Carolina, else the site's NAD83 UTM zone in metres; the panel
+  names it and lets it be changed. Elevations are as traced from the plans.
+
+Machine files hold anything the machines run — the dealer's Topcon TP3s,
+Trimble SVD/SVL/TTM, LandXML, DXF, DWG, a zip — each with the plan revisions it
+was built from. The day a newer revision of one of those sheets lands, the
+file says which sheet moved ("C-101: built from Rev 1 — Rev 2 is current") and
+the page counts the files to rebuild. A file of the same name and kind filed
+later is the newer one. Harness: `node scripts/machine-test.mjs`.
