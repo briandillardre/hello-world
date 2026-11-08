@@ -15,7 +15,7 @@ import {
   type PlanSetKind, type PageVerdict, type RoomVersion,
 } from '@/lib/plans/room'
 import type { PlanSheetRow } from '@/lib/db/plans'
-import type { TitleBlock } from '@/lib/plans/title-block'
+import { nameUnnumbered, type TitleBlock } from '@/lib/plans/title-block'
 import { scaleVerdict, scaleWords, type ScaleCheck } from '@/lib/plans/scale'
 import type { GridFit } from '@/lib/plans/gridfit'
 import type { Crop } from '@/lib/plans/crop'
@@ -48,6 +48,8 @@ interface Item {
   title: string
   rev: string
   keep: boolean
+  /** The number was made up here (the page printed none). */
+  autoNamed: boolean
   keepTouched: boolean
 }
 
@@ -215,6 +217,13 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
       done()
     }
     if (!out.length) { setPhase('pick'); setError((e) => e ?? 'Nothing to file in those — pick the set’s PDF.'); return }
+    // Pages that print no sheet number get a name from what they look like.
+    const names = nameUnnumbered(out.map((it) => ({ number: it.number || null, kind: it.read?.kind ?? null })))
+    names.forEach((n, i) => {
+      if (!n) return
+      const it = out[i]
+      out[i] = { ...it, number: n, title: it.title || it.read?.kind.title || '', autoNamed: true }
+    })
     const d = commonDate(out.map((it) => it.read?.date ?? null))
     if (d && !dateTouched) setIssuedOn(d)
     setItems(out)
@@ -450,9 +459,10 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
                           <VerdictChip v={v} sheetNumber={(id) => sheetById.get(id)?.number ?? ''} />
                           {it.page != null && <span className="text-[10.5px] text-faint">{srcs.current[it.src]?.file.name.slice(0, 32)} · p{it.page}</span>}
                           {it.read && it.read.confidence < 0.4 && it.read.number && <span className="text-[10.5px] text-amber">unsure read — check the number</span>}
+                          {it.autoNamed && <span className="text-[10.5px] text-faint">no sheet number printed — named for you</span>}
                         </div>
                         <div className="grid grid-cols-[1fr_4rem] sm:grid-cols-[6.5rem_1fr_4rem] gap-1.5">
-                          <input value={it.number} onChange={(e) => edit(it.key, { number: e.target.value.toUpperCase().slice(0, 24), keep: it.keepTouched ? it.keep : true })}
+                          <input value={it.number} onChange={(e) => edit(it.key, { number: e.target.value.toUpperCase().slice(0, 24), keep: it.keepTouched ? it.keep : true, autoNamed: false })}
                             placeholder="C-101" aria-label="Sheet number"
                             className={'min-w-0 rounded-lg bg-navy-950 border px-2 py-1.5 text-sm font-mono text-ink ' + (dup || (it.keep && !cleanNumber(it.number)) ? 'border-red-500/70' : 'border-navy-700')} />
                           <input value={it.title} onChange={(e) => edit(it.key, { title: e.target.value.slice(0, 200) })}
@@ -597,7 +607,7 @@ function toItem(key: string, src: number, page: number | null, thumb: string, wi
   return {
     key, src, page, thumb, width, height, read, signature, ink, checks, grid, crop,
     number: read?.number ?? '', title: read?.title ?? '', rev: read?.rev ?? '',
-    keep: !!read?.number, keepTouched: false,
+    keep: !!read?.number, keepTouched: false, autoNamed: false,
   }
 }
 
