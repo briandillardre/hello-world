@@ -140,13 +140,17 @@ export async function getBidMemo(zoneId: string): Promise<BidMemo | null> {
 export interface TakeoffLink { token: string; includeCosts: boolean; createdAt: string; lastUsedAt: string | null }
 
 /** The site's live spreadsheet links (service role — members hold no read on
- *  them; the caller has already checked it is an editor on this company). */
-export async function getTakeoffLinks(companyId: string, zoneId: string): Promise<TakeoffLink[]> {
+ *  them; the caller has already checked it is an editor on this company). A
+ *  login without the costs ability never sees a priced link — the token IS the
+ *  prices (sec-check, Nov 8). */
+export async function getTakeoffLinks(companyId: string, zoneId: string, withCosts: boolean): Promise<TakeoffLink[]> {
   if (isMock) return []
   try {
     const { createServiceClient } = await import('@/lib/supabase-server')
-    const { data } = await createServiceClient().from('takeoff_links').select('token, include_costs, created_at, last_used_at')
-      .eq('company_id', companyId).eq('geofence_id', zoneId).is('revoked_at', null).order('created_at', { ascending: false }).limit(20)
+    let q = createServiceClient().from('takeoff_links').select('token, include_costs, created_at, last_used_at')
+      .eq('company_id', companyId).eq('geofence_id', zoneId).is('revoked_at', null)
+    if (!withCosts) q = q.eq('include_costs', false)
+    const { data } = await q.order('created_at', { ascending: false }).limit(20)
     return (data ?? []).map((r) => ({ token: String(r.token), includeCosts: !!r.include_costs, createdAt: String(r.created_at), lastUsedAt: (r.last_used_at as string | null) ?? null }))
   } catch {
     return []

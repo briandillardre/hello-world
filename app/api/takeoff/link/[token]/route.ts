@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { permissionsOf } from '@/lib/permissions-server'
 import { ipRateLimited } from '@/lib/rate-limit'
 import { buildTakeoff } from '@/lib/takeoff-summary'
 import { takeoffCsvRows } from '@/lib/takeoff-export'
@@ -23,16 +24,17 @@ export async function GET(req: Request, { params }: { params: { token: string } 
   if (!link || link.revoked_at) return new NextResponse('Not found', { status: 404 })
   // A link lives only while the person who made it is still on the team —
   // someone who leaves doesn't keep a feed of the company's quantities.
-  const { data: maker } = link.created_by
-    ? await svc.from('profiles').select('id').eq('id', String(link.created_by)).eq('company_id', String(link.company_id)).maybeSingle()
-    : { data: null }
+  const maker = link.created_by ? await permissionsOf(svc, String(link.created_by), String(link.company_id)) : null
   if (!maker) return new NextResponse('Not found', { status: 404 })
-  const t = await buildTakeoff(svc, String(link.company_id), String(link.geofence_id), !!link.include_costs)
+  // Prices only while the maker can still see them (their costs switch can be
+  // turned off after the link was made — sec-check, Nov 8); quantities otherwise.
+  const withCosts = !!link.include_costs && maker.canViewCosts
+  const t = await buildTakeoff(svc, String(link.company_id), String(link.geofence_id), withCosts)
   if (!t) return new NextResponse('Not found', { status: 404 })
   // Note the use at most every 10 minutes (spreadsheets refresh often).
   const last = link.last_used_at ? Date.parse(String(link.last_used_at)) : 0
   if (Date.now() - last > 10 * 60_000) await svc.from('takeoff_links').update({ last_used_at: new Date().toISOString() }).eq('token', token)
-  return new NextResponse(toCsv(takeoffCsvRows(t, !!link.include_costs)), {
+  return new NextResponse(toCsv(takeoffCsvRows(t, withCosts)), {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Cache-Control': 'private, no-store',

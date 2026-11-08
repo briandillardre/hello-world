@@ -45,6 +45,18 @@ async function readPolicy(db: Db, companyId: string): Promise<RolePolicy | null>
 }
 
 /**
+ * Someone else's permissions as they stand now (their profile + the company's
+ * role policy), read with the client given — the service role where the caller
+ * is not that person (a priced spreadsheet link checks its maker still sees
+ * costs). null when they are not on that company.
+ */
+export async function permissionsOf(db: Db, userId: string, companyId: string): Promise<Permissions | null> {
+  const p = await readProfile(db, userId)
+  if (!p || String(p.company_id) !== companyId) return null
+  return resolvePermissions(p, userId === companyId, await readPolicy(db, companyId))
+}
+
+/**
  * Server-side: the CALLER's resolved permissions. Demo = the Master (nothing
  * persists); logged-out or error = Associate.
  *

@@ -27,8 +27,9 @@ export const MAX_SOURCES = 60
  * service itself fails — the caller keeps the cached numbers then.
  */
 export async function roadTable(origin: [number, number], dests: [number, number][]): Promise<(RoadLeg | null)[]> {
-  const usable = dests.map((d) => kmBetween(origin, d) <= MAX_SOURCE_KM)
-  const idx = dests.map((_, i) => i).filter((i) => usable[i]).slice(0, MAX_SOURCES)
+  // The nearest MAX_SOURCES within reach (straight line) — a far quarry, never a near one, is the one left out.
+  const km = dests.map((d) => kmBetween(origin, d))
+  const idx = dests.map((_, i) => i).filter((i) => km[i] <= MAX_SOURCE_KM).sort((a, b) => km[a] - km[b]).slice(0, MAX_SOURCES)
   const out: (RoadLeg | null)[] = dests.map(() => null)
   if (!idx.length) return out
   const coords = [origin, ...idx.map((i) => dests[i])].map(([lng, lat]) => `${lng.toFixed(6)},${lat.toFixed(6)}`).join(';')

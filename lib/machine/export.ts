@@ -234,7 +234,12 @@ function surfaceXml(name: string, desc: string, m: Mesh): string {
   return L.join('\n')
 }
 
-export function landXml(o: { project: string; crs: Crs; fg: Mesh; sg: Mesh; now: Date }): string {
+/**
+ * `navd88` only when the elevations are known to be NAVD88: the existing ground is the lidar
+ * (NAVD88) with no datum offset. A plan on an assumed datum (an offset, or traced existing)
+ * must not be labelled NAVD88 — the dealer builds the machine model from this.
+ */
+export function landXml(o: { project: string; crs: Crs; fg: Mesh; sg: Mesh; now: Date; navd88?: boolean }): string {
   const day = o.now.toISOString().slice(0, 10), time = o.now.toISOString().slice(11, 19)
   const units = o.crs.unit === 'ft'
     ? '<Imperial areaUnit="squareFoot" linearUnit="foot" volumeUnit="cubicYard" temperatureUnit="fahrenheit" pressureUnit="inchHG" diameterUnit="inch" angularUnit="decimal degrees" directionUnit="decimal degrees"/>'
@@ -243,7 +248,7 @@ export function landXml(o: { project: string; crs: Crs; fg: Mesh; sg: Mesh; now:
     '<?xml version="1.0" encoding="UTF-8"?>',
     `<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.landxml.org/schema/LandXML-1.2 http://www.landxml.org/schema/LandXML-1.2/LandXML-1.2.xsd" version="1.2" date="${day}" time="${time}" readOnly="false" language="English">`,
     `  <Units>${units}</Units>`,
-    `  <CoordinateSystem name="${xmlEsc(o.crs.name)}" epsgCode="${o.crs.epsg}" horizontalDatum="NAD83" verticalDatum="NAVD88" desc="EPSG:${o.crs.epsg}${o.crs.unit === 'ft' ? ', international feet' : ', metres'}; elevations as traced from the plans"/>`,
+    `  <CoordinateSystem name="${xmlEsc(o.crs.name)}" epsgCode="${o.crs.epsg}" horizontalDatum="NAD83"${o.navd88 ? ' verticalDatum="NAVD88"' : ''} desc="EPSG:${o.crs.epsg}${o.crs.unit === 'ft' ? ', international feet' : ', metres'}; elevations as traced from the plans${o.navd88 ? '' : ' (vertical datum not checked against NAVD88)'}"/>`,
     `  <Project name="${xmlEsc(o.project)}"/>`,
     '  <Application name="HammerTrack" manufacturer="HAMMERTRACK LLC" version="1" manufacturerURL="https://hammertrack.ai"/>',
     '  <Surfaces>',
@@ -330,7 +335,7 @@ export function designFiles(ctx: TakeoffContext, design: DirtDesign, o: { projec
   const { fromLngLat } = crsFor(ctx, o.grid)
   return {
     crs: m.crs, fg: m.fg, sg: m.sg, warnings: m.warnings,
-    landxml: landXml({ project: o.project, crs: m.crs, fg: m.fg, sg: m.sg, now: o.now }),
+    landxml: landXml({ project: o.project, crs: m.crs, fg: m.fg, sg: m.sg, now: o.now, navd88: design.existing.source === 'lidar' && design.existing.offsetFt === 0 }),
     dxf: dxf({ design, crs: m.crs, fromLngLat, fg: m.fg, sg: m.sg }),
   }
 }

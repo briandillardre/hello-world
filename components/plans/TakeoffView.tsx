@@ -228,7 +228,7 @@ export function TakeoffView({ zone, summary, snapshots, memo, links, canEdit, ca
                 {canCosts && priced > 0 && (
                   <tfoot>
                     <tr className="border-t border-navy-700">
-                      <td className="px-3 py-2 text-faint" colSpan={5}>Priced items ({priced} of {rows.length}) — the estimate&apos;s markups come later</td>
+                      <td className="px-3 py-2 text-faint" colSpan={5}>Priced items ({priced} of {rows.length}) — markups are on the Estimate page</td>
                       <td className="text-right font-mono font-bold text-ink pr-3">{money(total)}</td>
                     </tr>
                   </tfoot>

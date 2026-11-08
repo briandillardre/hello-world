@@ -40,7 +40,7 @@ type Key = 'name' | 'kind' | 'lat' | 'lng' | 'northing' | 'easting' | 'groundFt'
 
 const ALIASES: Record<Key, string[]> = {
   name: ['name', 'boring', 'boringno', 'boringnumber', 'boringid', 'boringname', 'boringlocation', 'id', 'location', 'locationid', 'testlocation', 'pit', 'pitno', 'testpit', 'testpitno', 'tp', 'hole', 'holeid', 'point', 'no', 'number'],
-  kind: ['kind', 'type'],
+  kind: ['kind', 'type', 'boringorpit'],
   lat: ['lat', 'latitude'],
   lng: ['lng', 'lon', 'long', 'longitude'],
   northing: ['northing', 'north', 'n', 'y', 'spn', 'stateplanen', 'stateplanenorthing'],
@@ -48,16 +48,17 @@ const ALIASES: Record<Key, string[]> = {
   groundFt: ['ground', 'groundelev', 'groundelevation', 'groundsurface', 'groundsurfaceelev', 'groundsurfaceelevation', 'elev', 'elevation', 'surface', 'surfaceelev', 'surfaceelevation', 'gse', 'grade', 'existinggrade'],
   depthFt: ['depth', 'totaldepth', 'td', 'boringdepth', 'termination', 'terminationdepth', 'bottom', 'depthdrilled', 'maxdepth'],
   topsoilIn: ['topsoil', 'topsoilthickness', 'topsoildepth', 'organics'],
-  fillFt: ['fill', 'existingfill', 'filldepth', 'fillto'],
-  pwrFt: ['pwr', 'pwrdepth', 'depthtopwr', 'partiallyweatheredrock', 'weatheredrock'],
-  refusalFt: ['refusal', 'augerrefusal', 'refusaldepth', 'depthtorefusal', 'rock', 'rockdepth', 'depthtorock'],
+  fillFt: ['fill', 'existingfill', 'filldepth', 'fillto', 'existingfillto'],
+  pwrFt: ['pwr', 'pwrat', 'pwrdepth', 'depthtopwr', 'partiallyweatheredrock', 'weatheredrock'],
+  refusalFt: ['refusal', 'refusalat', 'augerrefusal', 'refusaldepth', 'depthtorefusal', 'rock', 'rockdepth', 'depthtorock'],
   waterFt: ['water', 'groundwater', 'gw', 'waterdepth', 'depthtowater', 'wateratdrilling', 'atdrilling', 'atcompletion', 'gwatdrilling', 'groundwateratdrilling', 'groundwateratcompletion', 'waterlevelatcompletion', 'waterlevelatdrilling', 'wl', 'waterlevel'],
-  water24hFt: ['water24', 'water24h', 'water24hr', 'water24hrs', 'water24hour', 'water24hours', '24hr', '24hrs', '24h', '24hour', 'gw24', 'gw24hr', 'wl24hr', 'waterlevel24hr', 'after24hr', 'after24hours', 'groundwater24', 'groundwater24h', 'groundwater24hr', 'groundwater24hrs', 'groundwater24hour', 'groundwater24hours'],
+  water24hFt: ['water24', 'water24h', 'water24hr', 'waterat24h', 'waterat24hr', 'waterat24hrs', 'waterat24hours', 'water24hrs', 'water24hour', 'water24hours', '24hr', '24hrs', '24h', '24hour', 'gw24', 'gw24hr', 'wl24hr', 'waterlevel24hr', 'after24hr', 'after24hours', 'groundwater24', 'groundwater24h', 'groundwater24hr', 'groundwater24hrs', 'groundwater24hour', 'groundwater24hours'],
   unsuitableFt: ['unsuitable', 'undercut', 'unsuitabledepth', 'unsuitablesoil', 'unsuitablesoildepth', 'unsuitableto', 'undercutdepth'],
   note: ['note', 'notes', 'remarks', 'remark', 'comment', 'comments', 'description'],
 }
 
-const WORDS: Record<Key, string> = {
+/** The words the panel echoes back — every one of them is also a heading it reads (harness-checked). */
+export const WORDS: Record<Key, string> = {
   name: 'name', kind: 'boring or pit', lat: 'latitude', lng: 'longitude', northing: 'northing', easting: 'easting',
   groundFt: 'ground elevation', depthFt: 'depth', topsoilIn: 'topsoil (in)', fillFt: 'existing fill to', pwrFt: 'PWR at',
   refusalFt: 'refusal at', waterFt: 'water at drilling', water24hFt: 'water at 24 h', unsuitableFt: 'unsuitable to', note: 'note',

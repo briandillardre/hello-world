@@ -9,6 +9,7 @@
  * never sees them) and come back only as short signed links.
  */
 
+import { keyRateLimited } from '@/lib/rate-limit'
 import { revalidatePath } from 'next/cache'
 import { requireEditOrThrow, getMyPermissions } from '@/lib/permissions-server'
 import { isProspect, rankOf, RANK } from '@/lib/permissions'
@@ -108,6 +109,12 @@ async function removePictures(svc: Svc, companyId: string, imageIds: string[]) {
 }
 
 /** At most 300 plan uploads (PDFs and pictures) per company per day. */
+/** Uploads STARTED per person per hour — the daily cap counts filed rows only,
+ *  and a started upload that never finishes holds its object until the sweep. */
+function startsLimited(userId: string | null): boolean {
+  return !!userId && keyRateLimited(userId, 'plan-upload-h', 400, 3_600_000)
+}
+
 async function overDailyUploads(svc: Svc, companyId: string): Promise<boolean> {
   const since = new Date(Date.now() - 86_400_000).toISOString()
   const [{ count: files }, { count: pics }] = await Promise.all([
@@ -260,7 +267,8 @@ export async function deletePlanSetAction(setId: string): Promise<Res> {
 /** Step 1: a one-time signed upload URL into the private 'plans' bucket. */
 export async function startPlanFileUploadAction(input: { setId: string; name: string; size: number }): Promise<Res<{ path: string; token: string }>> {
   if (isMock) return { ok: false, error: 'Demo mode' }
-  const { companyId, svc } = await writer()
+  const { companyId, userId, svc } = await writer()
+  if (startsLimited(userId)) return { ok: false, error: 'That’s a lot of uploads for one hour — try again later.' }
   const set = await ownSet(svc, companyId, input.setId)
   if (!set) return { ok: false, error: 'Set not found' }
   if (!input.size || input.size > PDF_MAX_BYTES) return { ok: false, error: 'That PDF is over 50 MB — split it, or upload the sheets as pictures.' }
@@ -302,7 +310,8 @@ export async function finishPlanFileUploadAction(input: { setId: string; path: s
  *  (/api/plans/image/<id>) is known before the file lands. */
 export async function startPlanImageUploadAction(input: { setId: string; contentType: string; size: number }): Promise<Res<{ imageId: string; path: string; token: string }>> {
   if (isMock) return { ok: false, error: 'Demo mode' }
-  const { companyId, svc } = await writer()
+  const { companyId, userId, svc } = await writer()
+  if (startsLimited(userId)) return { ok: false, error: 'That’s a lot of uploads for one hour — try again later.' }
   const set = await ownSet(svc, companyId, input.setId)
   if (!set) return { ok: false, error: 'Set not found' }
   if (!['image/png', 'image/jpeg', 'image/webp'].includes(input.contentType)) return { ok: false, error: 'That picture type isn’t supported — PNG or JPEG.' }

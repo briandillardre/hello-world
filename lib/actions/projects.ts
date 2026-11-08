@@ -31,7 +31,7 @@ const MIGRATION_HINT = 'Run migration 046_project_management.sql in the Supabase
 /**
  * Writes run on the service role AFTER requireEditOrThrow() (every action calls
  * it first) with the company checked on every row — the 138 pattern; members
- * are left with reads only once 151 lands. A zone and an assignee must be the
+ * are left with reads only once the step-2 migration lands (board #224). A zone and an assignee must be the
  * caller's company's.
  */
 async function client() {

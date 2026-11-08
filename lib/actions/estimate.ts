@@ -123,7 +123,7 @@ export async function savePriceAction(input: PriceInput): Promise<Res<{ id: stri
 
 export async function deletePriceAction(id: string): Promise<Res> {
   if (isMock) return { ok: false, error: 'Demo mode' }
-  const { companyId, svc } = await writer()
+  const { companyId, svc } = await writer({ managers: true })
   if (!UUID.test(id)) return { ok: false, error: 'Bad price' }
   await svc.from('cost_prices').update({ deleted_at: new Date().toISOString() }).eq('id', id).eq('company_id', companyId)
   refreshBook()

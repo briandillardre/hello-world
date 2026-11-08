@@ -1051,7 +1051,7 @@ function GroundCard({ ground, boundarySf, zoneId, logs }: { ground: GroundResult
   if (!ground) {
     return (
       <div className="rounded-lg border border-navy-800 bg-navy-950 p-2.5 text-xs text-muted">
-        No borings on this site yet — rock, PWR and undercut stay unpriced. {link}
+        No borings on this site yet — rock, PWR and undercut stay unmeasured. {link}
       </div>
     )
   }

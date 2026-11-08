@@ -303,7 +303,8 @@ revisions the takeoff was traced from:
 
 - **LandXML 1.2** — two TIN surfaces. *Finished grade*: the exact triangles the
   volumes are integrated on (traced contours, spots and pads, tied into
-  existing at the grading limits), clipped to the limits. *Subgrade*: those
+  existing at the grading limits), trimmed to the limits triangle by
+  triangle (a triangle stays when its centre is inside — the edge is ragged). *Subgrade*: those
   same triangles cut along every section and pad edge, each piece lowered by
   its section (pads at their subgrade), so inside a section subgrade is exactly
   finished grade less the thickness; the section side of each edge steps 2 cm
@@ -324,8 +325,9 @@ later is the newer one. Harness: `node scripts/machine-test.mjs`.
 
 ## Progress by drone flight (Nov 8, migration 150)
 
-Plan room → **Progress** measures every drone survey of the site (the DSMs
-uploaded on Stockpiles) against the site's saved dirt takeoff:
+Plan room → **Progress** measures any drone survey of the site (the DSMs
+uploaded on Stockpiles) against the site's saved dirt takeoff — one tap per
+flight (Measure); nothing is measured on upload by itself:
 
 - **The flight is the existing ground that day.** The server reads only the
   grading limits' window of the survey plus a 30 m band, runs the saved design

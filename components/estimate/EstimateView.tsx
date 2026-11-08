@@ -100,7 +100,7 @@ export function EstimateView({ zone, book, estimate, markups, distances, snapsho
     const r = await refreshDistancesAction(zone.id).catch(() => null)
     setBusy(null)
     if (!r?.ok) { setErr(r && !r.ok ? r.error : 'Couldn’t measure the distances — try again.'); return }
-    if (r.missing) setErr(`${r.missing} source${r.missing === 1 ? '' : 's'} had no road route (or are more than ~150 miles away).`)
+    if (r.missing) setErr(`${r.missing} source${r.missing === 1 ? '' : 's'} had no road route (more than ~150 miles away, or past the 60 nearest sources).`)
     router.refresh()
   }
   async function saveMarkups(next: Markups) {

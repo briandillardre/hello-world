@@ -287,7 +287,8 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
     if (!ok) return
     const done = globalBusy('Deleting zone…')
     try {
-      await deleteGeofenceAction(id)
+      const r = await deleteGeofenceAction(id)
+      if (!r?.ok) { toast(r && !r.ok ? r.error : 'Could not delete the zone. Please try again.', { variant: 'error' }); return }
       router.push('/zones')
       router.refresh()
     } catch (err) {

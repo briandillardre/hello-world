@@ -13,7 +13,7 @@
  *   sub       = a sub's quote × the quantity.
  * The source is picked by delivered cost (plant + haul), cheapest first, and
  * the estimator can pin another. Distances are road miles and minutes with no
- * traffic, or the fleet's own round trips where trucks have made the run.
+ * traffic (the fleet's own round trips are board #217, not built).
  * Markups sit on the direct cost: overhead, contingency, profit, bond, and
  * sales tax on materials.
  */

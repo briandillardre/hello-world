@@ -296,9 +296,12 @@ export async function createTakeoffLinkAction(zoneId: string, includeCosts: bool
 
 export async function revokeTakeoffLinkAction(token: string): Promise<Res> {
   if (isMock) return { ok: false, error: 'Demo mode' }
-  const { companyId, svc } = await writer()
+  const { perms, companyId, svc } = await writer()
   if (!/^[A-Za-z0-9]{24,40}$/.test(token)) return { ok: false, error: 'Bad link' }
-  const { data } = await svc.from('takeoff_links').update({ revoked_at: new Date().toISOString() }).eq('token', token).eq('company_id', companyId).select('geofence_id').maybeSingle()
+  // A priced link is only seen — and so only revoked — by a login that can see costs.
+  let q = svc.from('takeoff_links').update({ revoked_at: new Date().toISOString() }).eq('token', token).eq('company_id', companyId)
+  if (!perms.canViewCosts) q = q.eq('include_costs', false)
+  const { data } = await q.select('geofence_id').maybeSingle()
   refresh(data ? String(data.geofence_id) : null)
   return { ok: true }
 }

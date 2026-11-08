@@ -47,12 +47,16 @@ export async function startMachineUploadAction(input: { zoneId: string; filename
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { companyId, userId, svc } = await writer()
   if (userId && keyRateLimited(userId, 'machine-upload', 30)) return { ok: false, error: 'That’s a lot of uploads in a minute — wait a moment.' }
+  if (userId && keyRateLimited(userId, 'machine-upload-h', 60, 3_600_000)) return { ok: false, error: 'That’s a lot of uploads for one hour — try again later.' }
   if (!(await ownSite(svc, companyId, String(input?.zoneId ?? '')))) return { ok: false, error: 'That site wasn’t found.' }
   if (!clip(input.filename, 200)) return { ok: false, error: 'That file has no name.' }
   if (!input.size || input.size > MAX_BYTES) return { ok: false, error: 'Machine files go up to 100 MB.' }
-  const since = new Date(Date.now() - 86_400_000).toISOString()
-  const { count } = await svc.from('machine_files').select('id', { count: 'exact', head: true }).eq('company_id', companyId).gte('created_at', since)
-  if ((count ?? 0) >= 200) return { ok: false, error: 'That’s a lot of machine files for one day — try again tomorrow.' }
+  // Count uploads STARTED, not files filed: an upload that never finishes still
+  // holds up to 100 MB until the sweep (sec-check, Nov 8). Objects carry their own time.
+  const since = Date.now() - 86_400_000
+  const { data: recent } = await svc.storage.from('machine').list(companyId, { limit: 201, sortBy: { column: 'created_at', order: 'desc' } })
+  const started = (recent ?? []).filter((o) => Date.parse(String(o.created_at ?? '')) >= since).length
+  if (started >= 200) return { ok: false, error: 'That’s a lot of machine files for one day — try again tomorrow.' }
   const id = crypto.randomUUID()
   const { data, error } = await svc.storage.from('machine').createSignedUploadUrl(`${companyId}/${id}`)
   if (error || !data) return { ok: false, error: 'Couldn’t start the upload — try again.' }
@@ -110,6 +114,10 @@ export async function finishMachineFileAction(input: FinishMachineInput): Promis
   const zoneId = String(input?.zoneId ?? '')
   if (!(await ownSite(svc, companyId, zoneId))) return { ok: false, error: 'That site wasn’t found.' }
   if (!UUID.test(String(input.id))) return { ok: false, error: 'Bad file' }
+  // An id that is already filed is refused before anything is touched — the
+  // clean-up below would otherwise delete a filed file's only copy (sec-check, Nov 8).
+  const { data: filed } = await svc.from('machine_files').select('id').eq('id', input.id).maybeSingle()
+  if (filed) return { ok: false, error: 'That file is already filed.' }
   const path = `${companyId}/${input.id}`
   const { data: objs } = await svc.storage.from('machine').list(companyId, { search: input.id })
   const obj = objs?.find((o) => o.name === input.id)
@@ -135,7 +143,11 @@ export async function finishMachineFileAction(input: FinishMachineInput): Promis
     source: takeoffId ? 'hammertrack' : 'upload', takeoff_id: takeoffId, grid: clip(input.grid, 60) || null,
     note: clip(input.note, 500) || null, created_by: userId,
   })
-  if (error) { await svc.storage.from('machine').remove([path]); return { ok: false, error: 'Couldn’t file it — try again.' } }
+  if (error) {
+    // 23505 = another finish filed this id first: its object is now a filed file's — keep it.
+    if (error.code !== '23505') await svc.storage.from('machine').remove([path])
+    return { ok: false, error: error.code === '23505' ? 'That file is already filed.' : 'Couldn’t file it — try again.' }
+  }
   revalidatePath(`/plans/${zoneId}/machine`)
   return { ok: true, id: input.id }
 }

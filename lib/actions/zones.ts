@@ -4,6 +4,7 @@ import { requireEditOrThrow } from '@/lib/permissions-server'
 import { revalidatePath } from 'next/cache'
 import { getGeofence, createGeofence, updateGeofence, deleteGeofence, logZoneEvent } from '@/lib/db/zones'
 import { getCurrentCompanyId } from '@/lib/db/company'
+import { rankOf, RANK } from '@/lib/permissions'
 import type { AlertTrigger, ZoneFormOpts } from '@/lib/types'
 
 /**
@@ -154,11 +155,24 @@ export async function saveGeofenceAction(
   revalidatePath('/map')
 }
 
-export async function deleteGeofenceAction(id: string) {
-  await requireEditOrThrow()
-  await deleteGeofence(id)
+/**
+ * A company zone is a Manager's to delete (151 — the cascade takes its plan
+ * room, takeoff, estimate, borings, machine files, hours ledger); a personal
+ * zone its owner's. Says why instead of throwing, so the screen can.
+ */
+export async function deleteGeofenceAction(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const perms = await requireEditOrThrow()
+  const fence = await getGeofence(id).catch(() => null)
+  if (!fence) return { ok: false, error: 'That zone is already gone.' }
+  if (!fence.owner_id && rankOf(perms) < RANK.manager) return { ok: false, error: 'Deleting a company zone is for Managers and above.' }
+  try {
+    await deleteGeofence(id)
+  } catch (e) {
+    return { ok: false, error: e instanceof Error && e.message ? e.message : 'Couldn’t delete that zone — try again.' }
+  }
   revalidatePath('/zones')
   revalidatePath('/map')
+  return { ok: true }
 }
 
 /** Owner notes on a zone — free text the panel shows and the AI reads.

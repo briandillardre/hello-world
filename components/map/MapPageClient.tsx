@@ -300,7 +300,11 @@ export function MapPageClient({ assets, geofences: initialGeofences, places: ini
     setGeofences((prev) => prev.filter((g) => g.id !== id))
     if (!isMock) {
       try {
-        await deleteGeofenceAction(id)
+        const r = await deleteGeofenceAction(id)
+        if (!r?.ok) {
+          setGeofences(snapshot)
+          toast(r && !r.ok ? r.error : 'That zone could not be deleted. Please try again.', { variant: 'error' })
+        }
       } catch (err) {
         console.error('Zone delete failed', err)
         setGeofences(snapshot)
