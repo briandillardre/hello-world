@@ -14,6 +14,7 @@ import {
   createEstimateAction, saveEstimateAction, saveEstimateMarkupsAction, refreshDistancesAction, deleteEstimateAction,
 } from '@/lib/actions/estimate'
 import { MarkupFields } from './CostBookView'
+import { winEstimateAction } from '@/lib/actions/jobs'
 
 const money = (v: number) => v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 const money2 = (v: number) => v.toLocaleString(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -109,6 +110,19 @@ export function EstimateView({ zone, book, estimate, markups, distances, snapsho
     return () => { if (timer.current) clearTimeout(timer.current) }
   }, [lines, name, status]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Won → the job (migration 152): awarded, this estimate on it, the bid total as
+  // its bid (and its contract amount while none is typed in). Only a total that
+  // carries the margins is sent — without them it is the direct cost, not a bid.
+  const [jobDone, setJobDone] = useState(false)
+  async function setUpJob() {
+    if (!estimate) return
+    setBusy('job'); setErr(null)
+    const r = await winEstimateAction(zone.id, estimate.id, mk ? t.bid : null).catch(() => null)
+    setBusy(null)
+    if (!r?.ok) { setErr(r && !r.ok ? r.error : 'Couldn’t set up the job — try again.'); return }
+    setJobDone(true)
+  }
+
   const edit = (id: string, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)))
 
   async function start(snapshotId: string | null) {
@@ -186,6 +200,16 @@ export function EstimateView({ zone, book, estimate, markups, distances, snapsho
               <span className={'text-[11.5px] ' + (saved === 'error' ? 'text-red-400' : 'text-faint')}>{saved === 'saving' ? 'Saving…' : saved === 'dirty' ? 'Changes…' : saved === 'error' ? 'Not saved' : 'Saved'}</span>
               {canManage && <button type="button" aria-label="Delete estimate" onClick={() => void drop()} className="rounded-lg p-1.5 text-faint hover:text-red-400"><Trash2 className="h-4 w-4" /></button>}
             </div>
+            {status === 'won' && estimate && (
+              <div className="rounded-xl border border-teal/40 bg-teal/5 px-3 py-2 text-[12.5px] flex items-center gap-2 flex-wrap">
+                <span className="text-ink flex-1 min-w-[12rem]">Won it? The job takes it from here — the contract, the set-up checklist, contacts, pay apps.</span>
+                {jobDone ? (
+                  <Link href={`/jobs/${zone.id}`} className="rounded-lg bg-teal/20 px-2.5 py-1 font-semibold text-teal">Open the job →</Link>
+                ) : canEdit ? (
+                  <button type="button" disabled={busy === 'job'} onClick={() => void setUpJob()} className="rounded-lg bg-teal px-2.5 py-1 font-semibold text-navy-950 disabled:opacity-50">{busy === 'job' ? 'Setting up…' : 'Set up the job'}</button>
+                ) : null}
+              </div>
+            )}
             {warnings > 0 && <p className="text-[12.5px] text-amber flex items-center gap-1.5"><AlertTriangle className="h-4 w-4" /> {warnings} thing{warnings === 1 ? '' : 's'} to settle before this price is whole — see the amber notes on the lines.</p>}
 
             {sections.map(([sec, cs]) => (

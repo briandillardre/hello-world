@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock, BellRing, Plane, Lock, FileStack } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock, BellRing, Plane, Lock, FileStack, Briefcase } from 'lucide-react'
 import { ViewAsPicker } from './ViewAsPicker'
 import { cn } from '@/lib/utils'
 import { navStateFor, lockedHref } from '@/lib/permissions'
@@ -24,6 +24,7 @@ const allItems = [
   { href: '/timecards', label: 'Time cards', short: 'Cards', icon: CalendarClock },
   { href: '/zones', label: 'Zones', icon: Hexagon },
   { href: '/plans', label: 'Plans', icon: FileStack },
+  { href: '/jobs', label: 'Jobs', icon: Briefcase },
   { href: '/measurements', label: 'Measurements', short: 'Measure', icon: Ruler },
   { href: '/tags', label: 'Tag scanner', short: 'Tags', icon: Bluetooth },
   { href: '/command', label: 'Command Center', short: 'Command', icon: MonitorPlay },
@@ -76,7 +77,7 @@ const canonOrder = (role?: string | null): string[] => {
 const DRAWER_GROUPS: { title: string; hrefs: string[] }[] = [
   { title: 'Watch',  hrefs: ['/map', '/command', '/alerts'] },
   { title: 'Field',  hrefs: ['/clock', '/timecards', '/logs', '/photos', '/assets', '/zones', '/plans'] },
-  { title: 'Office', hrefs: ['/reports', '/team'] },
+  { title: 'Office', hrefs: ['/jobs', '/reports', '/team'] },
   // Mirrors the desktop sidebar's Setup group exactly — a page missing here
   // fell into "Other" (Hardware setup, Sep 4) or off the phone entirely
   // (Team activity).

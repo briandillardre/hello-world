@@ -1,5 +1,7 @@
 # Project Management per Zone — Research & Build Plan
 
+> **Nov 8 2026:** Brian asked for the whole job to run here — preconstruction through AIA-style pay apps — replacing DCG's spreadsheets. That supersedes the "QBO is the ledger / change orders stay in QBO" calls below for the job's own money (contract, change orders, pay apps, job cost, WIP); QuickBooks stays the books. The plan and what has shipped: `docs/JOBS.md`.
+
 *Aug 1 2026. Brian's ask: "add project management tools in here per project
 geofence — look at other project management solutions and come up with a solid
 plan." This doc is the deep dive; migration 046 + the Project Hub on the zone

@@ -28,6 +28,7 @@ export default async function Page({ params }: { params: { zoneId: string } }) {
     <PlanRoom zone={{ id: fence.id, name: fence.name }} data={data}
       canEdit={perms.canEdit && !perms.viewingAs && !isMock} ring={ring} demo={isMock} items={items} canCosts={perms.canViewCosts}
       canGround={!isProspect(perms)}
+      canJobs={!isProspect(perms) && perms.features.includes('jobs') && !fence.owner_id}
       canDelete={perms.canEdit && !perms.viewingAs && !isMock && rankOf(perms) >= RANK.manager} />
   )
 }
