@@ -41,7 +41,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 const usd = (n: number) => (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 /** What an application still owes, in cents (0 when paid in full or marked Paid). */
-export function owedCents(a: CloseoutFacts['apps'][number]): number {
+export function owedCents(a: Pick<CloseoutFacts['apps'][number], 'status' | 'currentDue' | 'paidAmount'>): number {
   if (a.status === 'paid' && a.paidAmount === null) return 0
   const due = Math.round(a.currentDue * 100)
   const paid = Math.round((a.paidAmount ?? 0) * 100)
