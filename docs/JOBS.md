@@ -184,6 +184,33 @@ jobcost.ts` writes (service role after the edit + Jobs + costs checks).
 The checklist's COIs, submittals, approvals, as-builts and warranty items
 open Documents; the final lien waiver opens Pay apps.
 
+## Money across jobs (board #233)
+
+Jobs → **Money across jobs** (`/jobs/portfolio`, costs only) — the Invoice
+Tracking workbook from the jobs themselves; no tables of its own:
+
+- **What customers owe**: every sent application not paid in full (short
+  pays to the cent), due on receipt or net 15 / 30 / 45 / 60 from its date
+  (a switch on the page; net 30 to start), aged current / 1–30 / 31–60 /
+  61–90 / 90+ days past due, latest first, each opening the job's pay apps.
+- **The WIP schedule**: every job won and not closed (awarded, active, on
+  hold, substantially complete, financial closeout), cost to cost through
+  job cost's own math — contract to date (the last sent application's line
+  3, else the contract plus approved change orders), estimated cost (the
+  current budget or the PM's estimate at completion), cost to date, %
+  complete, earned, billed (the last sent application's line 4), over /
+  (under) billing, retainage held, forecast margin — with totals that keep
+  over- and under-billing apart (a bank wants both, never netted).
+- **Cash by month**: the last six months — billed (what that month's
+  applications asked for) against collected (what was paid that month).
+- At the top: owed to us (and how much is past due), retainage held across
+  every job, left to bill on the running jobs, under / over billed.
+
+`lib/jobs/portfolio.ts` (pure: `arAging`, `lastSentByJob`, `cashByMonth`,
+`wipSchedule`; the owed rule is closeout's `owedCents`) · `lib/db/portfolio.ts`
+(applications and change orders through RLS; each running job's cost through
+`getJobCost`, four at a time).
+
 ## Permissions
 
 View level **Jobs** (`jobs`): on for Admin, Manager and Foreman; off for the
@@ -194,10 +221,10 @@ write is a server action on the service role after the edit + Jobs checks
 
 ## Still to build
 
-- **The portfolio** — AR aging, WIP schedule, cash (board #233).
 
 Harnesses: `node scripts/jobs-test.mjs` — after ANY change to
 `lib/jobs/job.ts`; `node scripts/payapp-test.mjs` — after ANY change to
 `lib/jobs/payapp.ts` (these are invoices); `node scripts/jobcost-test.mjs` —
 after ANY change to `lib/jobs/cost.ts`; `node scripts/closeout-test.mjs` —
-after ANY change to `lib/jobs/issues.ts`, `documents.ts` or `closeout.ts`.
+after ANY change to `lib/jobs/issues.ts`, `documents.ts` or `closeout.ts`;
+`node scripts/portfolio-test.mjs` — after ANY change to `lib/jobs/portfolio.ts`.

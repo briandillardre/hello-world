@@ -8,7 +8,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Briefcase, Plus, Search, ChevronRight, ListChecks, Trash2, AlertTriangle, X } from 'lucide-react'
+import { Briefcase, Plus, Search, ChevronRight, ListChecks, Trash2, AlertTriangle, X, Landmark } from 'lucide-react'
 import type { LogRow, Member } from '@/lib/db/jobs'
 import {
   BUCKETS, BUCKET_WORDS, bucketOf, CHECK_STAGES, CHECK_WORDS, DEFAULT_CHECKLIST, LINK_KEYS, LINK_WORDS, progressOf, sectionsNow, STAGE_WORDS,
@@ -100,6 +100,13 @@ export function JobsLog({ rows, members, available, sites, template, templateCus
             <Stat label="Out to bid" value={moneyFull(bidding)} sub={`${counts.bidding} bid${counts.bidding === 1 ? '' : 's'}`} />
             <Stat label="Contracts won, not closed" value={moneyFull(contractOpen)} sub={`${counts.won + counts.active + counts.closing} job${counts.won + counts.active + counts.closing === 1 ? '' : 's'}`} />
           </div>
+        )}
+        {canCosts && (
+          <Link href="/jobs/portfolio" className="flex items-center gap-2 rounded-xl border border-navy-800 bg-navy-900/60 px-3 py-2 text-[12.5px] hover:border-navy-600">
+            <Landmark className="h-4 w-4 text-teal flex-none" />
+            <span className="flex-1"><span className="text-ink font-semibold">Money across jobs</span> <span className="text-faint">— what customers owe and how late, the WIP schedule, cash by month</span></span>
+            <ChevronRight className="h-4 w-4 text-faint" />
+          </Link>
         )}
 
         <div className="flex items-center gap-2 flex-wrap">
