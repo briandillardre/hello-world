@@ -54,7 +54,7 @@ export const ROLE_BLURB: Record<Role, string> = {
 export type FeatureKey =
   | 'map' | 'command' | 'alerts' | 'aircraft'
   | 'clock' | 'logs' | 'assets' | 'zones' | 'plans' | 'measurements' | 'tags' | 'maintenance' | 'track'
-  | 'reports' | 'accounting' | 'receipts' | 'finance' | 'team' | 'activity'
+  | 'jobs' | 'reports' | 'accounting' | 'receipts' | 'finance' | 'team' | 'activity'
   | 'trackers' | 'hardware' | 'settings'
   | 'costs' | 'edit' | 'billing' | 'manage_team' | 'ask_ai'
 
@@ -82,6 +82,7 @@ export const FEATURES: FeatureDef[] = [
   { key: 'assets',       group: 'Field',  label: 'Assets',          hint: 'The fleet list and each machine', href: '/assets' },
   { key: 'zones',        group: 'Field',  label: 'Zones',           hint: 'Sites, yards, boundaries', href: '/zones' },
   { key: 'plans',        group: 'Field',  label: 'Plans',           hint: 'Plan sets, sheets and their revisions', href: '/plans' },
+  { key: 'jobs',         group: 'Office', label: 'Jobs',            hint: 'Every job from bid to closeout — stage, contract, checklist, contacts', href: '/jobs' },
   { key: 'measurements', group: 'Field',  label: 'Measurements',    hint: 'Measure on the map', href: '/measurements' },
   { key: 'tags',         group: 'Field',  label: 'Tag scanner',     hint: 'Bluetooth tool tags', href: '/tags' },
   { key: 'maintenance',  group: 'Field',  label: 'Maintenance',     hint: 'Service schedules and work orders', href: '/maintenance' },
@@ -116,7 +117,7 @@ export const MASTER_ONLY: FeatureKey[] = FEATURES.filter((f) => f.masterOnly).ma
  *  except PROSPECT_HIDDEN. Everything else — the map, Command Center,
  *  alerts, the flight log, assets, zones, measurements, maintenance,
  *  reports — the Master switches per company in the view-levels table. */
-export const PROSPECT_NEVER: FeatureKey[] = ['edit', 'costs', 'billing', 'manage_team', 'ask_ai', 'team', 'activity', 'finance', 'clock', 'logs', 'track', 'tags', 'receipts', 'accounting', 'settings', 'trackers', 'hardware']
+export const PROSPECT_NEVER: FeatureKey[] = ['jobs', 'edit', 'costs', 'billing', 'manage_team', 'ask_ai', 'team', 'activity', 'finance', 'clock', 'logs', 'track', 'tags', 'receipts', 'accounting', 'settings', 'trackers', 'hardware']
 /** The pages a Prospective Client must not even see in a nav (Brian, Sep
  *  23: "they should not see team or financials or be seen by anyone else on
  *  the team except for me"). Absent from every nav, 404 on a typed URL. */
@@ -137,13 +138,13 @@ export const ROLE_FEATURE_DEFAULTS: Record<Role, Record<FeatureKey, boolean>> = 
   manager: on(
     'map', 'command', 'alerts', 'aircraft',
     'clock', 'logs', 'assets', 'zones', 'plans', 'measurements', 'tags', 'maintenance', 'track',
-    'reports', 'receipts', 'team', 'trackers', 'hardware',
+    'jobs', 'reports', 'receipts', 'team', 'trackers', 'hardware',
     'costs', 'edit', 'ask_ai',
   ),
   foreman: on(
     'map', 'command', 'alerts', 'aircraft',
     'clock', 'logs', 'assets', 'zones', 'plans', 'measurements', 'tags', 'maintenance', 'track',
-    'reports', 'receipts', 'trackers', 'hardware',
+    'jobs', 'reports', 'receipts', 'trackers', 'hardware',
     'edit', 'ask_ai',
   ),
   associate: on(
@@ -305,7 +306,7 @@ export function featureForPath(pathname: string): FeatureKey | null {
   const map: [string, FeatureKey][] = [
     ['/assets/onboard', 'hardware'],
     ['/map', 'map'], ['/command', 'command'], ['/alerts', 'alerts'], ['/aircraft', 'aircraft'],
-    ['/clock', 'clock'], ['/timecards', 'clock'], ['/logs', 'logs'], ['/photos', 'logs'], ['/assets', 'assets'], ['/zones', 'zones'], ['/plans', 'plans'], ['/costbook', 'plans'],
+    ['/clock', 'clock'], ['/timecards', 'clock'], ['/logs', 'logs'], ['/photos', 'logs'], ['/assets', 'assets'], ['/zones', 'zones'], ['/plans', 'plans'], ['/costbook', 'plans'], ['/jobs', 'jobs'],
     ['/measurements', 'measurements'], ['/tags', 'tags'], ['/maintenance', 'maintenance'], ['/track', 'track'],
     ['/reports', 'reports'], ['/accounting', 'accounting'], ['/receipts', 'receipts'], ['/finance', 'finance'],
     ['/team', 'team'], ['/activity', 'activity'], ['/trackers', 'trackers'], ['/settings', 'settings'],

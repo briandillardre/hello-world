@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, FileStack, Plus, MapPin, Pencil, Trash2, RotateCcw, Map as MapIcon, Layers, Drill, Cpu, Plane } from 'lucide-react'
+import { ArrowLeft, FileStack, Plus, MapPin, Pencil, Trash2, RotateCcw, Map as MapIcon, Layers, Drill, Cpu, Plane, Briefcase } from 'lucide-react'
 import {
   groupSheets, revLabel, setKindLabel, SET_KINDS, placementWords, type PlanSetKind,
 } from '@/lib/plans/room'
@@ -38,7 +38,7 @@ export const fmtDay = (d: string) => {
  * (grading and utilities side by side); the map always shows the current
  * version, so a revision can never hide behind an old picture.
  */
-export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false, items = [], canCosts = false, canGround = false }: {
+export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false, items = [], canCosts = false, canGround = false, canJobs = false }: {
   zone: { id: string; name: string }
   data: PlanRoomData
   canEdit: boolean
@@ -50,6 +50,8 @@ export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false, i
   canCosts?: boolean
   /** The site's borings, machine files and flight progress (not for a prospect). */
   canGround?: boolean
+  /** The Jobs view level — the bid's job (stage, contract, checklist). */
+  canJobs?: boolean
 }) {
   const router = useRouter()
   const [tab, setTab] = useState<'sheets' | 'sets' | 'items'>('sheets')
@@ -110,6 +112,11 @@ export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false, i
             {canGround && (
               <Link href={`/plans/${zone.id}/progress`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
                 <Plane className="h-4 w-4" /> Progress
+              </Link>
+            )}
+            {canJobs && (
+              <Link href={`/jobs/${zone.id}`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
+                <Briefcase className="h-4 w-4" /> Job
               </Link>
             )}
             <Link href={`/zones/${zone.id}`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">

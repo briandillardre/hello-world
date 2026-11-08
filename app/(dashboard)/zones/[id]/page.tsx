@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Hexagon, MapPin, CornerDownRight } from 'lucide-react'
+import { ArrowLeft, Hexagon, MapPin, CornerDownRight, Briefcase, ChevronRight } from 'lucide-react'
+import { isStage, STAGE_WORDS } from '@/lib/jobs/job'
 import { getGeofence, getGeofences, getZoneEvents } from '@/lib/db/zones'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
@@ -271,6 +272,16 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
 
   const assetMeta = Object.fromEntries(assets.map((a) => [a.id, { name: a.name, type: a.type }]))
 
+  // The job on this site (migration 152) — the Job card links the site page and the project log.
+  const canJobs = perms.features.includes('jobs') && !isProspect(perms) && !isMock && !fence.owner_id && !isBoundary && !isVendor && fence.kind !== 'yard'
+  const jobInfo = canJobs ? await (async () => {
+    try {
+      const { createClient } = await import('@/lib/supabase-server')
+      const { data, error } = await createClient().from('jobs').select('stage').eq('geofence_id', fence.id).maybeSingle()
+      return error ? null : { stage: (data?.stage as string | undefined) ?? null }
+    } catch { return null }
+  })() : null
+
   return (
     <div className="h-full overflow-auto pb-28 md:pb-10">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
@@ -340,6 +351,17 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
             This is a <span className="text-teal font-semibold">boundary</span> — an outline-only perimeter for
             exit and after-hours alerts. Usage hours, invoicing, and the site log are tracked on site zones.
           </p>
+        )}
+
+        {jobInfo && (
+          <Link href={`/jobs/${fence.id}`} className="flex items-center gap-3 rounded-xl border border-navy-800 bg-navy-900 px-4 py-3 hover:border-navy-600">
+            <Briefcase className="h-5 w-5 text-amber flex-none" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-ink font-semibold text-sm">Job{jobInfo.stage && isStage(jobInfo.stage) ? ` · ${STAGE_WORDS[jobInfo.stage]}` : ''}</span>
+              <span className="block text-[12.5px] text-faint">{jobInfo.stage ? 'The contract, the checklist, contacts — bid to closeout' : 'Not on the project log — put it on to track the bid, the contract and closeout'}</span>
+            </span>
+            <ChevronRight className="h-4 w-4 text-faint flex-none" />
+          </Link>
         )}
 
         {hub && (hub.available ? (
