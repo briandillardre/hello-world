@@ -119,7 +119,7 @@ function Talks({ data, sites, canWrite, canRemoveAny, busy, run }: { data: Safet
           <textarea className={box} rows={2} maxLength={4000} placeholder="Notes (optional) — questions the crew asked, what you'll change" value={notes} onChange={(e) => setNotes(e.target.value)} />
           <div><p className="text-faint text-[12px] mb-1">You led it — sign</p><SignaturePad value={sig} onChange={setSig} /></div>
           <div className="flex gap-2">
-            <button type="button" className={primary} disabled={!!busy || (!topic && !own.trim())} onClick={() => void run('start', () => startTalkAction({ topicKey: topic?.key ?? null, topic: own, siteId, notes, signature: sig }), 'Couldn’t start it — try again.', () => { setHolding(false); setNotes(''); setSig(''); setOwn('') })}>{busy === 'start' ? 'Saving…' : 'Start — the crew signs next'}</button>
+            <button type="button" className={primary} disabled={!!busy || !sig || (!topic && !own.trim())} onClick={() => void run('start', () => startTalkAction({ topicKey: topic?.key ?? null, topic: own, siteId, notes, signature: sig }), 'Couldn’t start it — try again.', () => { setHolding(false); setNotes(''); setSig(''); setOwn('') })}>{busy === 'start' ? 'Saving…' : 'Start — the crew signs next'}</button>
             <button type="button" className={btn} onClick={() => setHolding(false)}>Cancel</button>
           </div>
         </section>
@@ -186,28 +186,26 @@ function Reports({ data, sites, canWrite, canClose, seesAll, busy, run, onFiled 
 }) {
   const [f, setF] = useState<ReportForm | null>(null)
   const [closing, setClosing] = useState<{ id: string; note: string } | null>(null)
+  // one draft per login — a shared crew phone never hands one person's report to the next
+  const key = `${DRAFT}:${data.me ?? 'anon'}`
   useEffect(() => {
-    try { const v = localStorage.getItem(DRAFT); if (v) setF(JSON.parse(v) as ReportForm) } catch { /* none */ }
-  }, [])
+    try { const v = localStorage.getItem(key); if (v) setF(JSON.parse(v) as ReportForm) } catch { /* none */ }
+  }, [key])
   function edit(patch: Partial<ReportForm>) {
     setF((prev) => {
       const next = { ...(prev ?? newReport()), ...patch }
-      try { localStorage.setItem(DRAFT, JSON.stringify(next)) } catch { /* private window */ }
+      try { localStorage.setItem(key, JSON.stringify(next)) } catch { /* private window */ }
       return next
     })
   }
-  function clear() { setF(null); try { localStorage.removeItem(DRAFT) } catch { /* */ } }
+  function clear() { setF(null); try { localStorage.removeItem(key) } catch { /* */ } }
 
   async function file() {
-    if (!f?.kind) return
-    let lat: number | null = null, lng: number | null = null
-    if (!f.siteId && typeof navigator !== 'undefined' && navigator.geolocation) {
-      await new Promise<void>((done) => navigator.geolocation.getCurrentPosition((p) => { lat = p.coords.latitude; lng = p.coords.longitude; done() }, () => done(), { timeout: 4000, maximumAge: 120_000 }))
-    }
+    if (!f?.kind || busy) return
     const when = Date.parse(f.when)
     await run('file', () => fileReportAction({
       kind: f.kind, what: f.what, occurredAt: Number.isFinite(when) ? new Date(when).toISOString() : undefined, siteId: f.siteId || null,
-      injury: f.kind === 'incident' && f.injury, treatment: f.kind === 'incident' ? f.treatment : 'none', people: f.people, actions: f.actions, lat, lng, idem: f.idem,
+      injury: f.kind === 'incident' && f.injury, treatment: f.kind === 'incident' ? f.treatment : 'none', people: f.people, actions: f.actions, idem: f.idem,
     }), 'Couldn’t file it — it’s kept on this phone; try again when you have signal.', (r) => { clear(); onFiled(!!(r as { paged?: boolean }).paged) })
   }
 
@@ -233,7 +231,7 @@ function Reports({ data, sites, canWrite, canClose, seesAll, busy, run, onFiled 
           <div className="grid grid-cols-2 gap-2">
             <label className="block space-y-1"><span className="text-faint text-[12px]">When</span><input type="datetime-local" className={box} value={f.when} max={localInput(Date.now())} onChange={(e) => edit({ when: e.target.value })} /></label>
             <label className="block space-y-1"><span className="text-faint text-[12px]">Site</span>
-              <select className={box} value={f.siteId} onChange={(e) => edit({ siteId: e.target.value })}><option value="">Here (my location)</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+              <select className={box} value={f.siteId} onChange={(e) => edit({ siteId: e.target.value })}><option value="">No site / somewhere else</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
             </label>
           </div>
           {f.kind === 'incident' && (

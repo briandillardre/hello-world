@@ -150,15 +150,21 @@ export function productionRollup(items: ProdItem[], entries: ProdEntry[], days: 
       }
       return
     }
-    // weight by earned value; with no unit costs, weight by share of each item's own budget
+    // weight by earned value when every item worked that day is priced; if any
+    // is not, the whole day weighs by each item's share of its own budget —
+    // dollars and fractions never mix in one day
+    const allPriced = worked.every((it) => it.bidUnitCost !== null && it.bidUnitCost > 0)
     const weights = worked.map((it) => {
       const q = qtyByItemDay.get(it.id)!.get(d.day)!
-      return it.bidUnitCost !== null && it.bidUnitCost > 0 ? q * it.bidUnitCost : it.budgetQty > 0 ? q / it.budgetQty : 1
+      return allPriced ? q * it.bidUnitCost! : it.budgetQty > 0 ? Math.min(q, it.budgetQty) / it.budgetQty || 1e-9 : 1
     })
     const total = weights.reduce((a, b) => a + b, 0) || 1
     worked.forEach((it, i) => {
-      costShare.set(it.id, (costShare.get(it.id) ?? 0) + (cost * weights[i]) / total)
+      const share = (cost * weights[i]) / total
+      costShare.set(it.id, (costShare.get(it.id) ?? 0) + share)
       hrsShare.set(it.id, (hrsShare.get(it.id) ?? 0) + (d.laborHrs * weights[i]) / total)
+      // an item with no bid cost can't carry money: its share is shown as unallocated, never lost
+      if (it.bidUnitCost === null) unallocated += share
     })
   })
 
@@ -170,7 +176,9 @@ export function productionRollup(items: ProdItem[], entries: ProdEntry[], days: 
     .sort((a, b) => a.sort - b.sort)
     .map((it) => {
       const m = qtyByItemDay.get(it.id)
-      const installed = m ? Array.from(m.values()).reduce((a, b) => a + b, 0) : 0
+      const logged = m ? Array.from(m.values()).reduce((a, b) => a + b, 0) : 0
+      // a lump sum is done once — marking it done on a second day never earns it twice
+      const installed = it.unit === 'LS' ? Math.min(1, logged) : logged
       const daysWorked = m ? m.size : 0
       const lastDay = m && m.size ? Array.from(m.keys()).sort().slice(-1)[0] : null
       const pct = it.budgetQty > 0 ? installed / it.budgetQty : null

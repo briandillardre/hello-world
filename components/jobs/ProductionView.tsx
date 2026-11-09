@@ -64,7 +64,9 @@ export function ProductionView({ zone, data, roll, canLog, canManage, canCosts, 
   function setVal(id: string, patch: Partial<{ qty: string; note: string }>) {
     setVals((v) => {
       const next = { ...v, [id]: { qty: v[id]?.qty ?? '', note: v[id]?.note ?? '', ...patch } }
-      writeDraft(zone.id, day, next); dirty.current = true
+      // a draft that only matches what's saved (or is all blank) isn't a draft
+      const same = items.every((it) => (next[it.id]?.qty ?? '').trim() === (onDay[it.id]?.qty ?? '') && (next[it.id]?.note ?? '').trim() === (onDay[it.id]?.note ?? ''))
+      writeDraft(zone.id, day, same ? null : next); dirty.current = !same; setFromDraft(!same)
       return next
     })
     setSaved(null)
@@ -126,6 +128,8 @@ export function ProductionView({ zone, data, roll, canLog, canManage, canCosts, 
           <p className="text-amber">Worked with nothing logged: {roll.unallocatedDays.slice(-6).map(fmtDay).join(', ')}{roll.unallocatedDays.length > 6 ? ` and ${roll.unallocatedDays.length - 6} more` : ''}{money$ ? ` — ${money(roll.unallocatedCost)} of field cost isn’t on any item until those days get numbers.` : '.'}</p>
         )}
 
+        <p className="text-faint text-[11.5px] -mt-2">Crew hours count on the day they clocked in; machine hours on the hours ledger&apos;s day, which turns over at midnight UTC (7–8 PM Eastern) — a night shift&apos;s machine time can land on the next day.</p>
+
         {/* the day's numbers */}
         {items.length > 0 && (
           <section className="rounded-xl border border-amber/40 bg-navy-900/60 p-3 space-y-3">
@@ -133,7 +137,11 @@ export function ProductionView({ zone, data, roll, canLog, canManage, canCosts, 
               <h2 className="text-ink font-semibold text-[14px] flex-1">{day === data.today ? 'Today’s numbers' : `Numbers for ${fmtDay(day)}`}</h2>
               <input type="date" className={box} value={day} max={data.today} onChange={(e) => e.target.value && setDay(e.target.value)} aria-label="Day" />
             </div>
-            {fromDraft && <p className="text-amber">Not saved yet — kept on this phone.</p>}
+            {fromDraft && (
+              <p className="text-amber flex items-center gap-2 flex-wrap">Not saved yet — kept on this phone.
+                {Object.keys(onDay).length > 0 && <button type="button" className="underline text-muted" onClick={() => { writeDraft(zone.id, day, null); setVals(onDay); setFromDraft(false) }}>Use what&apos;s saved instead</button>}
+              </p>
+            )}
             <div className="space-y-2">
               {items.map((it) => {
                 const p = progress.get(it.id)
@@ -146,13 +154,17 @@ export function ProductionView({ zone, data, roll, canLog, canManage, canCosts, 
                         {p && <p className="text-muted text-[12px]">{it.unit === 'LS' ? qtyWords(p.installed, it.unit) : `${qtyWords(p.installed, it.unit)} of ${qtyWords(it.budgetQty, it.unit)} · ${pctW(p.pct)}`}</p>}
                       </div>
                       {it.unit === 'LS' ? (
-                        <button type="button" disabled={!canLog && !demo} onClick={() => setVal(it.id, { qty: vals[it.id]?.qty === '1' ? '' : '1' })}
+                        p && p.installed >= 1 && onDay[it.id]?.qty !== '1' && vals[it.id]?.qty !== '1' ? (
+                          <span className="rounded-xl px-3 py-2.5 text-[13px] font-semibold min-w-[96px] text-center bg-teal/15 text-teal">Done</span>
+                        ) : (
+                        <button type="button" disabled={(!canLog && !demo) || busy === 'day'} onClick={() => setVal(it.id, { qty: vals[it.id]?.qty === '1' ? '' : '1' })}
                           className={'rounded-xl px-3 py-2.5 text-[13px] font-semibold min-w-[96px] ' + (vals[it.id]?.qty === '1' ? 'bg-teal text-navy-950' : 'border border-navy-700 text-muted')}>
                           {vals[it.id]?.qty === '1' ? 'Done today' : 'Mark done'}
                         </button>
+                        )
                       ) : (
                         <label className="flex items-center gap-1.5">
-                          <input inputMode="decimal" enterKeyHint="next" disabled={!canLog && !demo} placeholder="0"
+                          <input inputMode="decimal" enterKeyHint="next" disabled={(!canLog && !demo) || busy === 'day'} placeholder="0"
                             className="w-28 rounded-xl border border-navy-700 bg-navy-950 px-3 py-2.5 text-right text-[18px] font-mono text-ink outline-none focus:border-amber"
                             value={vals[it.id]?.qty ?? ''} onChange={(e) => setVal(it.id, { qty: e.target.value })} aria-label={`${it.name} today, ${it.unit}`} />
                           <span className="w-10 text-faint">{it.unit}</span>

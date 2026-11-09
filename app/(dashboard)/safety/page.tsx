@@ -15,7 +15,12 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 export default async function SafetyPage() {
   const perms = await requireFeature('logs')
   const companyId = await getCurrentCompanyId()
-  const [data, fences] = await Promise.all([getSafety(companyId), getGeofences(companyId).catch(() => [])])
+  const [raw, fences] = await Promise.all([getSafety(companyId), getGeofences(companyId).catch(() => [])])
+  // the reads run as the REAL login; a preview of a role below Foreman shows only what that person filed
+  const preview = perms.viewingAs
+  const data = preview && rankOf(perms) < RANK.foreman
+    ? { ...raw, me: preview.id, reports: raw.reports.filter((r) => r.reportedBy === preview.id) }
+    : preview ? { ...raw, me: preview.id } : raw
   const sites = fences.filter((f) => !f.owner_id && ((f.kind ?? 'site') === 'site' || f.kind === 'yard')).map((f) => ({ id: f.id, name: f.name })).sort((a, b) => a.name.localeCompare(b.name))
   const canWrite = !perms.viewingAs && !isMock
   return (

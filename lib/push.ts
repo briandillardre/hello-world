@@ -14,6 +14,10 @@
 import { createSign } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { resolvePersonNotify, notifyRole, audienceFilter, type PushKind } from './person-notify'
+import { RANK, type Role } from './permissions'
+
+/** Master 4 (profile id = company id), else the role's rank. */
+const rankOfRole = (profileId: string, companyId: string, role: Role) => (profileId === companyId ? 4 : RANK[role] ?? 0)
 
 /** url: in-app PATH the tap opens (e.g. /r/<token>, /receipts). Relative only —
  *  the app never navigates to another host off a notification. */
@@ -167,6 +171,8 @@ async function audienceTokens(
   db: SupabaseClient,
   companyId: string,
   kind: PushKind,
+  /** Only people at or above this rank (Foreman 1 … Master 4); unattributable tokens are dropped. */
+  minRank = 0,
 ): Promise<string[]> {
   const [{ data: rows }, { data: people, error: pErr }] = await Promise.all([
     db.from('device_tokens').select('token, user_id').eq('company_id', companyId),
@@ -178,9 +184,11 @@ async function audienceTokens(
   for (const p of (people ?? []) as { id: string; role: string | null; notify_prefs: unknown }[]) {
     const role = notifyRole(p.id, companyId, p.role)
     // A Prospective Client is never an audience, for any kind (118).
-    wants.set(p.id, role !== 'prospect' && resolvePersonNotify(p.notify_prefs, role)[kind])
+    wants.set(p.id, role !== 'prospect' && resolvePersonNotify(p.notify_prefs, role)[kind] && rankOfRole(p.id, companyId, role) >= minRank)
   }
-  return audienceFilter((rows ?? []) as { token: string; user_id: string | null }[], wants, { rosterKnown, kind })
+  let list = (rows ?? []) as { token: string; user_id: string | null }[]
+  if (minRank > 0) list = rosterKnown ? list.filter((r) => !!r.user_id && wants.get(r.user_id) === true) : []
+  return audienceFilter(list, wants, { rosterKnown, kind })
 }
 
 export async function sendPushToUser(
@@ -236,11 +244,13 @@ export async function sendPushToCompanyPlain(
   msg: PushMsg,
   /** Which switch this push answers to, per person. */
   kind: PushKind,
+  /** Only people at or above this rank (Foreman 1 … Master 4) — for a push about something lower ranks can't read. */
+  opts: { minRank?: number } = {},
 ): Promise<number> {
   if (!pushConfigured()) return 0
   try {
     const { createServiceClient } = await import('./supabase-server')
-    const tokens = await audienceTokens(createServiceClient(), companyId, kind)
+    const tokens = await audienceTokens(createServiceClient(), companyId, kind, opts.minRank ?? 0)
     if (!tokens.length) return 0
     return await fcmSend(tokens, msg)
   } catch {
