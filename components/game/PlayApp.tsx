@@ -14,6 +14,8 @@ import { AnswerDelta, BallGame } from './BallGame'
 import { SportsGame } from './SportsGame'
 import { FunZone } from './FunZone'
 import { MissionCard } from './MissionCard'
+import { BigProjectCard, BigThinkCard } from './BigThinkCards'
+import { advanceProject, THINK_COINS } from '@/lib/game/bigthink'
 import { dayKey, MISSION_COINS } from '@/lib/game/missions'
 
 /** 🤝 Brothers mode pay: per right answer the brother gets, + a strong-round bonus */
@@ -727,6 +729,46 @@ export function PlayApp() {
               })
             }
           />
+        )}
+        {/* 💭 + 🚀 the human half (Hassabis): judgment, people, creativity, business, projects — no right answers */}
+        {!kid.isTester && (
+          <>
+            <BigThinkCard
+              kid={kid}
+              onDone={(t, pick) =>
+                updateKid(kid.id, (k) => {
+                  const day = dayKey()
+                  if (k.thinkDoneDay === day) return k
+                  return {
+                    ...k,
+                    coins: k.coins + THINK_COINS,
+                    xp: k.xp + 1,
+                    thinkDoneDay: day,
+                    thinksDone: (k.thinksDone ?? 0) + 1,
+                    missionLog: [...(k.missionLog ?? []), { day, id: `think:${t.id}`, title: `💭 ${t.ask} → “${pick}” (talked it through)`, at: Date.now() }].slice(-14),
+                  }
+                })
+              }
+            />
+            <BigProjectCard
+              kid={kid}
+              onStep={() =>
+                updateKid(kid.id, (k) => {
+                  const day = dayKey()
+                  const r = advanceProject(k, day)
+                  if (!r) return k
+                  return {
+                    ...k,
+                    coins: k.coins + r.coins,
+                    xp: k.xp + 1,
+                    project: r.project,
+                    projectsDone: r.projectsDone,
+                    missionLog: [...(k.missionLog ?? []), { day, id: `project:${r.project.id}:${r.project.step}`, title: r.finished ? `🚀 Finished the project: ${r.projectTitle}!` : `🚀 ${r.projectTitle} — ${r.stepTitle}`, at: Date.now() }].slice(-14),
+                  }
+                })
+              }
+            />
+          </>
         )}
 
         {/* game-mode picker: rolling ball, two football modes, and the Arena (hoops + hockey) */}
