@@ -9,9 +9,9 @@ import { loadPdfjs, type PdfDoc } from './pdf'
 import { statusOf, revLabel, newestFirst, placementWords, type RoomVersion } from '@/lib/plans/room'
 import { scaleVerdict, scaleWords, SCALE_LABEL, type ScaleCheck } from '@/lib/plans/scale'
 import { pageUpBearing, uvOf, metresPerUnit, scGridConvergence, convergenceWords, type Corners4 } from '@/lib/plans/north'
-import { composite, changeBoxes } from '@/lib/plans/compare'
+import { composite, changeBoxes, alignedMatrix } from '@/lib/plans/compare'
 import type { PlanImage, PlanSheetRow } from '@/lib/db/plans'
-import { planPdfLinkAction, markPlanSeenAction, setSheetPinAction, deletePlanVersionAction, setVersionCropAction } from '@/lib/actions/plans'
+import { planPdfLinkAction, alignVersionsAction, markPlanSeenAction, setSheetPinAction, deletePlanVersionAction, setVersionCropAction } from '@/lib/actions/plans'
 import type { Crop } from '@/lib/plans/crop'
 import type { PlanMark, TakeoffItem } from '@/lib/db/takeoff'
 import { checksFor, measuringFeet } from '@/lib/plans/measure'
@@ -80,8 +80,35 @@ async function resolve(v: RoomVersion, img: PlanImage | undefined): Promise<Reso
   return { src: { kind: 'image', url: img.url }, w: dims.w, h: dims.h, note: v.fileId ? 'Showing the picture — the PDF didn’t open.' : null }
 }
 
-/** Draw a version's page into an RGBA buffer of a given size (compare). */
-async function pixelsOf(r: Resolved, pxW: number, pxH: number): Promise<Uint8ClampedArray> {
+/** Draw a version's page into an RGBA buffer of a given size (compare).
+ *  With `align` the page is drawn through that matrix instead (its own page
+ *  points, y down → the other page's canvas) — compare by the drawing. */
+async function pixelsOf(r: Resolved, pxW: number, pxH: number, align?: { m: [number, number, number, number, number, number]; pageW: number }): Promise<Uint8ClampedArray> {
+  if (align) {
+    const tw = Math.max(1, Math.min(4096, pxW)), th = Math.max(1, Math.round(tw * r.h / r.w))
+    const tmp = await canvasOf(r, tw, th)
+    const c = document.createElement('canvas')
+    c.width = pxW; c.height = pxH
+    const ctx = c.getContext('2d', { willReadFrequently: true })
+    if (!ctx) throw new Error('canvas')
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, pxW, pxH)
+    const q = align.pageW / tw
+    const [a, b, cc, d, e, f] = align.m
+    ctx.setTransform(a * q, b * q, cc * q, d * q, e, f)
+    ctx.drawImage(tmp, 0, 0)
+    const data = ctx.getImageData(0, 0, pxW, pxH).data
+    c.width = 0; c.height = 0; tmp.width = 0; tmp.height = 0
+    return data
+  }
+  const c = await canvasOf(r, pxW, pxH)
+  const ctx = c.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('canvas')
+  const data = ctx.getImageData(0, 0, pxW, pxH).data
+  c.width = 0; c.height = 0
+  return data
+}
+
+async function canvasOf(r: Resolved, pxW: number, pxH: number): Promise<HTMLCanvasElement> {
   const c = document.createElement('canvas')
   c.width = pxW; c.height = pxH
   const ctx = c.getContext('2d', { willReadFrequently: true })
@@ -102,9 +129,7 @@ async function pixelsOf(r: Resolved, pxW: number, pxH: number): Promise<Uint8Cla
     })
     ctx.drawImage(img, 0, 0, pxW, pxH)
   }
-  const data = ctx.getImageData(0, 0, pxW, pxH).data
-  c.width = 0; c.height = 0
-  return data
+  return c
 }
 
 /**
@@ -175,6 +200,7 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
   const [clouds, setClouds] = useState<Box[]>([])
   const [ci, setCi] = useState(-1)
   const [cmpBusy, setCmpBusy] = useState(false)
+  const [alignNote, setAlignNote] = useState<string | null>(null)
   const other = cmp ? versions.find((x) => x.id === cmp) ?? null : null
   const pair = other ? [v, other].sort(newestFirst) : null // [newer, older]
   useEffect(() => {
@@ -189,9 +215,25 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
         const rOld = older.id === v.id ? res : await resolve(older, older.imageId ? images[older.imageId] : undefined)
         const touch = window.matchMedia?.('(pointer: coarse)').matches
         const L = touch ? 2048 : 3000
-        const k = L / Math.max(rNew.w, rNew.h)
-        const pxW = Math.max(1, Math.round(rNew.w * k)), pxH = Math.max(1, Math.round(rNew.h * k))
-        const [a, b] = await Promise.all([pixelsOf(rOld, pxW, pxH), pixelsOf(rNew, pxW, pxH)])
+        // The canvas is the VIEWED version's page (the stage it lies on).
+        const k = L / Math.max(res.w, res.h)
+        const pxW = Math.max(1, Math.round(res.w * k)), pxH = Math.max(1, Math.round(res.h * k))
+        // Line the other drawing up on this one by the corners both draw — a
+        // re-plotted sheet compares by its drawing, not by its paper.
+        const otherV = newer.id === v.id ? older : newer
+        const rOther = otherV.id === older.id ? rOld : rNew
+        let align: { m: [number, number, number, number, number, number]; pageW: number } | undefined
+        setAlignNote(null)
+        if (otherV.pageW && otherV.pageH && v.pageW && v.pageH) {
+          const al = await alignVersionsAction(otherV.id, v.id).catch(() => null)
+          if (al?.ok && al.t && al.moved) {
+            align = { m: alignedMatrix(al.t, otherV.pageH, v.pageH, pxW / v.pageW), pageW: otherV.pageW }
+            setAlignNote(`Lined up by the drawing — ${al.n} matching corners${al.rmsFt != null ? `, within ${al.rmsFt} ft` : ''}. The two plots sat differently on the paper.`)
+          } else if (al?.ok && !al.t) setAlignNote('Couldn’t line these up by their drawing — compared as printed.')
+        }
+        const pOther = await pixelsOf(rOther, pxW, pxH, align)
+        const pThis = await pixelsOf(res, pxW, pxH)
+        const [a, b] = otherV.id === older.id ? [pOther, pThis] : [pThis, pOther]
         if (!alive) return
         const out = document.createElement('canvas')
         out.width = pxW; out.height = pxH
@@ -558,7 +600,8 @@ export function SheetViewer({ zone, sheet, initialVersionId, images, sets, canEd
           <span className="text-red-400 font-semibold">red = {revLabel(pair[1].rev)} (older)</span>
           <span className="text-blue-400 font-semibold">blue = {revLabel(pair[0].rev)} (newer)</span>
           <span className="text-faint">dark = unchanged</span>
-          {!sameSize && <span className="text-amber">different paper — lined up by the page edges</span>}
+          {alignNote ? <span className="text-teal">{alignNote}</span>
+            : !sameSize && <span className="text-amber">different paper — lined up by the page edges</span>}
           <span className="flex-1" />
           {cmpBusy ? <span className="text-faint">Comparing…</span> : clouds.length ? (
             <button type="button" onClick={() => setCi((i) => (i + 1) % clouds.length)} className="inline-flex items-center gap-1 rounded-lg bg-amber text-[#1a1100] font-bold px-2.5 py-1">

@@ -425,6 +425,47 @@ export async function autoPlaceSetsAction(setIds: string[]): Promise<Res<{
   return { ok: true, ...r }
 }
 
+/** How an older drawing sits on a newer one (or any sheet on another),
+ *  measured from the corners both draw (lib/plans/match.ts) — the revision
+ *  compare lines the two up by the DRAWING, not by the paper, so a sheet
+ *  re-plotted shifted, turned or at another scale still compares clean.
+ *  `from` page points (y up) → `to` page points. null = couldn't be sure. */
+export async function alignVersionsAction(fromId: string, toId: string): Promise<Res<{
+  t: { s: number; th: number; tx: number; ty: number } | null; n: number; rmsFt: number | null; moved: boolean
+}>> {
+  if (isMock) return { ok: false, error: 'Demo mode' }
+  if (!UUID.test(fromId) || !UUID.test(toId) || fromId === toId) return { ok: false, error: 'Bad version' }
+  const perms = await getMyPermissions()
+  if (!perms.features.includes('plans')) return { ok: false, error: 'Plans aren’t open for your login.' }
+  const { createClient } = await import('@/lib/supabase-server')
+  const { data: rows } = await createClient().from('plan_versions').select('id, features, feet_per_inch, scale_checks, page_w, page_h')
+    .in('id', [fromId, toId]).is('deleted_at', null)
+  const A = (rows ?? []).find((r) => r.id === fromId) as Record<string, unknown> | undefined
+  const B = (rows ?? []).find((r) => r.id === toId) as Record<string, unknown> | undefined
+  if (!A || !B) return { ok: false, error: 'Version not found' }
+  const { cornersFrom, matchCorners, sheetMatchSure, sheetRatios } = await import('@/lib/plans/match')
+  const ca = cornersFrom(A.features), cb = cornersFrom(B.features)
+  if (ca.length < 12 || cb.length < 12) return { ok: true, t: null, n: 0, rmsFt: null, moved: false }
+  const fpi = (r: Record<string, unknown>) => {
+    const f = Number(r.feet_per_inch)
+    if (f > 0) return f
+    const c = Array.isArray(r.scale_checks) ? (r.scale_checks as { feetPerInch?: number }[]).find((x) => typeof x?.feetPerInch === 'number') : null
+    return c?.feetPerInch ?? null
+  }
+  const fa = fpi(A), fb = fpi(B)
+  // Revisions are nearly always at the same scale; try that first, then what the checks say.
+  const ratios = Array.from(new Set([1, ...sheetRatios(fa, fb)]))
+  const m = matchCorners(ca, cb, { scales: ratios, tol: 1.2, scaleSlack: 0.01 })
+  const ftPerB = (fb ?? fa ?? 0) / 72
+  const W = Number(B.page_w) || 0, H = Number(B.page_h) || 0
+  // Revisions share most corners but not all — a lower bar on count than linking two sheets.
+  const sure = !!m && m.n >= 8 && m.rival <= 0.6 * m.n && (!ftPerB || m.rms * ftPerB <= 1) && m.spread >= 0.1 * Math.hypot(W, H)
+  void sheetMatchSure
+  if (!m || !sure) return { ok: true, t: null, n: m?.n ?? 0, rmsFt: null, moved: false }
+  const moved = Math.abs(m.s - 1) > 0.002 || Math.abs(m.th) > 0.002 || Math.hypot(m.tx, m.ty) > 2
+  return { ok: true, t: { s: m.s, th: m.th, tx: m.tx, ty: m.ty }, n: m.n, rmsFt: ftPerB ? Math.round(m.rms * ftPerB * 100) / 100 : null, moved }
+}
+
 export async function planPdfLinkAction(fileId: string): Promise<Res<{ url: string }>> {
   if (isMock) return { ok: false, error: 'Demo mode' }
   if (!UUID.test(fileId)) return { ok: false, error: 'Bad file' }

@@ -93,3 +93,16 @@ export function changeBoxes(oldPx: Uint8ClampedArray, newPx: Uint8ClampedArray, 
     .sort((a, b) => (Math.round(a.y0 / (cell * 4)) - Math.round(b.y0 / (cell * 4))) || a.x0 - b.x0)
     .slice(0, 200)
 }
+
+/**
+ * Canvas matrix [a, b, c, d, e, f] that draws the OLDER page (its page points,
+ * y DOWN, the way a canvas reads it) onto the NEWER page's canvas, given
+ * `t` = older page → newer page in page points with y UP (the corners' space,
+ * lib/plans/match.ts) and `k` = canvas pixels per newer page point. So a
+ * re-plotted sheet — shifted, turned, or at another scale on the paper — is
+ * compared by its drawing, not by where it sat on the paper.
+ */
+export function alignedMatrix(t: { s: number; th: number; tx: number; ty: number }, oldH: number, newH: number, k: number): [number, number, number, number, number, number] {
+  const C = t.s * Math.cos(t.th), S = t.s * Math.sin(t.th)
+  return [k * C, -k * S, k * S, k * C, k * (t.tx - S * oldH), k * (newH - C * oldH - t.ty)]
+}
