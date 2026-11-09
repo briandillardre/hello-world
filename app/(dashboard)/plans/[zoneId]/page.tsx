@@ -7,6 +7,8 @@ import { PlanRoom } from '@/components/plans/PlanRoom'
 import { getTakeoffItems } from '@/lib/db/takeoff'
 
 export const dynamic = 'force-dynamic'
+// Filing a set lines its sheets up on the server (lib/plans/autoplace-server.ts).
+export const maxDuration = 60
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'

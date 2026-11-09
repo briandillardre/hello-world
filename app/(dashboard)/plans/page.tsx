@@ -9,6 +9,8 @@ import { StartPlanRoom } from '@/components/plans/StartPlanRoom'
 
 export const metadata = { title: 'HammerTrack — Plans' }
 export const dynamic = 'force-dynamic'
+// Filing a set lines its sheets up on the server (lib/plans/autoplace-server.ts).
+export const maxDuration = 60
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'

@@ -37,6 +37,9 @@ import { segmentVisits, type Visit } from '@/lib/visits'
 import { safeTz } from '@/lib/dates'
 import { cookies } from 'next/headers'
 
+// Placing a plan sheet here spreads it to its linked sheets on the server.
+export const maxDuration = 60
+
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
