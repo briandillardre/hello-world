@@ -277,8 +277,10 @@ function SheetRow({ zoneId, sheet, data, canEdit, busy, onMap, onPlace }: {
 
   return (
     <div className="px-3 py-2.5">
-      <div className="flex items-center gap-3">
-        <Link href={`/plans/${zoneId}/${sheet.id}`} className="flex items-center gap-3 flex-1 min-w-0 group">
+      {/* Phones: the sheet's name gets the whole row and the buttons sit under
+          it — side by side the title was cut to one letter (Brian, Nov 9). */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+        <Link href={`/plans/${zoneId}/${sheet.id}`} className="flex items-center gap-3 flex-1 min-w-0 w-full group">
           <span className="relative flex-none">
             {img
               // eslint-disable-next-line @next/next/no-img-element
@@ -287,9 +289,9 @@ function SheetRow({ zoneId, sheet, data, canEdit, busy, onMap, onPlace }: {
             {sheet.isNew && <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-amber ring-2 ring-navy-900" aria-label="New revision" />}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-2">
-              <span className="font-mono text-sm font-bold text-ink group-hover:text-amber">{sheet.number}</span>
-              <span className="text-[13px] text-ink truncate">{sheet.title ?? ''}</span>
+            <span className="flex items-baseline gap-2 min-w-0">
+              <span className="flex-none font-mono text-sm font-bold text-ink group-hover:text-amber">{sheet.number}</span>
+              <span className="min-w-0 text-[13px] text-ink line-clamp-2 sm:truncate">{sheet.title ?? ''}</span>
             </span>
             <span className="flex items-center gap-1.5 flex-wrap text-[11px] text-faint">
               <span className="rounded px-1.5 py-px bg-emerald-500/15 text-emerald-300 font-semibold">Current · {revLabel(cur?.rev)}</span>
@@ -302,6 +304,7 @@ function SheetRow({ zoneId, sheet, data, canEdit, busy, onMap, onPlace }: {
             </span>
           </span>
         </Link>
+        <div className="flex items-center gap-3 pl-[76px] sm:pl-0 sm:flex-none">
         {placed && canEdit && (
           <label className="flex items-center gap-1.5 text-[11px] text-muted cursor-pointer" title="Show the current version on the live map">
             <input type="checkbox" className="accent-teal" checked={!!img?.mapActive} disabled={busy} onChange={(e) => onMap(e.target.checked)} />
@@ -321,6 +324,7 @@ function SheetRow({ zoneId, sheet, data, canEdit, busy, onMap, onPlace }: {
             <Pencil className="h-3.5 w-3.5" />
           </button>
         )}
+        </div>
       </div>
       {editing && (
         <div className="mt-2 flex items-center gap-2 flex-wrap">
