@@ -28,6 +28,9 @@ export interface TakeoffRow {
   /** null unless prices were asked for (and the caller may see them). */
   unitPrice: number | null
   bySheet: { sheetId: string; number: string; qty: number }[]
+  /** Counted once where two linked sheets both carry it (lib/plans/overlap.ts) —
+   *  already taken out of qty and out of the giving sheet's bySheet. */
+  overlap: { from: string; against: string; qty: number }[]
 }
 
 export interface TakeoffSheet { sheetId: string; number: string; title: string | null; rev: string | null; versionId: string; issuedOn: string; marks: number }
@@ -58,12 +61,12 @@ export async function buildTakeoff(db: Db, companyId: string, zoneId: string, wi
     const c = currentOf({ pinnedVersionId: (s.current_version_id as string | null) ?? null }, versions.filter((v) => v.sheetId === s.id))
     if (c) cur.push({ sheetId: String(s.id), number: String(s.number), title: (s.title as string | null) ?? null, rev: c.rev, versionId: c.id, issuedOn: c.issuedOn, marks: 0 })
   }
-  const marks: { item_id: string | null; qty: number | null; status: string; version_id: string }[] = []
+  const marks: { id: string; item_id: string | null; qty: number | null; status: string; version_id: string; kind: string; geom: unknown }[] = []
   const vids = cur.map((c) => c.versionId)
   for (let i = 0; i < vids.length; i += 150) {
     const chunk = vids.slice(i, i + 150)
     // Paged: one .limit() is cut to the API's ~1,000-row cap and the totals came up short (ship-check, Nov 8).
-    const { rows } = await allRows((from, to) => db.from('plan_marks').select('id, item_id, qty, status, version_id')
+    const { rows } = await allRows((from, to) => db.from('plan_marks').select('id, item_id, qty, status, version_id, kind, geom')
       .in('version_id', chunk).eq('company_id', companyId).is('deleted_at', null).order('id').range(from, to))
     for (const r of rows) marks.push(r as typeof marks[number])
   }
@@ -78,7 +81,7 @@ export async function buildTakeoff(db: Db, companyId: string, zoneId: string, wi
       itemId: String(it.id), code: String(it.code), name: String(it.name), measure: it.measure as Measure, unit: it.unit as Unit,
       section: (it.section as string | null) ?? null, color: String(it.color ?? '#ff9e16'), qty: 0, wastePct: Number(it.waste_pct ?? 0), qtyWithWaste: 0,
       marks: 0, check: 0, suggested: 0, unitPrice: withPrices && it.unit_price !== null && it.unit_price !== undefined ? Number(it.unit_price) : null,
-      bySheet: [], sort: Number(it.sort ?? 0),
+      bySheet: [], overlap: [], sort: Number(it.sort ?? 0),
     })
   }
   let check = 0, suggested = 0
@@ -96,6 +99,42 @@ export async function buildTakeoff(db: Db, companyId: string, zoneId: string, wi
     if (bs) bs.qty += m.qty ?? 0
     else r.bySheet.push({ sheetId: sh.sheetId, number: sh.number, qty: m.qty ?? 0 })
   }
+  // Where two linked sheets both carry a run, count it once (and say so).
+  try {
+    const { data: links } = vids.length ? await db.from('plan_links').select('a_version, b_version, s, th, tx, ty')
+      .eq('company_id', companyId).in('a_version', vids).in('b_version', vids) : { data: [] }
+    if (links?.length) {
+      const { data: vrows } = await db.from('plan_versions').select('id, page_w, page_h, feet_per_inch, scale_checks').in('id', vids).eq('company_id', companyId)
+      const { overlapDeductions } = await import('@/lib/plans/overlap')
+      const measureOf = new Map(Array.from(rows.values()).map((r) => [r.itemId, r.measure]))
+      const sheetsO = ((vrows ?? []) as Record<string, unknown>[]).flatMap((v) => {
+        const W = Number(v.page_w), H = Number(v.page_h)
+        const checks = Array.isArray(v.scale_checks) ? v.scale_checks as { feetPerInch?: number }[] : []
+        const fpi = Number(v.feet_per_inch) || checks.find((c) => typeof c?.feetPerInch === 'number')?.feetPerInch || 0
+        const sh = byVersion.get(String(v.id))
+        if (!(W > 0 && H > 0 && fpi > 0) || !sh) return []
+        const ms = marks.filter((m) => m.version_id === v.id && m.status !== 'suggested' && m.item_id && rows.has(m.item_id) && (m.qty ?? 0) > 0)
+          .flatMap((m) => {
+            const g = m.geom as { pts?: [number, number][]; holes?: [number, number][][] } | null
+            if (!g || !Array.isArray(g.pts) || !g.pts.length || !['line', 'area', 'count'].includes(m.kind)) return []
+            return [{ id: m.id, itemId: m.item_id!, kind: m.kind as 'line' | 'area' | 'count', closed: measureOf.get(m.item_id!) === 'perimeter', pts: g.pts, holes: g.holes, qty: m.qty ?? 0 }]
+          })
+        return [{ versionId: String(v.id), order: sh.number, W, H, ftPerPt: fpi / 72, marks: ms }]
+      })
+      const ded = overlapDeductions(sheetsO, ((links ?? []) as Record<string, number | string>[]).map((l) => ({
+        a: String(l.a_version), b: String(l.b_version), t: { s: Number(l.s), th: Number(l.th), tx: Number(l.tx), ty: Number(l.ty) },
+      })))
+      for (const d of ded) {
+        const r = rows.get(d.itemId)
+        const from = byVersion.get(d.from), against = byVersion.get(d.against)
+        if (!r || !from || !against) continue
+        r.qty -= d.qty
+        const bs = r.bySheet.find((b) => b.sheetId === from.sheetId)
+        if (bs) bs.qty -= d.qty
+        r.overlap.push({ from: from.number, against: against.number, qty: Math.round(d.qty * 1000) / 1000 })
+      }
+    }
+  } catch { /* pre-158: no links */ }
   const r3 = (v: number) => Math.round(v * 1000) / 1000
   const out = Array.from(rows.values())
     .filter((r) => r.marks > 0 || r.suggested > 0)

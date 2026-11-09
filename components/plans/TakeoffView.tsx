@@ -236,6 +236,11 @@ export function TakeoffView({ zone, summary, snapshots, memo, links, canEdit, ca
                             {r.check > 0 && <span className="text-amber"> · {r.check} to check</span>}
                             {r.suggested > 0 && <span className="text-faint"> · {r.suggested} suggested</span>}
                           </span>
+                          {(r.overlap ?? []).length > 0 && (
+                            <span className="block text-[11px] text-teal">
+                              Counted once where sheets overlap: {(r.overlap ?? []).map((o) => `${o.from} ∩ ${o.against} −${fmt(o.qty)}`).join(' · ')}
+                            </span>
+                          )}
                         </td>
                         <td className="text-right font-mono text-ink py-1.5">{fmt(r.qty)}</td>
                         <td className="pl-1 text-faint py-1.5">{r.unit}</td>

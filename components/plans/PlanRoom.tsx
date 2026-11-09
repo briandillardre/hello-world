@@ -96,6 +96,9 @@ export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false, i
                 {newCount > 0 && <> · <span className="text-amber font-semibold">{newCount} new to you</span></>}
               </p>
             </div>
+            <Link href={`/plans/${zone.id}/stitch`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
+              <MapIcon className="h-4 w-4" /> Whole site
+            </Link>
             <Link href={`/plans/${zone.id}/takeoff`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
               <Layers className="h-4 w-4" /> Takeoff
             </Link>
