@@ -136,6 +136,8 @@
 
 **Where we beat them.** Correction (Nov 9 recon, docs/HCSS-GAP.md): HeavyJob DOES list QuickBooks among its 45+ accounting interfaces — the QuickBooks gap is not theirs, it's price and weight: HeavyJob + HeavyBid + telematics is five figures a year before implementation for a small sitework shop. Their base heavy-equipment plan pings as slowly as **every 4 hours** — not a live map. No small-tool tracking. Dated interface, documented mobile complaints, month-long learning curve, quote-only with upfront hardware.
 
+**The field side, head to head (Nov 9 2026, built that day).** HeavyJob's heart is foremen typing quantities AND hours by cost code every day; ours types the quantity only — the hours already exist (GPS time cards clocked to the site, every tracked machine's own hours) and each day's cost is shared across the items by the value each earned (`/jobs/<site>/production`: % complete, rate vs bid, days left, unit cost vs bid). Safety: they run toolbox talks, signatures and incidents inside HeavyJob with JHAs iPad-only; ours is a phone form on the crew's existing login (`/safety`: 25 ready-to-read talks, finger signatures, incident / near-miss / hazard reports that page the office on an injury). Typed work is kept on the phone until it saves. Still theirs: a dispatcher / resource board, T&M tickets with customer signatures, HeavyBid's DOT unit-price depth.
+
 **Counter-line:** *"HCSS is the DOT-contractor suite — if you run HeavyJob, use it. If you're a small sitework shop, you're paying for a suite built for the big ones: per-user licences, implementation fees, Windows desktop estimating. Ours is one app, published price, $0 setup."*
 
 ---
