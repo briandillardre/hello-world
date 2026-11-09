@@ -133,8 +133,8 @@ export function buildDailyReports(profiles: KidProfile[], sinceMs: number, now =
             ? m.at >= sinceMs && m.at <= cutoff
             : !!m && typeof m.day === 'string' && m.day > new Date(sinceMs).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
         )
-        .map((m) => String(m.title ?? '').replace(/[\r\n\t]+/g, ' ').slice(0, 80))
-        .slice(-5),
+        .map((m) => String(m.title ?? '').replace(/[\r\n\t]+/g, ' ').slice(0, 140))
+        .slice(-8),
     }
     const temperament = p.personality?.current?.primary ? TEMPERAMENTS[p.personality.current.primary] : undefined
     out.push({ ...base, story: buildNarrative(base, temperament ? `the ${temperament.title} ${temperament.animal}` : undefined) })
@@ -261,7 +261,7 @@ function kidHtml(r: KidReport): string {
     }
     ${
       r.missions.length > 0
-        ? `<p style="margin:0 0 12px;padding:8px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;font-size:12px;color:#92400e;font-weight:600">🔨 Real-world mission${r.missions.length > 1 ? 's' : ''} done (a grown-up confirmed): ${r.missions.map(escapeHtml).join(' · ')}</p>`
+        ? `<p style="margin:0 0 12px;padding:8px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;font-size:12px;color:#92400e;font-weight:600">🔨 Off-screen work a grown-up confirmed — missions, Big Think talks, project steps: ${r.missions.map(escapeHtml).join(' · ')}</p>`
         : ''
     }
     ${

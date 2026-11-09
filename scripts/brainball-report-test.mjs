@@ -162,9 +162,9 @@ const answers = (n, { skill = 'words', correctPattern = () => true, startMs = T0
   const [r] = buildDailyReports([withMission], T0 - 86400_000, NOW)
   ok('only missions inside the window are reported', r.missions.length === 1 && r.missions[0].startsWith('Build a tower'))
   const { html } = renderReportEmail([r], NOW, 'America/New_York')
-  ok('mission line renders escaped', html.includes('Real-world mission') && html.includes('&lt;b&gt;that&lt;/b&gt;') && !html.includes('<b>that</b>'))
+  ok('mission line renders escaped', html.includes('Off-screen work') && html.includes('&lt;b&gt;that&lt;/b&gt;') && !html.includes('<b>that</b>'))
   const [none] = buildDailyReports([kid({ history: answers(3) })], T0 - 86400_000, NOW)
-  ok('no missions = no mission line', none.missions.length === 0 && !renderReportEmail([none], NOW, 'America/New_York').html.includes('Real-world mission'))
+  ok('no missions = no mission line', none.missions.length === 0 && !renderReportEmail([none], NOW, 'America/New_York').html.includes('Off-screen work'))
 }
 
 // ---- yesterday's mission (confirmed before last night's email) is NOT re-listed

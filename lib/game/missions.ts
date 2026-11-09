@@ -123,3 +123,14 @@ export function missionFor(kid: Pick<KidProfile, 'id' | 'birthdate' | 'isTester'
   const order = kidOrder(kid.id, pool.length)
   return pool[order[((dayNumber(now) % pool.length) + pool.length) % pool.length]]
 }
+
+/** big kid = 5½ and up (grown-up testers count as big) */
+export function isBigKid(kid: Pick<KidProfile, 'birthdate' | 'isTester'>, now = new Date()): boolean {
+  return !!kid.isTester || ageInMonths(kid.birthdate, now) >= 66
+}
+
+/** one item a day from `pool`, the same all day, each kid walking their own shuffled cycle (salted so cards don't move in lockstep) */
+export function dailyPick<T>(kidId: string, salt: string, pool: T[], now = new Date()): T {
+  const order = kidOrder(`${kidId}:${salt}`, pool.length)
+  return pool[order[((dayNumber(now) % pool.length) + pool.length) % pool.length]]
+}

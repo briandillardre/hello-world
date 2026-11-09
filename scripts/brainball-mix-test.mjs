@@ -14,6 +14,7 @@ import { importTs } from './lib/ts-import.mjs'
 const { pickMixSkill, MIX_SHARE } = await importTs('../lib/game/adaptive.ts', import.meta.url)
 const { SKILLS, generateQuestion } = await importTs('../lib/game/questions.ts', import.meta.url)
 const { missionFor, missionPool, dayKey, MISSIONS } = await importTs('../lib/game/missions.ts', import.meta.url)
+const BT = await importTs('../lib/game/bigthink.ts', import.meta.url)
 
 let pass = 0
 let fail = 0
@@ -99,6 +100,48 @@ const ok = (name, cond, extra = '') => {
   for (let i = 1; i < 730; i++) if (missionFor(lincoln, new Date(2026, 0, 1 + i, 12)).id === missionFor(lincoln, new Date(2026, 0, i, 12)).id) backToBack++
   ok('two years without a back-to-back repeat', backToBack === 0, `${backToBack}`)
   ok('dayKey is local YYYY-MM-DD', dayKey(day) === '2026-11-06')
+}
+
+// ---- 💭 Big Think + 🚀 Big Projects (Nov 9 — Hassabis: people skills, projects, entrepreneurship, creativity, judgment)
+{
+  const big = { id: 'marshall', birthdate: '2020-03-01' }
+  const little = { id: 'lincoln', birthdate: '2022-06-01' }
+  const now = new Date(2026, 10, 9, 12)
+  ok('every Big Think has 2–4 choices and a WHY', BT.THINKS.every((t) => t.options.length >= 2 && t.options.length <= 4 && t.why.length > 5))
+  ok('Big Think ids unique', new Set(BT.THINKS.map((t) => t.id)).size === BT.THINKS.length)
+  const kinds = new Set(BT.THINKS.map((t) => t.kind))
+  ok('all four think kinds are present', ['judgment', 'people', 'create', 'business'].every((k) => kinds.has(k)))
+  for (const kid of [big, little]) {
+    const pool = BT.thinkPool(kid, now)
+    ok(`${kid.id}: every kind in their pool`, ['judgment', 'people', 'create', 'business'].every((k) => pool.some((t) => t.kind === k)) || kid === little, pool.map((t) => t.kind).join())
+    const a = BT.thinkFor(kid, now), b = BT.thinkFor(kid, new Date(2026, 10, 9, 20))
+    ok(`${kid.id}: same Big Think all day`, a.id === b.id)
+    const seen = new Set()
+    for (let d = 0; d < pool.length; d++) seen.add(BT.thinkFor(kid, new Date(2026, 10, 9 + d, 12)).id)
+    ok(`${kid.id}: every Big Think comes round before a repeat`, seen.size === pool.length, `${seen.size}/${pool.length}`)
+  }
+  ok('little kids get people + create + judgment', ['people', 'create', 'judgment'].every((k) => BT.thinkPool(little, now).some((t) => t.kind === k)))
+  ok('project ids unique, 4–5 steps', new Set(BT.PROJECTS.map((p) => p.id)).size === BT.PROJECTS.length && BT.PROJECTS.every((p) => p.steps.length >= 4 && p.steps.length <= 5))
+  ok('a business project exists for the big kid', BT.projectPool(big, now).some((p) => /business/.test(p.builds)))
+  // walk a project to the end: one step a day, the finish pays the bonus, the next project starts fresh
+  let kid = { ...big, project: undefined, projectsDone: [] }
+  const first = BT.currentProject(kid, now)
+  let coins = 0, finishedOn = -1
+  for (let d = 0; d < 12; d++) {
+    const day = `2026-11-${String(10 + d).padStart(2, '0')}`
+    const r = BT.advanceProject(kid, day, now)
+    ok(`day ${d}: a step can be taken`, !!r)
+    const again = BT.advanceProject({ ...kid, project: r.project, projectsDone: r.projectsDone }, day, now)
+    if (d === 0) ok('one step a day — a second confirm the same day pays nothing', again === null)
+    coins += r.coins
+    kid = { ...kid, project: r.project, projectsDone: r.projectsDone }
+    if (r.finished) { finishedOn = d; break }
+  }
+  ok('the first project finishes after its steps', finishedOn === first.steps.length - 1, String(finishedOn))
+  ok('steps + finish bonus paid', coins === first.steps.length * BT.PROJECT_STEP_COINS + BT.PROJECT_FINISH_COINS, String(coins))
+  const next = BT.currentProject(kid, now)
+  ok('the next project is a different one', next.id !== first.id && kid.projectsDone.includes(first.id))
+  ok('finishing does not open the next project the same day', BT.advanceProject(kid, kid.project.lastDay, now) === null)
 }
 
 console.log(fail === 0 ? `brainball-mix: ${pass} assertions pass` : `${fail} FAILURES (${pass} passed)`)

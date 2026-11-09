@@ -170,6 +170,13 @@ export interface KidProfile {
   coachRounds?: number
   /** the last few confirmed missions (newest last) for the grown-ups report */
   missionLog?: Array<{ day: string; id: string; title: string; /** epoch ms of the confirm */ at?: number }>
+  /** 💭 Big Think: local day the last one was talked through with a grown-up */
+  thinkDoneDay?: string
+  thinksDone?: number
+  /** 🚀 the Big Project in progress: steps confirmed so far, and the day of the last one */
+  project?: { id: string; step: number; lastDay: string }
+  /** finished Big Projects (ids) */
+  projectsDone?: string[]
 }
 
 export interface BallSkin {
