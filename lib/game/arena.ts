@@ -557,13 +557,14 @@ export function step(a: Arena, input: Input, dt: number): void {
   }
 
   // ---- clocks
-  if (!a.over && a.age > MAX_POSSESSION && !b.flight) {
+  if (!a.over && a.age > MAX_POSSESSION && !b.flight && !b.shot) {
     emit(a, { kind: 'whistle', team: a.offense, text: 'WHISTLE!', x: W / 2, y: H / 2 })
     endPossession(a, 'whistle', -1, 1)
     return
   }
   if (!a.over && a.clock <= 0) {
     if (a.sport === 'basketball' && b.flight?.kind === 'shot') return // the shot beat the buzzer
+    if (a.sport === 'hockey' && b.shot) return // a shot still sliding at the net gets its chance
     if (a.sport === 'basketball') {
       emit(a, { kind: 'shotclock', team: a.offense, text: 'SHOT CLOCK!', say: a.offense === 0 ? 'Shot clock! Shoot faster next time!' : 'Shot clock violation on the Robots!', x: W / 2, y: H / 2 })
       endPossession(a, 'shotclock', -1)

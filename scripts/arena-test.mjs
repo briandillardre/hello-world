@@ -116,6 +116,22 @@ for (const sport of ['basketball', 'hockey']) {
   ok(`${sport}: a kid who knows 7 of 10 usually wins`, wins / games > 0.6, `${wins}/${games}`)
 }
 
+
+// ---- review pass (Nov 9): a hockey shot taken at the horn gets to reach the net
+{
+  const a = newArena('hockey', 5)
+  startPossession(a, true, true)
+  const u = a.players[0]
+  u.x = 96; u.y = 70; u.face = -Math.PI / 2
+  a.ball.holder = 0
+  a.clock = 0.05
+  step(a, { ...NO_INPUT, b: true }, DT)
+  step(a, { ...NO_INPUT, bUp: true }, DT)
+  let cutWhileSliding = false
+  for (let i = 0; i < 120 && !a.over; i++) { step(a, NO_INPUT, DT); if (a.over && a.over.reason === 'whistle' && a.ball.shot) cutWhileSliding = true }
+  ok('a shot at the horn is never whistled dead while it slides', !cutWhileSliding && !!a.over && a.over.reason !== 'whistle' || (a.over?.reason === 'whistle' && !a.ball.shot), a.over?.reason)
+}
+
 // ---- determinism: same seed, same game
 {
   const run = () => { const r = play('hockey', 30, { ours: (k) => k % 2 === 0, hot: true, style: { shootFrom: 40, release: SWEET, defend: true }, seed: 42 }); return r.a.score.join('-') }
