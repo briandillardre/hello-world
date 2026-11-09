@@ -306,7 +306,7 @@ export function featureForPath(pathname: string): FeatureKey | null {
   const map: [string, FeatureKey][] = [
     ['/assets/onboard', 'hardware'],
     ['/map', 'map'], ['/command', 'command'], ['/alerts', 'alerts'], ['/aircraft', 'aircraft'],
-    ['/clock', 'clock'], ['/timecards', 'clock'], ['/logs', 'logs'], ['/photos', 'logs'], ['/assets', 'assets'], ['/zones', 'zones'], ['/plans', 'plans'], ['/costbook', 'plans'], ['/jobs', 'jobs'],
+    ['/clock', 'clock'], ['/timecards', 'clock'], ['/logs', 'logs'], ['/photos', 'logs'], ['/safety', 'logs'], ['/assets', 'assets'], ['/zones', 'zones'], ['/plans', 'plans'], ['/costbook', 'plans'], ['/jobs', 'jobs'],
     ['/measurements', 'measurements'], ['/tags', 'tags'], ['/maintenance', 'maintenance'], ['/track', 'track'],
     ['/reports', 'reports'], ['/accounting', 'accounting'], ['/receipts', 'receipts'], ['/finance', 'finance'],
     ['/team', 'team'], ['/activity', 'activity'], ['/trackers', 'trackers'], ['/settings', 'settings'],
@@ -337,7 +337,7 @@ export function navStateFor(pathname: string, features: string[] | null | undefi
 }
 /** Pages whose nav label is not their feature's label — the locked page
  *  names what you tapped ("Time cards", not "Time clock"). */
-export const PATH_LABELS: Record<string, string> = { '/timecards': 'Time cards', '/photos': 'Photos' }
+export const PATH_LABELS: Record<string, string> = { '/timecards': 'Time cards', '/photos': 'Photos', '/safety': 'Safety' }
 /** Where a locked nav entry goes: the page that says what is locked and why. */
 export function lockedHref(pathname: string): string {
   const p = Object.prototype.hasOwnProperty.call(PATH_LABELS, pathname) ? `&p=${encodeURIComponent(pathname)}` : ''
