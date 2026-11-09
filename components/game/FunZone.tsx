@@ -57,7 +57,7 @@ export function FunZone({ profile, onSpend, onExit }: FunZoneProps) {
   const [secondsLeft, setSecondsLeft] = useState(Math.max(0, Math.floor(profile.playSeconds ?? 0)))
   const [over, setOver] = useState((profile.playSeconds ?? 0) < 1)
 
-  const football = (profile.gameMode ?? 'ball') !== 'ball'
+  const football = profile.gameMode === 'football' || profile.gameMode === 'gameday'
   const activeSkin = BALL_SKINS.find((s) => s.id === profile.activeSkin) ?? BALL_SKINS[0]
 
   const world = useRef({

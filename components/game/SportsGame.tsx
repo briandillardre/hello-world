@@ -286,6 +286,8 @@ export function SportsGame({ profile, sport, skill, dailyDouble = false, coach, 
   const mutedRef = useRef(false)
   mutedRef.current = muted
   const lastSayRef = useRef(0)
+  const sayTimerRef = useRef<number | null>(null)
+  const pendingResultRef = useRef<RoundResult | null>(null)
   const doneRef = useRef(false)
 
   // ------------------------------------------------------------ audio: square waves + noise
@@ -403,7 +405,8 @@ export function SportsGame({ profile, sport, skill, dailyDouble = false, coach, 
     sfx('buzzer')
     const us = a.score[0], them = a.score[1]
     const name = sport === 'basketball' ? 'points' : 'goals'
-    window.setTimeout(() => {
+    sayTimerRef.current = window.setTimeout(() => {
+      sayTimerRef.current = null
       if (!mutedRef.current) speakText(us > them ? `That's the game! The Whalehogs win, ${us} to ${them}!` : us === them ? `It's a tie, ${us} ${name} each!` : `The Robots win this one, ${them} to ${us}. Rematch!`, { excited: us > them })
     }, 700)
     const accuracy = stats.answered ? stats.correct / stats.answered : 0
@@ -413,8 +416,9 @@ export function SportsGame({ profile, sport, skill, dailyDouble = false, coach, 
     const deltas = coach ? [] : (Object.keys(skillsRef.current) as SkillId[])
       .filter((k) => Math.round(skillsRef.current[k].theta) !== Math.round(startThetasRef.current[k]))
       .map((k) => ({ skill: k, from: Math.round(startThetasRef.current[k]), to: Math.round(skillsRef.current[k].theta) }))
-    timerRef.current = window.setTimeout(() => {
-      onComplete({
+    // the result is ready now — the FINAL card shows for a beat, but a tap on X
+    // during it must still bank the round (stars, chest, quest, misses)
+    const result: RoundResult = {
         skill,
         total: stats.answered,
         correct: stats.correct,
@@ -422,17 +426,36 @@ export function SportsGame({ profile, sport, skill, dailyDouble = false, coach, 
         stars,
         bestStreak: stats.bestStreak,
         deltas,
-        misses: missesRef.current,
-        chestBonus,
-        dailyDouble,
-        reviewQueue: queueRef.current,
-        speedBonuses: stats.speedBonuses,
-        readBonuses: stats.readBonuses,
-        playSecondsEarned: stats.playSeconds,
-        arenaScore: { sport, us, them },
-      })
+      misses: missesRef.current,
+      chestBonus,
+      dailyDouble,
+      reviewQueue: queueRef.current,
+      speedBonuses: stats.speedBonuses,
+      readBonuses: stats.readBonuses,
+      playSecondsEarned: stats.playSeconds,
+      arenaScore: { sport, us, them },
+    }
+    pendingResultRef.current = result
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null
+      const r = pendingResultRef.current
+      pendingResultRef.current = null
+      if (r) onComplete(r)
     }, 2600)
   }, [coach, dailyDouble, onComplete, sfx, skill, sport])
+
+  const quit = () => {
+    cancelSpeech()
+    const r = pendingResultRef.current
+    if (r) {
+      // the game is over — X goes to the summary, the round counts
+      pendingResultRef.current = null
+      if (timerRef.current !== null) { window.clearTimeout(timerRef.current); timerRef.current = null }
+      onComplete(r)
+      return
+    }
+    onQuit()
+  }
 
   // the draw loop is set up once — it calls the latest of these through refs
   const finishRef = useRef(finish)
@@ -487,7 +510,9 @@ export function SportsGame({ profile, sport, skill, dailyDouble = false, coach, 
       timerRef.current = null
       const a = arenaRef.current
       startPossession(a, correct, correct)
-      inputRef.current = { dx: 0, dy: 0, b: false, a: false, bUp: false }
+      // only the one-shot taps clear — a thumb already on the pad or on B keeps working
+      inputRef.current.a = false
+      inputRef.current.bUp = false
       setHot(correct)
       setMode(correct ? 'attack' : 'defend')
       sfx(sport === 'hockey' ? 'whistle' : 'thud')
@@ -704,6 +729,7 @@ export function SportsGame({ profile, sport, skill, dailyDouble = false, coach, 
       window.removeEventListener('keyup', ku)
       if (autoReadTimerRef.current !== null) window.clearTimeout(autoReadTimerRef.current)
       if (timerRef.current !== null) window.clearTimeout(timerRef.current)
+      if (sayTimerRef.current !== null) window.clearTimeout(sayTimerRef.current)
       cancelSpeech()
       audioRef.current?.close().catch(() => {})
       audioRef.current = null
@@ -761,7 +787,7 @@ export function SportsGame({ profile, sport, skill, dailyDouble = false, coach, 
     <div className="flex flex-col flex-1 min-h-0 bg-slate-950 select-none">
       {/* scoreboard */}
       <div className="flex items-center gap-2 px-2 pt-2 pb-1">
-        <button onClick={() => { cancelSpeech(); onQuit() }} aria-label="Quit" className="w-9 h-9 rounded-lg bg-slate-800 text-slate-300 flex items-center justify-center active:scale-95">
+        <button onClick={quit} aria-label="Quit" className="w-9 h-9 rounded-lg bg-slate-800 text-slate-300 flex items-center justify-center active:scale-95">
           <X className="w-5 h-5" />
         </button>
         <div className="flex-1 grid grid-cols-[1fr_auto_1fr] items-center rounded-lg border-2 border-slate-700 bg-black px-2 py-1 font-mono">
