@@ -11,6 +11,7 @@ import { speak } from '@/lib/game/speech'
 import { applyAssessmentSeeds, BALL_SKINS, HISTORY_CAP, loadProfiles, saveProfiles } from '@/lib/game/storage'
 import type { KidProfile, RoundResult, SkillId } from '@/lib/game/types'
 import { AnswerDelta, BallGame } from './BallGame'
+import { SportsGame } from './SportsGame'
 import { FunZone } from './FunZone'
 import { MissionCard } from './MissionCard'
 import { dayKey, MISSION_COINS } from '@/lib/game/missions'
@@ -55,6 +56,8 @@ export function PlayApp() {
   // field out from under the kid (the live-derived prop restarted the canvas)
   const [gameFootball, setGameFootball] = useState(false)
   const [gameDayLatch, setGameDayLatch] = useState(false)
+  /** 🏀🏒 the Arena sport this round, null = a Brain Ball / football round */
+  const [gameSport, setGameSport] = useState<'basketball' | 'hockey' | null>(null)
   const [lastResult, setLastResult] = useState<RoundResult | null>(null)
   const [gameKey, setGameKey] = useState(0)
   // 🤝 Brothers mode: while set, the ACTIVE kid is the brother playing and
@@ -233,8 +236,9 @@ export function PlayApp() {
     setCoachId(coachKidId)
     setActiveId(playerId)
     setGameSkill('mix')
-    setGameFootball(mode !== 'ball')
+    setGameFootball(mode === 'football' || mode === 'gameday')
     setGameDayLatch(mode === 'gameday')
+    setGameSport(mode === 'basketball' || mode === 'hockey' ? mode : null)
     setGameKey((k) => k + 1)
     setScreen('game')
   }
@@ -242,8 +246,9 @@ export function PlayApp() {
   const startGame = (skillChoice: SkillId | 'mix') => {
     const mode = kid?.gameMode ?? 'ball'
     setGameSkill(skillChoice)
-    setGameFootball(mode !== 'ball')
+    setGameFootball(mode === 'football' || mode === 'gameday')
     setGameDayLatch(mode === 'gameday')
+    setGameSport(mode === 'basketball' || mode === 'hockey' ? mode : null)
     setGameKey((k) => k + 1)
     setScreen('game')
   }
@@ -357,6 +362,19 @@ export function PlayApp() {
     const isDailyDouble = dailyStatus(kid).roundsToday === 0
     return (
       <Shell noPad>
+        {gameSport ? (
+          <SportsGame
+            key={gameKey}
+            profile={kid}
+            sport={gameSport}
+            skill={gameSkill}
+            dailyDouble={isDailyDouble}
+            coach={coachProp}
+            onAnswer={handleAnswer}
+            onComplete={handleComplete}
+            onQuit={() => setScreen('home')}
+          />
+        ) : (
         <BallGame
           key={gameKey}
           profile={kid}
@@ -369,6 +387,7 @@ export function PlayApp() {
           onComplete={handleComplete}
           onQuit={() => setScreen('home')}
         />
+        )}
       </Shell>
     )
   }
@@ -452,6 +471,18 @@ export function PlayApp() {
                   {r.footballScore.us > r.footballScore.them
                     ? 'WHALEHOGS WIN! 🏆'
                     : r.footballScore.us === r.footballScore.them
+                    ? "It's a tie — rematch!"
+                    : 'The Robots got this one — rematch!'}
+                </span>
+              </p>
+            )}
+            {r.arenaScore && (
+              <p className="text-lg font-black text-slate-800">
+                {r.arenaScore.sport === 'basketball' ? '🏀' : '🏒'} Final: 🐋🐗 {r.arenaScore.us} — {r.arenaScore.them} 🤖
+                <span className={`block text-sm ${r.arenaScore.us > r.arenaScore.them ? 'text-green-600' : r.arenaScore.us === r.arenaScore.them ? 'text-slate-500' : 'text-orange-500'}`}>
+                  {r.arenaScore.us > r.arenaScore.them
+                    ? 'WHALEHOGS WIN! 🏆'
+                    : r.arenaScore.us === r.arenaScore.them
                     ? "It's a tie — rematch!"
                     : 'The Robots got this one — rematch!'}
                 </span>
@@ -698,13 +729,15 @@ export function PlayApp() {
           />
         )}
 
-        {/* game-mode picker: rolling ball, quick football drive, or full-rules Game Day */}
+        {/* game-mode picker: rolling ball, two football modes, and the Arena (hoops + hockey) */}
         <div className="grid grid-cols-3 gap-2 mb-3">
           {(
             [
               { id: 'ball' as const, label: '⚽ Brain Ball', blurb: 'Roll & eat answers' },
               { id: 'football' as const, label: '🏈 Quick Drive', blurb: 'Race for touchdowns' },
               { id: 'gameday' as const, label: '🏟️ Game Day', blurb: 'Downs, kicks & defense!' },
+              { id: 'basketball' as const, label: '🏀 Hoops', blurb: '3-on-3 · shoot & pass' },
+              { id: 'hockey' as const, label: '🏒 Hockey', blurb: 'Skate, pass & score!' },
             ]
           ).map((m) => {
             const active = (kid.gameMode ?? 'ball') === m.id

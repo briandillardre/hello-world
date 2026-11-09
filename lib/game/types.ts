@@ -114,6 +114,8 @@ export interface RoundResult {
   playSecondsEarned?: number
   /** 🏈 Game Day final score (Whalehogs vs Robots) */
   footballScore?: { us: number; them: number }
+  /** 🏀🏒 Arena final score (Whalehogs vs Robots) */
+  arenaScore?: { sport: 'basketball' | 'hockey'; us: number; them: number }
   /** 🤝 Brothers mode: who coached this round and what they earned for it */
   coach?: { name: string; avatar: string; coins: number }
 }
@@ -155,7 +157,7 @@ export interface KidProfile {
   /** real-world assessment summary shown on the grown-ups report */
   assessment?: { date: string; title: string; summary: string; focus: string[] }
   /** which game renders the round: rolling ball, quick football drive, or full-rules Game Day */
-  gameMode?: 'ball' | 'football' | 'gameday'
+  gameMode?: 'ball' | 'football' | 'gameday' | 'basketball' | 'hockey'
   /** banked 🎮 Fun Zone seconds — earned by correct answers, spent free-playing */
   playSeconds?: number
   /** lifetime 🎮 seconds spent — monotonic, feeds the cloud-merge play signal so a spend can't resurrect */
