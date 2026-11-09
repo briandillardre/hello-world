@@ -118,7 +118,9 @@ export async function saveItemAction(zoneId: string, raw: { code?: unknown; name
   } else {
     const n = await itemCount(svc, job)
     if (n >= MAX_ITEMS) return { ok: false, error: `${MAX_ITEMS} items at most.` }
-    const { error } = await svc.from('job_items').insert({ ...row, company_id: companyId, job_id: job, sort: n + 1 })
+    // after the last item, deleted ones included (a live count can repeat a number)
+    const { data: last } = await svc.from('job_items').select('sort').eq('job_id', job).order('sort', { ascending: false }).limit(1).maybeSingle()
+    const { error } = await svc.from('job_items').insert({ ...row, company_id: companyId, job_id: job, sort: Number(last?.sort ?? 0) + 1 })
     if (error) return { ok: false, error: 'Couldn’t save — try again.' }
   }
   refresh(zoneId)

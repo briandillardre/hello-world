@@ -144,5 +144,18 @@ const items = [
   ok('readQty', readQty('1,250') === 1250 && readQty('12.5') === 12.5 && readQty('') === null && readQty('-3') === 'bad' && readQty('abc') === 'bad' && readQty(5) === 5)
 }
 
+
+// ---- review pass (Nov 9): a lump sum marked done twice earns once; unpriced items share hours and their dollars show as unallocated
+{
+  const ls = [{ id: 'mob', code: 'MOB', name: 'Mobilization', unit: 'LS', budgetQty: 1, bidUnitCost: 4000, bidPerDay: null, crew: null, sort: 1 }]
+  const r = productionRollup(ls, [{ itemId: 'mob', day: '2026-11-02', qty: 1 }, { itemId: 'mob', day: '2026-11-05', qty: 1 }], [])
+  ok('LS done twice earns once', r.items[0].installed === 1 && r.items[0].earned === 4000 && r.pctComplete === 1)
+  const mixed = [items[0], { id: 'dirt', code: null, name: 'Typed by hand', unit: 'CY', budgetQty: 1000, bidUnitCost: null, bidPerDay: null, crew: null, sort: 3 }]
+  const m = productionRollup(mixed, [{ itemId: 'pipe', day: '2026-11-03', qty: 100 }, { itemId: 'dirt', day: '2026-11-03', qty: 500 }], [{ day: '2026-11-03', laborHrs: 40, laborCost: 3000, equipHrs: 0, equipCost: 1000 }])
+  const pipe = m.items.find((i) => i.id === 'pipe'), dirt = m.items.find((i) => i.id === 'dirt')
+  ok('unpriced item gets its share of the hours', dirt.laborHrs > 25 && pipe.laborHrs < 15, `${pipe.laborHrs}/${dirt.laborHrs}`)
+  ok('unpriced share lands in unallocated, nothing lost', Math.abs(m.allocatedCost + m.unallocatedCost - 4000) < 0.02 && dirt.actualCost === null, `${m.allocatedCost}+${m.unallocatedCost}`)
+}
+
 console.log(fail === 0 ? `production: ${pass} assertions pass` : `${fail} FAILURES (${pass} passed)`)
 process.exit(fail === 0 ? 0 : 1)

@@ -6,8 +6,9 @@
  * open may lead a talk, sign one, or file a report — the near miss the
  * newest hand reports is the one that matters. Closing a report is Foreman
  * and up; removing a talk is its leader or a Manager. An injury (or any
- * treatment) pages the company's phones at once on the alerts switch — with
- * no details in the push, because the report itself is Foreman-and-up reading.
+ * treatment) pages Foreman-and-up phones at once on the alerts switch (the
+ * report itself is Foreman-and-up reading), rate-limited so the one push that
+ * must stay trusted stays trusted.
  */
 import { revalidatePath } from 'next/cache'
 import { getMyPermissions } from '@/lib/permissions-server'
@@ -65,16 +66,19 @@ export async function startTalkAction(raw: { topicKey?: unknown; topic?: unknown
   if (!topic) return { ok: false, error: 'Pick a topic or write your own.' }
   const site = await siteOf(svc, companyId, raw?.siteId)
   if (site === 'bad') return { ok: false, error: 'That site wasn’t found.' }
+  const sig = cleanSignature(raw?.signature)
+  if (!sig) return { ok: false, error: 'Sign it with a finger first — you led it.' }
   const today = await companyToday(svc, companyId)
-  const heldOn = typeof raw?.heldOn === 'string' && DAY.test(raw.heldOn) && raw.heldOn <= today ? raw.heldOn : today
-  // a crew can't flood the log: 60 talks a company a day is far past any real day
-  const { count } = await svc.from('safety_talks').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('held_on', heldOn).is('deleted_at', null)
+  const earliest = new Date(Date.parse(`${today}T12:00:00Z`) - 14 * 86_400_000).toISOString().slice(0, 10)
+  // today, or written up late within two weeks
+  const heldOn = typeof raw?.heldOn === 'string' && DAY.test(raw.heldOn) && raw.heldOn <= today && raw.heldOn >= earliest ? raw.heldOn : today
+  // a crew can't flood the log: 60 talks a company in 24 hours is far past any real day
+  const { count } = await svc.from('safety_talks').select('id', { count: 'exact', head: true }).eq('company_id', companyId).gte('created_at', new Date(Date.now() - 86_400_000).toISOString())
   if ((count ?? 0) >= 60) return { ok: false, error: 'That’s a lot of talks for one day — try again tomorrow.' }
   const { data, error } = await svc.from('safety_talks').insert({
     company_id: companyId, geofence_id: site, held_on: heldOn, topic_key: lib?.key ?? null, topic, notes: clip(raw?.notes, 4000), led_by: userId,
   }).select('id').single()
   if (error || !data) return { ok: false, error: 'Couldn’t start it — try again.' }
-  const sig = cleanSignature(raw?.signature)
   await svc.from('safety_signatures').insert({ company_id: companyId, talk_id: data.id, user_id: userId, name: name.slice(0, 80), signature: sig })
   refresh()
   return { ok: true, id: String(data.id) }
@@ -93,8 +97,9 @@ export async function signTalkAction(talkId: string, raw: { guestName?: unknown;
   if (!talk) return { ok: false, error: 'That talk wasn’t found.' }
   const sig = cleanSignature(raw?.signature)
   const guest = clip(raw?.guestName, 80)
+  // a signature on the record is a mark, never a blank — for a login as for a guest
+  if (!sig) return { ok: false, error: guest ? 'Have them sign with a finger first.' : 'Sign with a finger first.' }
   if (guest) {
-    if (!sig) return { ok: false, error: 'Have them sign with a finger first.' }
     const { count } = await svc.from('safety_signatures').select('id', { count: 'exact', head: true }).eq('talk_id', talkId)
     if ((count ?? 0) >= 200) return { ok: false, error: 'That talk has 200 signatures already.' }
     const { error } = await svc.from('safety_signatures').insert({ company_id: companyId, talk_id: talkId, user_id: null, name: guest, signature: sig })
@@ -126,7 +131,7 @@ export async function removeTalkAction(talkId: string): Promise<Res> {
 // ── Incident / near-miss / observation reports ──────────────────────────────
 
 export async function fileReportAction(raw: {
-  kind?: unknown; occurredAt?: unknown; siteId?: unknown; what?: unknown; injury?: unknown; treatment?: unknown; people?: unknown; actions?: unknown; lat?: unknown; lng?: unknown; idem?: unknown
+  kind?: unknown; occurredAt?: unknown; siteId?: unknown; what?: unknown; injury?: unknown; treatment?: unknown; people?: unknown; actions?: unknown; idem?: unknown
 }): Promise<Res<{ id: string; paged: boolean }>> {
   if (isMock) return { ok: false, error: 'Demo mode — sign in to file a report.' }
   const { userId, companyId, name, svc } = await member()
@@ -141,23 +146,34 @@ export async function fileReportAction(raw: {
   const occurredAt = Number.isFinite(t) && t <= now + 5 * 60_000 && t >= now - 366 * 86_400_000 ? new Date(t).toISOString() : new Date(now).toISOString()
   const site = await siteOf(svc, companyId, raw?.siteId)
   if (site === 'bad') return { ok: false, error: 'That site wasn’t found.' }
-  const lat = typeof raw?.lat === 'number' && Number.isFinite(raw.lat) && Math.abs(raw.lat) <= 90 ? raw.lat : null
-  const lng = typeof raw?.lng === 'number' && Number.isFinite(raw.lng) && Math.abs(raw.lng) <= 180 ? raw.lng : null
   const { count } = await svc.from('safety_reports').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('reported_by', userId).gte('created_at', new Date(now - 86_400_000).toISOString())
   if ((count ?? 0) >= 40) return { ok: false, error: 'That’s 40 reports from you today — call the office.' }
-  // the same report sent twice (a retry after a lost reply) lands once
+  // the same report sent twice (a double tap, a retry after a lost reply) lands once: the phone's
+  // one-time key is unique per reporter (161), so the second insert fails and finds the first
   const idem = typeof raw?.idem === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(raw.idem) ? raw.idem : null
-  if (idem) {
-    const { data: dup } = await svc.from('safety_reports').select('id').eq('company_id', companyId).eq('reported_by', userId).eq('what', what).eq('occurred_at', occurredAt).limit(1)
-    if (dup?.length) return { ok: true, id: String(dup[0].id), paged: false }
-  }
   const { data, error } = await svc.from('safety_reports').insert({
     company_id: companyId, geofence_id: site, kind: raw.kind, occurred_at: occurredAt, what, injury, treatment,
-    people: clip(raw?.people, 500), actions: clip(raw?.actions, 4000), lat, lng, reported_by: userId,
+    people: clip(raw?.people, 500), actions: clip(raw?.actions, 4000), reported_by: userId, idem,
   }).select('id').single()
+  if (error?.code === '23505' && idem) {
+    const { data: dup } = await svc.from('safety_reports').select('id').eq('company_id', companyId).eq('reported_by', userId).eq('idem', idem).maybeSingle()
+    if (dup) return { ok: true, id: String(dup.id), paged: false }
+  }
   if (error || !data) return { ok: false, error: 'Couldn’t file it — try again.' }
 
-  const paged = reportUrgency({ kind: raw.kind, injury, treatment }) === 'page'
+  // The page goes to Foreman and up (who can read the report), at most once per reporter in
+  // 15 minutes and six times a company a day — past that, the report waits on the open list.
+  let paged = reportUrgency({ kind: raw.kind, injury, treatment }) === 'page'
+  if (paged) {
+    const since = (ms: number) => new Date(now - ms).toISOString()
+    const [mine, all] = await Promise.all([
+      svc.from('safety_reports').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('reported_by', userId).eq('kind', 'incident')
+        .or('injury.eq.true,treatment.neq.none').gte('created_at', since(15 * 60_000)).neq('id', data.id),
+      svc.from('safety_reports').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('kind', 'incident')
+        .or('injury.eq.true,treatment.neq.none').gte('created_at', since(86_400_000)).neq('id', data.id),
+    ])
+    if ((mine.count ?? 0) > 0 || (all.count ?? 0) >= 6) paged = false
+  }
   if (paged) {
     let siteName = ''
     if (site) {
@@ -168,7 +184,7 @@ export async function fileReportAction(raw: {
     const body = `${name} reported an injury${siteName}. Open the report to read it.`.slice(0, 240)
     try {
       const { sendPushToCompanyPlain } = await import('@/lib/push')
-      await sendPushToCompanyPlain(companyId, { title, body, url: '/safety' }, 'alerts')
+      await sendPushToCompanyPlain(companyId, { title, body, url: '/safety' }, 'alerts', { minRank: RANK.foreman })
     } catch { /* best-effort */ }
     try {
       const { mirrorOwnerWebhook } = await import('@/lib/digest-delivery')
