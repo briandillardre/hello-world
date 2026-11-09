@@ -7,6 +7,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { X } from 'lucide-react'
 import { saveOverlayBoundsAction } from '@/lib/actions/imagery'
 import { busy as globalBusy } from '@/lib/busy'
+import { spreadWords } from '@/lib/plans/match'
 
 const SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
@@ -124,6 +125,7 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
   // map UNDER a fixed center crosshair, then press "Set point". Thumb-taps
   // were too coarse zoomed out, and you couldn't zoom while picking.
   const [alignStage, setAlignStage] = useState<number | null>(null)
+  const [spreadNote, setSpreadNote] = useState<{ ok: boolean; words: string } | null>(null)
   const alignPts = useRef<{ img: [number, number][]; map: [number, number][] }>({ img: [], map: [] })
   const alignMarkers = useRef<maplibregl.Marker[]>([])
   const stageRef = useRef<number | null>(null)
@@ -297,6 +299,7 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
 
   const startAlign = () => {
     alignPts.current = { img: [], map: [] }
+    setSpreadNote(null)
     setAlignStage(0)
     // Hide the crosshair-riding photo while picking — it just distracts.
     const m = mapRef.current
@@ -315,6 +318,10 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
     clearAlign(m)
     if (!corners) { setError('Those two photo points are too close together — pick spots farther apart.'); return }
     setError(null)
+    // Two points are only as good as their spread (Brian: "I typically pick two
+    // points as far away as I can on the plans so it is more accurate").
+    const sp = spreadWords(Math.hypot(img[1][0] - img[0][0], img[1][1] - img[0][1]), Math.hypot(natural.current.w, natural.current.h))
+    setSpreadNote(sp)
     const p = paramsFrom(corners)
     setWidthM(p.widthM)
     // Keep the solve's precision — rounding to whole degrees visibly skews
@@ -583,6 +590,7 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
               ⌖ Align by 2 points — tap the same two spots on the photo and the map
             </button>
           )}
+          {spreadNote && <p className={'text-[12px] ' + (spreadNote.ok ? 'text-teal' : 'text-amber')}>{spreadNote.words}</p>}
           {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
         {/* Action row pinned OUTSIDE the scroll area — Save is always on

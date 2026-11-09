@@ -6,7 +6,7 @@ import { X, FileUp, Loader2, Check, AlertTriangle, MapPin, Copy } from 'lucide-r
 import { createClient } from '@/lib/supabase'
 import { busy as globalBusy } from '@/lib/busy'
 import {
-  createPlanSetAction, startPlanFileUploadAction, finishPlanFileUploadAction, attachPlanFileAction, addPlanVersionAction,
+  createPlanSetAction, startPlanFileUploadAction, finishPlanFileUploadAction, attachPlanFileAction, autoPlaceSetsAction, addPlanVersionAction,
   startPlanImageUploadAction, finishPlanImageAction,
   voidPlanSheetsAction, copyPlacementAction, notePlacementAction,
 } from '@/lib/actions/plans'
@@ -16,6 +16,7 @@ import {
 } from '@/lib/plans/room'
 import type { PlanSheetRow } from '@/lib/db/plans'
 import { nameUnnumbered, type TitleBlock } from '@/lib/plans/title-block'
+import type { PlanFeatures } from '@/lib/plans/match'
 import { scaleVerdict, scaleWords, type ScaleCheck } from '@/lib/plans/scale'
 import type { GridFit } from '@/lib/plans/gridfit'
 import type { Crop } from '@/lib/plans/crop'
@@ -47,6 +48,7 @@ interface Item {
   checks: ScaleCheck[]
   grid: GridFit | null
   crop: Crop | null
+  features: PlanFeatures | null
   number: string
   title: string
   rev: string
@@ -68,6 +70,8 @@ interface Filed {
   width: number
   height: number
   error?: string
+  /** Lined up by itself (buildings or another sheet). */
+  auto?: boolean
 }
 
 const today = () => new Date().toLocaleDateString('en-CA')
@@ -114,6 +118,9 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
   const fileIdsRef = useRef(new Map<number, string>())
   const [voidedN, setVoidedN] = useState(0)
   const [pdfMissing, setPdfMissing] = useState<number[]>([])
+  const [updated, setUpdated] = useState<number | null>(null)
+  const [lineup, setLineup] = useState<{ byBuildings: number; bySheets: number; ground: { buildings: number; parcels: number } | null } | null>(null)
+  const refilled = useRef(false)
   const [pdfBusy, setPdfBusy] = useState(false)
   const closeAll = () => { for (const s of srcs.current) void s.doc?.loadingTask.destroy().catch(() => {}) }
 
@@ -155,6 +162,9 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
   }, [verdicts])
 
   const kept = items.filter((it) => it.keep)
+  // Pages the room already has (same drawing): filed again they add what the
+  // first filing missed — the PDF, the line-up corners — and nothing else.
+  const refill = items.filter((it) => !it.keep && verdicts.get(it.key)?.kind === 'unchanged')
   const dupKeys = useMemo(() => {
     const n = new Map<string, number>()
     for (const it of kept) { const c = cleanNumber(it.number); if (c) n.set(numberKey(c), (n.get(numberKey(c)) ?? 0) + 1) }
@@ -203,9 +213,9 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
             setProgress(`${f.name.slice(0, 40)} · page ${p} of ${doc.numPages}`)
             try {
               const r = await readPage(pdfjs, doc, p, names)
-              out.push(toItem(`${idx}:${p}`, idx, p, r.thumb, r.width, r.height, r.tb, r.signature, r.ink, r.checks, r.grid, r.crop))
+              out.push(toItem(`${idx}:${p}`, idx, p, r.thumb, r.width, r.height, r.tb, r.signature, r.ink, r.checks, r.grid, r.crop, r.features))
             } catch {
-              out.push(toItem(`${idx}:${p}`, idx, p, '', 0, 0, null, null, null, [], null, null))
+              out.push(toItem(`${idx}:${p}`, idx, p, '', 0, 0, null, null, null, [], null, null, null))
             }
             setItems([...out])
             await new Promise((res) => setTimeout(res, 0))
@@ -214,7 +224,7 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
           try {
             const r = await readImageFile(f)
             const idx = srcs.current.push({ file: f, bytes: null, kind: 'image', doc: null, pages: 1 }) - 1
-            out.push(toItem(`${idx}:img`, idx, null, r.thumb, r.width, r.height, null, null, null, [], null, null))
+            out.push(toItem(`${idx}:img`, idx, null, r.thumb, r.width, r.height, null, null, null, [], null, null, null))
             setItems([...out])
           } catch {
             setError(`${f.name} isn’t a picture we can read — skipped.`)
@@ -243,14 +253,15 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
   }
 
   async function fileIt() {
-    if (!kept.length) { setError('Keep at least one page.'); return }
+    const fillAll = refilled.current ? [] : refill
+    if (!kept.length && !fillAll.length) { setError('Keep at least one page.'); return }
     if (missingNumber) { setError('Every kept page needs a sheet number.'); return }
     if (dupKeys.size) { setError('Two kept pages have the same sheet number — keep one of them.'); return }
-    if (!name.trim()) { setError('Name the set.'); return }
+    if (kept.length && !name.trim()) { setError('Name the set.'); return }
     // A second run files only what the first one didn't.
     const results: Filed[] = filed.filter((f) => !f.error)
     const todo = kept.filter((it) => !results.some((f) => f.key === it.key))
-    if (!todo.length) return
+    if (!todo.length && !fillAll.length) return
     setError(null)
     setPhase('importing')
     importing.current = true
@@ -258,8 +269,8 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
     const problems: string[] = []
     const missing: number[] = []
     try {
-      let setId = setRef.current
-      if (!setId) {
+      let setId: string = setRef.current ?? ''
+      if (!setId && todo.length) {
         const set = await createPlanSetAction({ zoneId, name, kind, issuedOn }).catch(() => null)
         if (!set?.ok) { setError(set && !set.ok ? set.error : 'Couldn’t start the set — check signal and try again.'); setPhase('review'); return }
         setId = set.setId
@@ -324,7 +335,7 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
           titleRead: it.read ? { ...it.read } : null,
           scaleChecks: it.checks.length ? it.checks : null,
           grid: it.grid ? { bounds: it.grid.bounds, worstFt: it.grid.worstFt, n: it.grid.n, what: it.grid.what, assumedUp: it.grid.assumedUp } : null,
-          crop: it.crop,
+          crop: it.crop, features: it.features,
         }).catch(() => null)
         if (!r?.ok) { fail(r && !r.ok ? r.error : 'didn’t file'); continue }
         results.push({
@@ -336,10 +347,60 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
       if (stopped) problems.unshift(`${stopped} ${results.filter((f) => f.error).length} page${results.filter((f) => f.error).length === 1 ? '' : 's'} not filed — File the rest when you have signal.`)
       // Left-out sheets are voided only once the whole set is in.
       const allIn = results.length >= kept.length && results.every((f) => !f.error)
-      if (voidIds.size && allIn && !voidedN) {
+      if (setId && voidIds.size && allIn && !voidedN) {
         const r = await voidPlanSheetsAction(setId, Array.from(voidIds)).catch(() => null)
         if (r?.ok) setVoidedN(r.voided)
         else problems.push('The set is filed, but voiding the left-out sheets didn’t go through — void them from the plan room.')
+      }
+      // The same drawings again: fill in what the sheets already filed are
+      // missing — the PDF (a failed first upload) and the line-up corners.
+      const touched = new Set<string>()
+      if (fillAll.length) {
+        const groups = new Map<string, Item[]>()
+        for (const it of fillAll) {
+          const v = verdicts.get(it.key)
+          if (v?.kind !== 'unchanged' || !v.same.setId) continue
+          const k = `${v.same.setId}|${it.src}`
+          groups.set(k, [...(groups.get(k) ?? []), it])
+        }
+        let n = 0
+        for (const [k, its] of Array.from(groups.entries())) {
+          const [gSet, srcS] = k.split('|')
+          const src = Number(srcS)
+          let fileId: string | null = null
+          const needPdf = its.some((it) => { const v = verdicts.get(it.key); return v?.kind === 'unchanged' && !v.same.fileId })
+          const sv = srcs.current[src]
+          if (needPdf && sv?.kind === 'pdf' && (sv.bytes ?? sv.file).size <= MAX_BYTES) {
+            setProgress('Adding the PDF to the sheets already filed…')
+            const r = await uploadPdf(gSet, src)
+            if (r.ok) fileId = r.fileId
+            else problems.push('The PDF didn’t save for the sheets already filed — try again with signal.')
+          }
+          const rows = its.flatMap((it) => {
+            const v = verdicts.get(it.key)
+            return v?.kind === 'unchanged' ? [{ versionId: v.same.id, page: it.page, features: it.features }] : []
+          })
+          const a = await attachPlanFileAction({ setId: gSet, fileId, pages: rows }).catch(() => null)
+          if (a?.ok) n += Math.max(a.attached, a.filled)
+          touched.add(gSet)
+        }
+        refilled.current = true
+        setUpdated(n)
+      }
+      // Then line everything up by itself: sheets to each other, unplaced ones
+      // to the buildings and property lines (lib/plans/autoplace-server.ts).
+      const lineSets = [setId, ...Array.from(touched)].filter(Boolean)
+      if (lineSets.length) {
+        setProgress('Lining the sheets up with the map…')
+        const ap = await autoPlaceSetsAction(lineSets).catch(() => null)
+        if (ap?.ok) {
+          setLineup({ byBuildings: ap.byBuildings, bySheets: ap.bySheets, ground: ap.ground })
+          const got = new Set(ap.placedIds)
+          for (let i = 0; i < results.length; i++) {
+            const f = results[i]
+            if (f.versionId && got.has(f.versionId)) results[i] = { ...f, placed: true, carried: 'none', auto: true }
+          }
+        }
       }
     } finally {
       done()
@@ -399,9 +460,15 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
     setFiled((xs) => xs.map((x) => (x.key === f.key ? { ...x, placed: !!b, carried: 'none' } : x)))
     setPlacing(null)
     if (!b || !f.versionId) return
-    void notePlacementAction(f.versionId, 'manual').catch(() => {})
-    const to = filed.filter((x) => x.key !== f.key && !x.placed && x.versionId && Math.abs(x.width - f.width) <= 1 && Math.abs(x.height - f.height) <= 1)
-    if (to.length) setCopyOffer({ from: f, to })
+    const before = filed
+    // The sheets linked to this one (its quadrants, the next road sheet) follow it on
+    // the server; whatever is left on the same paper can still copy it.
+    void notePlacementAction(f.versionId, 'manual').catch(() => null).then((r) => {
+      const sp = new Set(r?.ok ? r.spread ?? [] : [])
+      if (sp.size) setFiled((xs) => xs.map((x) => (x.versionId && sp.has(x.versionId) ? { ...x, placed: true, carried: 'none', auto: true } : x)))
+      const to = before.filter((x) => x.key !== f.key && !x.placed && x.versionId && !sp.has(x.versionId) && Math.abs(x.width - f.width) <= 1 && Math.abs(x.height - f.height) <= 1)
+      if (to.length) setCopyOffer({ from: f, to })
+    })
   }
 
   async function copyToOthers() {
@@ -580,7 +647,11 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
                   {counts.revised > 0 && <li>{counts.revised} revised — the new version is current</li>}
                   {counts.exact > 0 && <li>{counts.exact} landed exactly where the last version sat (same plot)</li>}
                   {counts.check > 0 && <li className="text-amber">{counts.check} carried their placement but the drawing moved on the paper — check them on the map</li>}
-                  {counts.unplaced > 0 && <li>{counts.unplaced} aren’t on the map yet — place one below and the rest can copy it</li>}
+                  {lineup && (lineup.byBuildings + lineup.bySheets) > 0 && (
+                    <li className="text-teal">{lineup.byBuildings + lineup.bySheets} lined up by themselves{lineup.byBuildings ? ` — ${lineup.byBuildings} from the buildings around the site` : ''}{lineup.bySheets ? `${lineup.byBuildings ? ',' : ' —'} ${lineup.bySheets} from the other sheets` : ''}</li>
+                  )}
+                  {counts.unplaced > 0 && <li>{counts.unplaced} aren’t on the map yet — place one below (two points, as far apart as you can) and the sheets drawn from the same plan follow it</li>}
+                  {updated != null && updated > 0 && <li>{updated} sheet{updated === 1 ? '' : 's'} already filed got what they were missing (the PDF, the line-up data)</li>}
                   {counts.failed > 0 && <li className="text-red-400">{counts.failed} didn’t file — see below</li>}
                   {voidedN > 0 && <li>{voidedN} voided</li>}
                 </ul>
@@ -610,6 +681,7 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
                     <span className="font-mono text-sm text-ink w-20 truncate">{f.number}</span>
                     <span className="text-[11.5px] text-faint flex-1">
                       {f.error ? <span className="text-red-400">{f.error}</span>
+                        : f.auto ? <span className="text-teal">Lined up by itself</span>
                         : f.carried === 'exact' ? 'On the map where the last version sat'
                         : f.carried === 'check' ? <span className="text-amber">Placed from the last version — check it</span>
                         : f.placed ? 'Placed' : 'Not on the map yet'}
@@ -633,9 +705,9 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
         <div className="border-t border-navy-800 px-4 py-3 flex items-center gap-3 bg-navy-950">
           <p className="text-[12px] text-faint flex-1">{kept.length} of {items.length} page{items.length === 1 ? '' : 's'} kept</p>
           <button type="button" onClick={onClose} className="text-sm text-faint hover:text-ink">Cancel</button>
-          <button type="button" onClick={() => void fileIt()} disabled={!kept.length}
+          <button type="button" onClick={() => void fileIt()} disabled={!kept.length && !refill.length}
             className="rounded-xl bg-amber text-[#1a1100] font-display font-bold px-4 py-2 disabled:opacity-40">
-            File {kept.length} sheet{kept.length === 1 ? '' : 's'}
+            {kept.length ? `File ${kept.length} sheet${kept.length === 1 ? '' : 's'}` : `Update ${refill.length} sheet${refill.length === 1 ? '' : 's'}`}
           </button>
         </div>
       )}
@@ -670,9 +742,9 @@ function isPdf(f: File) { return f.type === 'application/pdf' || /\.pdf$/i.test(
 
 function toItem(key: string, src: number, page: number | null, thumb: string, width: number, height: number,
   read: TitleBlock | null, signature: string | null, ink: [number, number, number, number] | null,
-  checks: ScaleCheck[], grid: GridFit | null, crop: Crop | null): Item {
+  checks: ScaleCheck[], grid: GridFit | null, crop: Crop | null, features: PlanFeatures | null): Item {
   return {
-    key, src, page, thumb, width, height, read, signature, ink, checks, grid, crop,
+    key, src, page, thumb, width, height, read, signature, ink, checks, grid, crop, features,
     number: read?.number ?? '', title: read?.title ?? '', rev: read?.rev ?? '',
     keep: !!read?.number, keepTouched: false, autoNamed: false,
   }

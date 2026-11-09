@@ -14,6 +14,7 @@ import { rasterScale } from '@/lib/dirt/plan-geo'
 import { scaleBar, labelledDistances, type ScaleCheck } from '@/lib/plans/scale'
 import { findGridLabels, fitGrid, type GridFit } from '@/lib/plans/gridfit'
 import { autoCrop, type Crop } from '@/lib/plans/crop'
+import { planFeatures, type PlanFeatures } from '@/lib/plans/match'
 
 export type PdfjsModule = typeof import('pdfjs-dist')
 export type PdfDoc = import('pdfjs-dist').PDFDocumentProxy
@@ -41,6 +42,8 @@ export interface PageRead {
   grid: GridFit | null
   /** The drawing area for the map (the border and title block cropped off). */
   crop: Crop | null
+  /** The drawing's corners, for lining the sheet up (lib/plans/match.ts). */
+  features: PlanFeatures | null
 }
 
 /** A small JPEG of the page for the review grid and the lists. */
@@ -112,7 +115,10 @@ export async function readPage(pdfjs: PdfjsModule, doc: PdfDoc, n: number, names
     if (dims) checks.push({ key: 'dims', feetPerInch: dims.feetPerInch, detail: dims.detail })
     const grid = fitGrid(findGridLabels(words), size)
     if (grid) checks.push({ key: 'grid', feetPerInch: grid.feetPerInch, detail: `${grid.what}, worst ${grid.worstFt} ft` })
-    return { page: n, width: size.width, height: size.height, thumb, tb, signature, ink: inkBox(vl, size), checks, grid, crop: autoCrop(vl, size) }
+    const crop = autoCrop(vl, size)
+    let features: PlanFeatures | null = null
+    try { features = planFeatures(pens, vl, size, crop) } catch { /* a page we can't read corners off just places by hand */ }
+    return { page: n, width: size.width, height: size.height, thumb, tb, signature, ink: inkBox(vl, size), checks, grid, crop, features }
   } finally {
     page.cleanup()
   }

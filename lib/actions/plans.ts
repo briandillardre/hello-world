@@ -20,6 +20,7 @@ import {
 } from '@/lib/plans/room'
 import { carryRule } from '@/lib/plans/fingerprint'
 import { cleanCrop } from '@/lib/plans/crop'
+import { cleanFeatures } from '@/lib/plans/match'
 import { versionFromRow, VERSION_COLS } from '@/lib/db/plans'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -352,30 +353,76 @@ export async function finishPlanImageAction(input: { setId: string; imageId: str
 
 /** A short signed link to a sheet's original PDF, for the viewer. Anyone who
  *  may open the plan room may read it; the row read runs under RLS. */
-/** A set's PDF that came in AFTER its sheets were filed (the first upload
- *  failed): the set's versions on that file's pages get it, and their marks
- *  are measured again from the PDF's own scale. Only versions with no file. */
-export async function attachPlanFileAction(input: { setId: string; fileId: string; pages: { versionId: string; page: number }[] }): Promise<Res<{ attached: number }>> {
+/** Fill in what a sheet already filed is missing: the set's PDF that came
+ *  in late (its first upload failed), or the line-up corners of a sheet filed
+ *  before they were read (the same drawing uploaded again). Only empty fields
+ *  are written; any version on the same site may be filled from a PDF of any
+ *  of its sets. Marks are measured again where a PDF arrived. */
+export async function attachPlanFileAction(input: {
+  setId: string; fileId: string | null; pages: { versionId: string; page?: number | null; features?: unknown }[]
+}): Promise<Res<{ attached: number; filled: number }>> {
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { companyId, svc } = await writer()
   const set = await ownSet(svc, companyId, input.setId)
   if (!set) return { ok: false, error: 'Set not found' }
-  if (!UUID.test(input.fileId)) return { ok: false, error: 'Bad file' }
-  const { data: f } = await svc.from('plan_files').select('id, pages').eq('id', input.fileId).eq('set_id', set.id).eq('company_id', companyId).maybeSingle()
-  if (!f) return { ok: false, error: 'Bad file' }
-  const maxPage = typeof f.pages === 'number' && f.pages > 0 ? f.pages : 2000
-  const pages = (Array.isArray(input.pages) ? input.pages : []).slice(0, 300)
-    .filter((x) => x && UUID.test(String(x.versionId)) && Number.isInteger(x.page) && x.page >= 1 && x.page <= maxPage)
-  const done: string[] = []
-  for (const x of pages) {
-    const { data } = await svc.from('plan_versions').update({ file_id: f.id, page: x.page })
-      .eq('id', x.versionId).eq('set_id', set.id).eq('company_id', companyId).is('file_id', null).is('deleted_at', null)
-      .select('id')
-    if (data?.length) done.push(x.versionId)
+  let f: { id: string; pages: number | null } | null = null
+  if (input.fileId) {
+    if (!UUID.test(input.fileId)) return { ok: false, error: 'Bad file' }
+    const r = await svc.from('plan_files').select('id, pages').eq('id', input.fileId).eq('set_id', set.id).eq('company_id', companyId).maybeSingle()
+    if (!r.data) return { ok: false, error: 'Bad file' }
+    f = r.data as { id: string; pages: number | null }
   }
-  await remeasure(svc, companyId, done)
+  const maxPage = f && typeof f.pages === 'number' && f.pages > 0 ? f.pages : 2000
+  const rows = (Array.isArray(input.pages) ? input.pages : []).slice(0, 300).filter((x) => x && UUID.test(String(x.versionId)))
+  if (!rows.length) return { ok: true, attached: 0, filled: 0 }
+  // Only this site's versions.
+  const { data: vs } = await svc.from('plan_versions').select('id, sheet_id, file_id, features')
+    .in('id', rows.map((x) => x.versionId)).eq('company_id', companyId).is('deleted_at', null)
+  const sheetIds = Array.from(new Set(((vs ?? []) as { sheet_id: string }[]).map((v) => v.sheet_id)))
+  const { data: sh } = sheetIds.length ? await svc.from('plan_sheets').select('id').in('id', sheetIds).eq('geofence_id', set.geofence_id).eq('company_id', companyId) : { data: [] }
+  const okSheet = new Set(((sh ?? []) as { id: string }[]).map((x) => x.id))
+  const byId = new Map(((vs ?? []) as { id: string; sheet_id: string; file_id: string | null; features: unknown }[]).filter((v) => okSheet.has(v.sheet_id)).map((v) => [v.id, v]))
+  const attached: string[] = []
+  let filled = 0
+  for (const x of rows) {
+    const v = byId.get(x.versionId)
+    if (!v) continue
+    const patch: Record<string, unknown> = {}
+    if (f && !v.file_id && Number.isInteger(x.page) && x.page! >= 1 && x.page! <= maxPage) { patch.file_id = f.id; patch.page = x.page }
+    const feats = v.features ? null : cleanFeatures(x.features)
+    if (feats) patch.features = feats
+    if (!Object.keys(patch).length) continue
+    let q = svc.from('plan_versions').update(patch).eq('id', v.id).eq('company_id', companyId)
+    if (patch.file_id) q = q.is('file_id', null)
+    const { data } = await q.select('id')
+    if (!data?.length) continue
+    if (patch.file_id) attached.push(v.id)
+    if (patch.features) filled++
+  }
+  await remeasure(svc, companyId, attached)
   revalidatePath(`/plans/${set.geofence_id}`)
-  return { ok: true, attached: done.length }
+  return { ok: true, attached: attached.length, filled }
+}
+
+/** Line the site's sheets up by themselves (lib/plans/autoplace-server.ts):
+ *  link the given sets' sheets to each other and to the rest of the site,
+ *  match unplaced ones to the buildings and property lines around it, and
+ *  spread every placement along the links. */
+export async function autoPlaceSetsAction(setIds: string[]): Promise<Res<{
+  links: number; byBuildings: number; bySheets: number; unplaced: number; placedIds: string[]; ground: { buildings: number; parcels: number } | null
+}>> {
+  if (isMock) return { ok: false, error: 'Demo mode' }
+  const { companyId, userId, svc } = await writer()
+  if (keyRateLimited(userId ?? companyId, 'plans-autoplace', 20, 10 * 60_000)) return { ok: false, error: 'That’s a lot of line-ups in a few minutes — try again shortly.' }
+  const ids = (Array.isArray(setIds) ? setIds : []).filter((x) => UUID.test(String(x))).slice(0, 20)
+  if (!ids.length) return { ok: false, error: 'Set not found' }
+  const sets = (await Promise.all(ids.map((id) => ownSet(svc, companyId, id)))).filter((x): x is NonNullable<typeof x> => !!x)
+  if (!sets.length) return { ok: false, error: 'Set not found' }
+  const zoneId = sets[0].geofence_id
+  const { autoPlaceSite } = await import('@/lib/plans/autoplace-server')
+  const r = await autoPlaceSite(svc, companyId, zoneId, { focusSetIds: sets.filter((x) => x.geofence_id === zoneId).map((x) => x.id) })
+  if (r.placedIds.length) refresh(zoneId)
+  return { ok: true, ...r }
 }
 
 export async function planPdfLinkAction(fileId: string): Promise<Res<{ url: string }>> {
@@ -416,6 +463,8 @@ export interface AddVersionInput {
   scaleChecks?: { key: string; feetPerInch: number; detail: string }[] | null
   /** Where its state plane coordinates put it (lib/plans/gridfit.ts). */
   grid?: { bounds: [number, number][]; worstFt: number; n: number; what: string; assumedUp: boolean } | null
+  /** The page's corners for lining it up (lib/plans/match.ts). */
+  features?: unknown
   /** The drawing area to show on the map (lib/plans/crop.ts). */
   crop?: { x0: number; y0: number; x1: number; y1: number; on?: boolean } | null
 }
@@ -496,6 +545,7 @@ export async function addPlanVersionAction(input: AddVersionInput): Promise<Res<
     page_w: fin(input.pageW, 0, 20000), page_h: fin(input.pageH, 0, 20000), ink_box: ink,
     feet_per_inch: fin(input.feetPerInch, 0, 2000), scale_text: clip(input.scaleText, 40) || null,
     title_read: titleRead, scale_checks: cleanChecks(input.scaleChecks), crop: cleanCrop(input.crop), created_by: userId,
+    features: cleanFeatures(input.features),
   }
   const { data: ver, error: verErr } = await svc.from('plan_versions').insert(row).select(VERSION_COLS).single()
   if (verErr || !ver) return { ok: false, error: 'Couldn’t file that version — try again.' }
@@ -653,7 +703,7 @@ export async function setSheetOnMapAction(sheetId: string, on: boolean): Promise
 }
 
 /** Record how a version got onto the map (after the place tool saved its corners). */
-export async function notePlacementAction(versionId: string, source: 'manual' | 'copied', fromVersionId?: string | null): Promise<Res> {
+export async function notePlacementAction(versionId: string, source: 'manual' | 'copied', fromVersionId?: string | null): Promise<Res<{ spread?: string[] }>> {
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { companyId, svc } = await writer()
   if (!UUID.test(versionId) || (fromVersionId && !UUID.test(fromVersionId))) return { ok: false, error: 'Bad version' }
@@ -666,7 +716,20 @@ export async function notePlacementAction(versionId: string, source: 'manual' | 
   if (error) return { ok: false, error: 'Couldn’t save — try again.' }
   // New corners can change the sheet's measuring scale: its marks follow.
   await remeasure(svc, companyId, [versionId])
-  return { ok: true }
+  // A sheet placed by hand carries the sheets linked to it (an overall's
+  // quadrants, the next road sheet) — exactly, not "same paper".
+  let spread: string[] = []
+  if (source === 'manual') {
+    const { data: v } = await svc.from('plan_versions').select('set_id, sheet_id').eq('id', versionId).eq('company_id', companyId).maybeSingle()
+    const { data: sh } = v ? await svc.from('plan_sheets').select('geofence_id').eq('id', v.sheet_id).eq('company_id', companyId).maybeSingle() : { data: null }
+    if (sh?.geofence_id) {
+      const { autoPlaceSite } = await import('@/lib/plans/autoplace-server')
+      const r = await autoPlaceSite(svc, companyId, sh.geofence_id, { focusSetIds: v?.set_id ? [v.set_id] : [], ground: false, deadlineMs: 25_000 }).catch(() => null)
+      spread = r?.placedIds ?? []
+      if (spread.length) refresh(sh.geofence_id)
+    }
+  }
+  return { ok: true, spread }
 }
 
 /** Copy one placed version's corners onto other versions on the same site
