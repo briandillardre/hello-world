@@ -45,11 +45,11 @@ Status key: ✅ built · 🟡 partial · ❌ missing (per CLAUDE.md).
 |---|---|---|---|
 | **HeavyBid** (desktop + web) | Unit-price estimating, crew production rates, historical cost database, quotes | ✅ `/plans/[zoneId]/estimate` + `/costbook` (`lib/estimate/engine.ts`): sources ranked by delivered cost with OSRM haul minutes, loads, crew-days, lowboy, overhead/contingency/profit/tax/bond | **HCSS on depth**: decades of DOT unit-price work and a historical production database. **HT on sitework**: haul routing from real road minutes, and the estimate fed straight from the takeoff |
 | **HeavyBid Pre-Construction** | Opportunities, project details, bid dates | 🟡 `/jobs` stages Estimating → Bid submitted → Awarded, with bid-due date (`lib/jobs/job.ts`) | Tie. HT has no pipeline view, no win-rate figures and no bid calendar |
-| **HeavyJob** (cloud + mobile) | Daily time cards **by cost code** with quantities installed, job cost, PM | 🟡 `/jobs/[zoneId]/cost` (PCAT budget vs actual, WIP), with actuals coming from site time cards, the hours ledger and receipts (`lib/jobs/cost.ts`). Time cards are per **site**. A cost code exists only on budget lines (`155_job_cost.sql`) | **HCSS**. Cost-code hours and daily quantities are HeavyJob's core, and HT has neither (gap #2) |
+| **HeavyJob** (cloud + mobile) | Daily time cards **by cost code** with quantities installed, job cost, PM | 🟡 `/jobs/[zoneId]/cost` (PCAT budget vs actual, WIP), with actuals coming from site time cards, the hours ledger and receipts (`lib/jobs/cost.ts`). **Production (Nov 9, migration 160):** `/jobs/[zoneId]/production` — the foreman types quantity installed per item per day; hours fill themselves from site time cards + the hours ledger and each day's cost is shared across the items by earned value → unit cost and rate vs bid | **HT on the foreman's day** (one number per item, no hours typed). **HCSS** still has hours split by cost code on the time card itself |
 | **HeavyJob Docs & Plans** (ex-HCSS Plans) | View and mark up sheets, takeoff calculators, collaboration | ✅ Plan room `/plans/...`: title-block reads, revisions and supersede, compare, sheets placed on the map by themselves. Takeoff on the sheets `/plans/[zoneId]/takeoff` with an xlsx export | **HT**. Sheets sit in real location on the live map, and revisions carry the takeoff forward |
 | — (no HCSS product found) | Dirt cut/fill from lidar, ground from borings, machine-control files, drone progress | ✅ `/dirt/[id]` (USGS 1 m lidar, exact TIN volumes), `/plans/[zoneId]/ground` (borings), `/plans/[zoneId]/machine` (LandXML/DXF), `/plans/[zoneId]/progress` (drone DSM) | **HT**. No equivalent appears in HCSS's [product list](https://hcss.com/ai-info/) (low confidence: absence is not proof) |
 | — (not in the HCSS list) | AIA G702/G703 pay apps, AR aging, cash, WIP | ✅ `/jobs/[zoneId]/billing` (`lib/jobs/payapp.ts`), `/jobs/portfolio` | **HT** for a QuickBooks-sized sub. HCSS leaves billing to the accounting system |
-| **HeavyJob Safety** (ex-HCSS Safety) + HCSS Skills | Safety meetings, JHAs, inspections, incidents/near misses, training and certification records | 🟡 Pre-use `equipment_checks`, driver Safety Score (`/reports/safety`), document expiry (`lib/jobs/documents.ts`). No JHA, toolbox talk, incident log or cert tracking | **HCSS** (gap #4) |
+| **HeavyJob Safety** (ex-HCSS Safety) + HCSS Skills | Safety meetings, JHAs, inspections, incidents/near misses, training and certification records | 🟡 Pre-use `equipment_checks`, driver Safety Score (`/reports/safety`), document expiry (`lib/jobs/documents.ts`). **Safety (Nov 9, migration 159):** `/safety` — 25 toolbox talks signed with a finger on the phone, incident / near-miss / hazard reports, an injury pages the office. No JHA or cert tracking yet | **HT on talks + incidents** (phone, same login; HCSS's JHAs are iPad-only). **HCSS** on JHAs and certifications (gap #4) |
 | **HeavyJob Forms** | Digital forms with signatures, central records | 🟡 Daily logs with a configurable form (`LOG_FORM_DEFAULTS`, required photos). One form type, no signatures | **HCSS** (gap #5) |
 | **HeavyJob Resource Planner** + **HCSS Dispatcher** (desktop) | Crew and equipment schedule, magnet board, equipment moves, rentals | ❌ HT shows where things **are** (live map, Stacks, Command Center). It does not schedule where they **go** | **HCSS** (gap #3). HT's live position is the better input for a board, but the board itself doesn't exist yet |
 | **HCSS myField** (mobile) | Worker time, breaks, schedules, safety and maintenance requests | ✅ Clock with required GPS fix, background shift recorder, integrity flags, photo clock-in (`components/field/ShiftTracker.tsx`, `/timecards`, `lib/timecards.ts`) | **HT** on proof: GPS-verified %, "Needs a look" flags, shared-phone detection. **HCSS** on breaks and schedules |
@@ -135,8 +135,10 @@ staff in Texas, and the domain depth is decades deep.
    already lists QuickBooks. *Build:* finish docs/QBO-GO-LIVE.md this week,
    then sell "HCSS's time cards land in QuickBooks; ours land as job cost,
    pay apps and receipts too."
-2. **Cost-code time cards and daily quantities.** This is HeavyJob's whole
-   reason to exist. *Build:* a cost-code picker on clock-in and the daily log
+2. **Cost-code time cards and daily quantities.** ✅ Daily quantities + unit
+   cost vs bid SHIPPED Nov 9 (`/jobs/[zoneId]/production`, cost shared by
+   earned value so nobody splits hours). Left: an optional cost-code pick on
+   clock-in for crews that want hours by code. *Original build note:* a cost-code picker on clock-in and the daily log
    (codes come from `job_budget_lines`), crew and machine hours split by code
    (machines from the hours ledger), quantity installed per code per day, and
    unit cost vs bid on `/jobs/[zoneId]/cost`.
@@ -144,8 +146,9 @@ staff in Texas, and the domain depth is decades deep.
    sites × people and machines. Drag to assign, lowboy moves as tasks, and
    the live map marking any assignment the GPS contradicts. That last part is
    something HCSS can't do.
-4. **Safety program: JHAs, toolbox talks, incidents, certifications.** GCs
-   and insurers ask for these papers. *Build:* safety forms on the daily-log
+4. **Safety program: JHAs, toolbox talks, incidents, certifications.** ✅
+   Toolbox talks with signatures + incident / near-miss reports SHIPPED Nov 9
+   (`/safety`). Left: JHAs and certification records. *Build:* safety forms on the daily-log
    form engine, an incident record pinned on the map, and certification
    records per person using `expiryState`.
 5. **Custom forms with signatures.** *Build:* generalize the daily-log form

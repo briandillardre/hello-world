@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock, BellRing, Plane, Lock, FileStack, Briefcase } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock, BellRing, Plane, Lock, FileStack, Briefcase, HardHat } from 'lucide-react'
 import { ViewAsPicker } from './ViewAsPicker'
 import { cn } from '@/lib/utils'
 import { navStateFor, lockedHref } from '@/lib/permissions'
@@ -31,6 +31,7 @@ const allItems = [
   { href: '/track', label: 'Share location', short: 'Live', icon: Radio },
   { href: '/logs', label: 'Daily logs', short: 'Logs', icon: ClipboardList },
   { href: '/photos', label: 'Photos', icon: Camera },
+  { href: '/safety', label: 'Safety', icon: HardHat },
   { href: '/team', label: 'Team', icon: Users },
   { href: '/activity', label: 'Team activity', short: 'Activity', icon: Activity },
   { href: '/maintenance', label: 'Maintenance', short: 'Service', icon: Wrench },
@@ -76,7 +77,7 @@ const canonOrder = (role?: string | null): string[] => {
 // user's saved order still decides the bar and the edit grid.
 const DRAWER_GROUPS: { title: string; hrefs: string[] }[] = [
   { title: 'Watch',  hrefs: ['/map', '/command', '/alerts'] },
-  { title: 'Field',  hrefs: ['/clock', '/timecards', '/logs', '/photos', '/assets', '/zones', '/plans'] },
+  { title: 'Field',  hrefs: ['/clock', '/timecards', '/logs', '/photos', '/safety', '/assets', '/zones', '/plans'] },
   { title: 'Office', hrefs: ['/jobs', '/reports', '/team'] },
   // Mirrors the desktop sidebar's Setup group exactly — a page missing here
   // fell into "Other" (Hardware setup, Sep 4) or off the phone entirely
