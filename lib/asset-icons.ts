@@ -47,6 +47,10 @@ const poly = (ctx: CanvasRenderingContext2D, pts: [number, number][]) => {
 const cut = (ctx: CanvasRenderingContext2D, fn: () => void) => {
   ctx.save(); ctx.globalCompositeOperation = 'destination-out'; fn(); ctx.restore()
 }
+/** An SVG path in the 64-space, filled even-odd (an inner ring is a window). */
+const svg = (ctx: CanvasRenderingContext2D, d: string) => { ctx.fill(new Path2D(d), 'evenodd') }
+/** Several wheels at one height. */
+const wheels = (ctx: CanvasRenderingContext2D, y: number, r: number, ...xs: number[]) => { for (const x of xs) wheel(ctx, x, y, r) }
 
 export const ASSET_ICONS: Record<string, AssetIconDef> = {
   /* ── Trucks & road ─────────────────────────────────────────────── */
@@ -78,11 +82,13 @@ export const ASSET_ICONS: Record<string, AssetIconDef> = {
     },
   },
   'dump-truck': {
-    label: 'Dump truck', group: 'Trucks & road',
-    draw: (ctx) => { // box bed with the dump slant on top, taller at the back
-      poly(ctx, [[4, 18], [32, 25], [32, 42], [4, 42]])
-      poly(ctx, [[35, 26], [46, 26], [56, 35], [56, 42], [35, 42]])
-      wheel(ctx, 13, 45); wheel(ctx, 26, 45); wheel(ctx, 46, 45)
+    label: 'Dump truck (tri-axle)', group: 'Trucks & road',
+    draw: (ctx) => { // dump body with the cab shield over the cab, conventional hood, tandem rear
+      svg(ctx, 'M3 24L39 18V40H3Z')
+      svg(ctx, 'M37 14H51V18H37Z')
+      svg(ctx, 'M42 20H51V29H58L61 33V45H42Z M44.5 22.5H49V28H44.5Z')
+      ctx.fillRect(3, 40, 58, 4)
+      wheels(ctx, 47, 7, 12, 27, 53)
     },
   },
   'day-cab': {
@@ -131,6 +137,39 @@ export const ASSET_ICONS: Record<string, AssetIconDef> = {
       wheel(ctx, 13, 46, 6); wheel(ctx, 27, 46, 6); wheel(ctx, 50, 46, 6)
     },
   },
+  'end-dump': {
+    label: 'End dump (tractor + trailer)', group: 'Trucks & road',
+    draw: (ctx) => { // long tub sloped at the tail on a trailer, day cab tractor
+      svg(ctx, 'M2 19H37L40 24V36H7L2 30Z')
+      ctx.fillRect(30, 36, 16, 4)
+      svg(ctx, 'M44 19H54V29H61V45H44Z M47 22H52V28H47Z')
+      wheels(ctx, 47, 6, 8, 20, 41, 55)
+    },
+  },
+  'articulated-truck': {
+    label: 'Articulated dump (ADT)', group: 'Trucks & road',
+    draw: (ctx) => { // tall cab tractor, hinge, big dump body, three big axles
+      svg(ctx, 'M2 15H37L41 21L39 38H7L2 27Z')
+      svg(ctx, 'M41 26L44 12H56L58 25H62V42H40Z M46.5 15H53.5L55 23H45.5Z')
+      wheels(ctx, 46, 8, 11, 27, 52)
+    },
+  },
+  'haul-truck': {
+    label: 'Haul truck (rigid)', group: 'Trucks & road',
+    draw: (ctx) => { // off-highway: huge tyres, body with canopy over the cab
+      svg(ctx, 'M2 15L48 11V17H41V35H6L2 25Z')
+      svg(ctx, 'M42 19H54V27H58V40H41Z M44.5 21H51.5V26H44.5Z')
+      wheels(ctx, 44, 10, 16, 48)
+    },
+  },
+  lowboy: {
+    label: 'Lowboy (tractor + trailer)', group: 'Trucks & road',
+    draw: (ctx) => { // drop deck rising to the gooseneck, day cab tractor
+      svg(ctx, 'M2 37H32L36 29H45V35H39V43H2Z')
+      svg(ctx, 'M43 16H53V27H61V45H43Z M46 19H51V26H46Z')
+      wheels(ctx, 48, 5.5, 7, 18); wheels(ctx, 48, 6, 44, 56)
+    },
+  },
   'water-truck': {
     label: 'Water truck', group: 'Trucks & road',
     draw: (ctx) => { // rounded tank barrel
@@ -143,106 +182,184 @@ export const ASSET_ICONS: Record<string, AssetIconDef> = {
   /* ── Dirt & lifting ────────────────────────────────────────────── */
   excavator: {
     label: 'Excavator', group: 'Dirt & lifting',
-    draw: (ctx) => { // the original Aug 22 equipment glyph — tracks + boom
-      box(ctx, 8, 44, 34, 11, 5.5)
-      box(ctx, 12, 26, 20, 16, 3)
-      poly(ctx, [[28, 34], [45, 8], [56, 16], [40, 41]])
-      poly(ctx, [[47, 12], [61, 22], [49, 31]])
+    draw: (ctx) => { // tracks, house + cab, bent boom, stick, toothed bucket
+      box(ctx, 3, 43, 38, 11, 5.5)
+      svg(ctx, 'M5 32H34V43H5Z')
+      svg(ctx, 'M20 18H33V33H20Z M23 21H30V28H23Z')
+      svg(ctx, 'M30 36L42 9L49 11L37 38Z')
+      svg(ctx, 'M42 9L48 6L60 29L55 32Z')
+      svg(ctx, 'M53 29L62 28L61 41L57 44L51 37Z')
+    },
+  },
+  'mini-excavator': {
+    label: 'Mini excavator', group: 'Dirt & lifting',
+    draw: (ctx) => { // short tracks with a dozer blade, canopy, short boom
+      box(ctx, 8, 44, 30, 10, 5)
+      ctx.fillRect(38, 44, 5, 10)
+      svg(ctx, 'M8 33H32V44H8Z')
+      svg(ctx, 'M12 16H30V19H27V33H24V19H18V33H15V19H12Z')
+      svg(ctx, 'M29 38L40 16L46 18L35 40Z')
+      svg(ctx, 'M40 16L46 13L55 33L50 35Z')
+      svg(ctx, 'M48 33L57 32L56 43L52 45L46 39Z')
+    },
+  },
+  'track-loader': {
+    label: 'Compact track loader', group: 'Dirt & lifting',
+    draw: (ctx) => { // skid steer on rubber tracks
+      svg(ctx, 'M10 18H34V44H10Z M21 26H31V36H21Z')
+      svg(ctx, 'M14 18L20 14L46 30L42 36L16 24Z')
+      svg(ctx, 'M42 30H60L58 47H43Z')
+      box(ctx, 7, 43, 34, 11, 5.5)
+    },
+  },
+  scraper: {
+    label: 'Scraper', group: 'Dirt & lifting',
+    draw: (ctx) => { // bowl at the back, gooseneck forward to the tractor
+      svg(ctx, 'M2 22H34L38 31L34 44H8L2 37Z')
+      svg(ctx, 'M31 23L45 15L49 21L36 30Z')
+      svg(ctx, 'M42 20H54V28H61V42H42Z M45 22.5H51V27H45Z')
+      wheel(ctx, 14, 45, 9); wheel(ctx, 51, 45, 9)
+    },
+  },
+  'rt-crane': {
+    label: 'Rough-terrain crane', group: 'Dirt & lifting',
+    draw: (ctx) => { // carrier on four big tyres, side cab, telescoping boom
+      svg(ctx, 'M3 34H57V44H3Z')
+      svg(ctx, 'M12 24H32V35H12Z')
+      svg(ctx, 'M33 25H43V35H33Z M35.5 27.5H40.5V31.5H35.5Z')
+      svg(ctx, 'M14 28L46 10L49 16L18 33Z')
+      svg(ctx, 'M45 11L58 4L60 8L47 15Z')
+      ctx.fillRect(57.5, 7, 2.5, 18)
+      box(ctx, 55, 23, 7, 7, 2)
+      wheels(ctx, 47, 7.5, 12, 48)
+    },
+  },
+  'scissor-lift': {
+    label: 'Scissor lift', group: 'Dirt & lifting',
+    draw: (ctx) => { // platform with rails on crossed arms over a low base
+      svg(ctx, 'M4 4H58V8H54V14H8V8H4Z')
+      ctx.fillRect(4, 14, 54, 5)
+      ctx.save(); ctx.lineWidth = 4; ctx.strokeStyle = ctx.fillStyle as string
+      ctx.beginPath(); ctx.moveTo(10, 19); ctx.lineTo(52, 31); ctx.lineTo(10, 43)
+      ctx.moveTo(52, 19); ctx.lineTo(10, 31); ctx.lineTo(52, 43); ctx.stroke(); ctx.restore()
+      box(ctx, 4, 42, 54, 7, 2)
+      wheels(ctx, 50, 4.5, 12, 50)
+    },
+  },
+  paver: {
+    label: 'Asphalt paver', group: 'Dirt & lifting',
+    draw: (ctx) => { // hopper up front, operator deck under a canopy, screed behind
+      svg(ctx, 'M44 26L61 21L59 41H44Z')
+      svg(ctx, 'M12 28H46V42H12Z')
+      svg(ctx, 'M10 10H40V14H36V28H32V14H18V28H14V14H10Z')
+      svg(ctx, 'M1 38H14V48H1Z')
+      box(ctx, 12, 43, 34, 11, 5.5)
     },
   },
   dozer: {
     label: 'Dozer', group: 'Dirt & lifting',
-    draw: (ctx) => { // low tracks + low body + a tall solid blade up front
-      box(ctx, 4, 40, 36, 13, 6.5)
-      box(ctx, 8, 26, 28, 15, 3)
-      box(ctx, 12, 16, 14, 12, 2)
-      box(ctx, 36, 31, 10, 8, 2)                                  // push arm
-      poly(ctx, [[44, 18], [53, 18], [53, 52], [43, 52], [43, 30]]) // blade
+    draw: (ctx) => { // high-drive track, cab + hood, curved blade, rear ripper
+      svg(ctx, 'M5 54H45L49 47L43 40H9L2 47Z')
+      svg(ctx, 'M24 28H45V40H24Z')
+      svg(ctx, 'M9 15H26V40H9Z M12 18H23V27H12Z')
+      ctx.fillRect(42, 36, 11, 5)
+      svg(ctx, 'M51 21Q46 37 51 54H58V21Z')
+      svg(ctx, 'M1 33H7V49L3 54H1Z')
     },
   },
   'skid-steer': {
     label: 'Skid steer', group: 'Dirt & lifting',
-    draw: (ctx) => {
-      box(ctx, 10, 22, 26, 18, 3)
-      poly(ctx, [[32, 24], [48, 30], [48, 42], [40, 42], [32, 34]]) // arm
-      poly(ctx, [[44, 32], [60, 32], [58, 46], [44, 46]])            // bucket
-      wheel(ctx, 17, 46, 6.5); wheel(ctx, 33, 46, 6.5)
+    draw: (ctx) => { // boxy cab between the wheels, lift arms from the back, bucket
+      svg(ctx, 'M10 18H34V44H10Z M21 26H31V36H21Z')
+      svg(ctx, 'M14 18L20 14L46 30L42 36L16 24Z')
+      svg(ctx, 'M42 30H60L58 47H43Z')
+      wheels(ctx, 48, 6.5, 16, 32)
     },
   },
   'wheel-loader': {
     label: 'Wheel loader', group: 'Dirt & lifting',
-    draw: (ctx) => {
-      box(ctx, 6, 20, 22, 20, 3)
-      poly(ctx, [[26, 26], [46, 32], [44, 40], [26, 36]]) // arm
-      poly(ctx, [[42, 26], [60, 30], [58, 46], [42, 44]]) // bucket
-      wheel(ctx, 15, 45, 8); wheel(ctx, 41, 45, 8)
+    draw: (ctx) => { // rear engine + cab, lift arm, big bucket, big tyres
+      svg(ctx, 'M3 28H32V40H3Z')
+      svg(ctx, 'M14 11H30V30H14Z M17 14H27V22H17Z')
+      ctx.fillRect(30, 31, 10, 9)
+      svg(ctx, 'M32 30H49V36L33 39Z')
+      svg(ctx, 'M47 21L60 25L62 42H47Q44 31 47 21Z')
+      wheels(ctx, 45, 9, 14, 40)
     },
   },
   backhoe: {
     label: 'Backhoe', group: 'Dirt & lifting',
-    draw: (ctx) => { // loader front, hoe up over the back
-      box(ctx, 18, 24, 20, 16, 3)
-      poly(ctx, [[36, 30], [52, 34], [52, 42], [36, 40]])
-      poly(ctx, [[50, 30], [61, 34], [59, 46], [49, 44]])       // front bucket
-      poly(ctx, [[22, 28], [6, 10], [13, 5], [28, 25]])          // rear boom
-      poly(ctx, [[6, 10], [2, 22], [12, 21]])                    // rear bucket
-      wheel(ctx, 24, 45, 6.5); wheel(ctx, 43, 45, 7.5)
+    draw: (ctx) => { // cab between a front loader bucket and the rear hoe
+      svg(ctx, 'M18 22H38V40H18Z M22 25H34V32H22Z')
+      ctx.fillRect(36, 32, 14, 6)
+      svg(ctx, 'M48 27L61 31L59 46H48Z')
+      svg(ctx, 'M21 30L7 9L14 5L27 27Z')
+      svg(ctx, 'M7 9L1 25L9 25L12 14Z')
+      wheel(ctx, 25, 46, 7.5); wheel(ctx, 45, 47, 6)
     },
   },
   grader: {
-    label: 'Grader', group: 'Dirt & lifting',
-    draw: (ctx) => {
-      box(ctx, 4, 18, 18, 20, 3)                                  // rear body + cab
-      poly(ctx, [[20, 24], [56, 28], [56, 36], [20, 34]])         // long neck
-      poly(ctx, [[30, 32], [42, 34], [36, 51], [24, 48]])         // center blade
-      wheel(ctx, 9, 45, 6.5); wheel(ctx, 20, 45, 6.5); wheel(ctx, 52, 44, 6.5)
+    label: 'Motor grader', group: 'Dirt & lifting',
+    draw: (ctx) => { // tandem rear + cab, long arched frame, mid blade, front wheel
+      svg(ctx, 'M2 30H22V42H2Z')
+      svg(ctx, 'M9 13H23V32H9Z M12 16H20V24H12Z')
+      svg(ctx, 'M20 31L57 29L59 36L22 38Z')
+      ctx.fillRect(32, 36, 5, 8)
+      svg(ctx, 'M24 43H46L48 50H22Z')
+      wheels(ctx, 48, 6, 8, 20, 54)
     },
   },
   roller: {
     label: 'Roller', group: 'Dirt & lifting',
-    draw: (ctx) => {
-      wheel(ctx, 47, 40, 13)                                      // drum
-      cut(ctx, () => wheel(ctx, 47, 40, 4.5))
-      box(ctx, 6, 20, 26, 18, 3)
-      poly(ctx, [[30, 26], [46, 30], [44, 40], [30, 36]])
-      wheel(ctx, 15, 45, 8)
+    draw: (ctx) => { // smooth drum up front in its yoke, cab + rear tyre
+      svg(ctx, 'M34 29H47V38H34Z')
+      wheel(ctx, 47, 43, 11)
+      svg(ctx, 'M4 30H34V42H4Z')
+      svg(ctx, 'M10 13H26V31H10Z M13 16H23V24H13Z')
+      wheel(ctx, 15, 45, 9)
     },
   },
   crane: {
-    label: 'Crane', group: 'Dirt & lifting',
-    draw: (ctx) => {
-      box(ctx, 6, 44, 32, 11, 5.5)
-      box(ctx, 8, 30, 22, 16, 3)
-      poly(ctx, [[22, 34], [52, 4], [60, 10], [32, 38]])          // boom
-      box(ctx, 54, 14, 7, 12, 2)                                  // hook block
+    label: 'Crawler crane', group: 'Dirt & lifting',
+    draw: (ctx) => { // tracks, house, long lattice boom, hook block
+      box(ctx, 3, 44, 34, 10, 5)
+      svg(ctx, 'M4 31H30V44H4Z')
+      svg(ctx, 'M26 29H36V41H26Z M28.5 31.5H33.5V36H28.5Z')
+      svg(ctx, 'M19 34L56 2L61 7L25 38Z M28 30L38 21L41 24L31 33Z M42 18L51 10L53 13L45 21Z')
+      ctx.fillRect(57, 6, 2.5, 22)
+      box(ctx, 54, 26, 8, 8, 2)
     },
   },
   telehandler: {
     label: 'Telehandler', group: 'Dirt & lifting',
-    draw: (ctx) => {
-      box(ctx, 6, 26, 28, 16, 3)
-      poly(ctx, [[8, 30], [48, 12], [54, 18], [16, 34]])          // telescoping boom
-      poly(ctx, [[48, 12], [62, 12], [62, 18], [52, 18]])         // forks at tip
-      wheel(ctx, 15, 46, 7); wheel(ctx, 35, 46, 7)
+    draw: (ctx) => { // low frame, side cab, boom from the rear up to the forks
+      svg(ctx, 'M4 34H52V42H4Z')
+      svg(ctx, 'M26 20H38V36H26Z M28.5 22.5H35.5V29H28.5Z')
+      svg(ctx, 'M2 31L47 13L50 19L6 37Z')
+      ctx.fillRect(47, 11, 5, 16)
+      ctx.fillRect(49, 23, 13, 4)
+      wheels(ctx, 46, 7.5, 14, 44)
     },
   },
   forklift: {
     label: 'Forklift', group: 'Dirt & lifting',
-    draw: (ctx) => {
-      box(ctx, 44, 8, 7, 38, 2)                                   // mast
-      box(ctx, 48, 42, 14, 6, 2)                                  // forks
-      box(ctx, 12, 24, 32, 18, 4)
-      wheel(ctx, 21, 46, 7); wheel(ctx, 40, 46, 6)
+    draw: (ctx) => { // overhead guard, mast, forks, counterweight
+      svg(ctx, 'M6 28Q6 24 10 24H44V44H6Z')
+      svg(ctx, 'M20 10H42V14H38V26H34V14H24V26H20Z')
+      ctx.fillRect(45, 6, 6, 42)
+      ctx.fillRect(48, 43, 14, 4)
+      wheel(ctx, 16, 47, 7); wheel(ctx, 39, 48, 6)
     },
   },
   'boom-lift': {
     label: 'Boom lift', group: 'Dirt & lifting',
-    draw: (ctx) => {
-      box(ctx, 8, 42, 30, 10, 4)
-      wheel(ctx, 15, 50, 5); wheel(ctx, 32, 50, 5)
-      poly(ctx, [[14, 44], [6, 22], [13, 19], [22, 42]])          // lower arm
-      poly(ctx, [[6, 22], [40, 8], [43, 15], [13, 28]])           // upper arm
-      box(ctx, 40, 2, 15, 13, 2)                                  // basket
+    draw: (ctx) => { // chassis + turret, folding boom, basket with rails
+      box(ctx, 6, 42, 36, 8, 3)
+      wheels(ctx, 51, 5, 13, 35)
+      ctx.fillRect(12, 34, 14, 9)
+      svg(ctx, 'M14 36L6 18L12 15L21 34Z')
+      svg(ctx, 'M6 18L43 9L45 15L10 23Z')
+      svg(ctx, 'M42 2H60V14H42Z M45 5H57V8H45Z')
     },
   },
 

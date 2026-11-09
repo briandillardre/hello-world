@@ -225,12 +225,18 @@ export function rowsFromGrid(grid: string[][]): { rows: ImportRow[]; headerUsed:
 const NAME_HINTS: [RegExp, AssetType, string][] = [
   // Towed things first: "Dump Trailer" is a trailer, and a unit code like
   // "Trailer D2" must not read as a Cat dozer (ship-check).
-  [/trailer|lowboy|goose.?neck|\bpup\b/i, 'equipment', 'trailer'],
+  [/dump trailer/i, 'equipment', 'dump-trailer'],
+  [/end.?dump|belly.?dump|side.?dump/i, 'vehicle', 'end-dump'],
+  [/lowboy|low.?boy|\brgn\b/i, 'equipment', 'lowboy'],
+  [/trailer|goose.?neck|\bpup\b/i, 'equipment', 'trailer'],
   // Machines whose names contain tool words — these must beat the generic
   // tool rule at the bottom, or a $30k grinder becomes type 'tool' and loses
   // its own trail, hours and idle-$ (tools inherit a carrier's location).
   [/stump grinder|drill rig|hydraulic hammer|hammer attachment|breaker/i, 'equipment', 'excavator'],
 
+  [/articulated|\badt\b|\ba[2-6]\d[a-z]\b/i, 'vehicle', 'articulated-truck'],
+  [/boom truck|\bpicker\b/i, 'vehicle', 'rt-crane'],
+  [/haul truck|rock truck|off.?highway|\b77[0-9][a-z]?\b/i, 'vehicle', 'haul-truck'],
   [/\bdump\b|\bdumptruck\b|tri.?axle/i, 'vehicle', 'dump-truck'],
   [/mixer|concrete truck|redi.?mix|ready.?mix/i, 'vehicle', 'mixer'],
   [/water truck|water tender/i, 'vehicle', 'water-truck'],
@@ -242,17 +248,23 @@ const NAME_HINTS: [RegExp, AssetType, string][] = [
   [/\bvan\b|transit|promaster|sprinter/i, 'vehicle', 'van'],
   [/pickup|\bf.?[123]50\b|silverado|sierra|\bram \d|tacoma|tundra|colorado|ranger|\btruck\b/i, 'vehicle', 'pickup'],
 
-  [/mini.?ex|excavator|track.?hoe|\bex\d|zx\d|\bpc\d/i, 'equipment', 'excavator'],
+  [/mini.?ex|compact excavator|\btb2\d\d|\b30[0-9](?:\.\d)?\s?cr\b/i, 'equipment', 'mini-excavator'],
+  [/excavator|track.?hoe|\bex\d|zx\d|\bpc\d/i, 'equipment', 'excavator'],
+  [/scraper|\bpan\b/i, 'equipment', 'scraper'],
+  [/paver|paving machine|lay.?down/i, 'equipment', 'paver'],
   [/dozer|bulldozer|\bd\d[a-z]?\b|crawler tractor/i, 'equipment', 'dozer'],
-  [/skid.?steer|\bctl\b|track loader|bobcat/i, 'equipment', 'skid-steer'],
+  [/\bctl\b|track loader|compact track/i, 'equipment', 'track-loader'],
+  [/skid.?steer|bobcat/i, 'equipment', 'skid-steer'],
   [/wheel loader|front.?end loader|\bloader\b/i, 'equipment', 'wheel-loader'],
   [/backhoe|\b[34]10[a-z]?\b|tractor loader backhoe|\btlb\b/i, 'equipment', 'backhoe'],
   [/motor.?grader|\bgrader\b/i, 'equipment', 'grader'],
   [/roller|compactor|\bsakai\b|packer|sheeps.?foot/i, 'equipment', 'roller'],
   [/telehandler|reach forklift|\bth\d|zoom.?boom/i, 'equipment', 'telehandler'],
   [/fork.?lift|\blift truck\b/i, 'equipment', 'forklift'],
-  [/boom.?lift|man.?lift|scissor.?lift|\bjlg\b|\bgenie\b/i, 'equipment', 'boom-lift'],
-  [/\bcrane\b|boom truck|\bpicker\b/i, 'equipment', 'crane'],
+  [/scissor/i, 'equipment', 'scissor-lift'],
+  [/boom.?lift|man.?lift|\bjlg\b|\bgenie\b/i, 'equipment', 'boom-lift'],
+  [/crawler crane|lattice|\bmanitowoc\b/i, 'equipment', 'crane'],
+  [/\bcrane\b|boom truck|\bpicker\b|rough.?terrain|\brt\b/i, 'equipment', 'rt-crane'],
   [/\bmower\b|bush.?hog|brush cutter|zero.?turn/i, 'equipment', 'mower'],
   [/\butv\b|\batv\b|gator|ranger utv|mule/i, 'equipment', 'utv'],
   [/tractor/i, 'equipment', 'tractor'],
@@ -586,7 +598,7 @@ export function templateCsv(includeMoney = true): string {
       purchase_date: '3/14/2019',
     },
     {
-      name: 'Takeuchi TB235 Mini-Ex', type: 'equipment', icon: 'excavator', tracker: '', category: 'Dirt',
+      name: 'Takeuchi TB235 Mini-Ex', type: 'equipment', icon: 'mini-excavator', tracker: '', category: 'Dirt',
       serial: '', year: '2021', make: 'Takeuchi', model: 'TB235', license: '',
       hourly_rate: '52', mileage_rate: '', daily_cost: '60', purchase_price: '58000', purchase_value: '52000',
       purchase_date: '2021-06-02',
