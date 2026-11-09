@@ -421,13 +421,13 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
   }
 
   return (
-    <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3">
+    <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-center justify-center px-3 pt-[calc(var(--ht-safe-top,0px)+12px)] pb-[calc(var(--ht-safe-bottom,0px)+12px)]">
       {/* Column capped to the viewport: header + map stay put, the controls
           strip scrolls. Without the cap the centered card overflowed short
           phone screens with overflow-hidden — Save placement was stranded
           below the fold and unreachable ("cannot select save or scroll",
           Aug 9). dvh, not vh: mobile URL bars eat real vh pixels. */}
-      <div className="w-full max-w-2xl rounded-2xl border border-navy-700 bg-navy-950 shadow-panel overflow-hidden flex flex-col max-h-[calc(100dvh-24px)]">
+      <div className="w-full max-w-2xl rounded-2xl border border-navy-700 bg-navy-950 shadow-panel overflow-hidden flex flex-col max-h-[calc(100dvh-24px-var(--ht-safe-top,0px)-var(--ht-safe-bottom,0px))]">
         <div className="flex-none flex items-center gap-2 px-4 py-3 border-b border-navy-800">
           <p className="font-display font-bold text-ink text-sm flex-1">Place on map</p>
           <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg border border-navy-700 p-1 text-muted hover:text-ink">
@@ -435,7 +435,7 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
           </button>
         </div>
         <div className="relative flex-none">
-          <div ref={mapEl} className="h-[260px] md:h-[380px] w-full" style={alignStage === 1 || alignStage === 3 ? { cursor: 'crosshair' } : undefined} />
+          <div ref={mapEl} className="h-[min(260px,32dvh)] md:h-[380px] w-full" style={alignStage === 1 || alignStage === 3 ? { cursor: 'crosshair' } : undefined} />
           {/* Crosshair — the photo is pinned here; pan the map to move it. */}
           {alignStage === null && (
             <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-amber text-lg leading-none select-none">+</div>

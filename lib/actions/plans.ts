@@ -352,6 +352,32 @@ export async function finishPlanImageAction(input: { setId: string; imageId: str
 
 /** A short signed link to a sheet's original PDF, for the viewer. Anyone who
  *  may open the plan room may read it; the row read runs under RLS. */
+/** A set's PDF that came in AFTER its sheets were filed (the first upload
+ *  failed): the set's versions on that file's pages get it, and their marks
+ *  are measured again from the PDF's own scale. Only versions with no file. */
+export async function attachPlanFileAction(input: { setId: string; fileId: string; pages: { versionId: string; page: number }[] }): Promise<Res<{ attached: number }>> {
+  if (isMock) return { ok: false, error: 'Demo mode' }
+  const { companyId, svc } = await writer()
+  const set = await ownSet(svc, companyId, input.setId)
+  if (!set) return { ok: false, error: 'Set not found' }
+  if (!UUID.test(input.fileId)) return { ok: false, error: 'Bad file' }
+  const { data: f } = await svc.from('plan_files').select('id, pages').eq('id', input.fileId).eq('set_id', set.id).eq('company_id', companyId).maybeSingle()
+  if (!f) return { ok: false, error: 'Bad file' }
+  const maxPage = typeof f.pages === 'number' && f.pages > 0 ? f.pages : 2000
+  const pages = (Array.isArray(input.pages) ? input.pages : []).slice(0, 300)
+    .filter((x) => x && UUID.test(String(x.versionId)) && Number.isInteger(x.page) && x.page >= 1 && x.page <= maxPage)
+  const done: string[] = []
+  for (const x of pages) {
+    const { data } = await svc.from('plan_versions').update({ file_id: f.id, page: x.page })
+      .eq('id', x.versionId).eq('set_id', set.id).eq('company_id', companyId).is('file_id', null).is('deleted_at', null)
+      .select('id')
+    if (data?.length) done.push(x.versionId)
+  }
+  await remeasure(svc, companyId, done)
+  revalidatePath(`/plans/${set.geofence_id}`)
+  return { ok: true, attached: done.length }
+}
+
 export async function planPdfLinkAction(fileId: string): Promise<Res<{ url: string }>> {
   if (isMock) return { ok: false, error: 'Demo mode' }
   if (!UUID.test(fileId)) return { ok: false, error: 'Bad file' }

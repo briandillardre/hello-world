@@ -6,7 +6,7 @@ import { X, FileUp, Loader2, Check, AlertTriangle, MapPin, Copy } from 'lucide-r
 import { createClient } from '@/lib/supabase'
 import { busy as globalBusy } from '@/lib/busy'
 import {
-  createPlanSetAction, startPlanFileUploadAction, finishPlanFileUploadAction, addPlanVersionAction,
+  createPlanSetAction, startPlanFileUploadAction, finishPlanFileUploadAction, attachPlanFileAction, addPlanVersionAction,
   startPlanImageUploadAction, finishPlanImageAction,
   voidPlanSheetsAction, copyPlacementAction, notePlacementAction,
 } from '@/lib/actions/plans'
@@ -29,7 +29,10 @@ const OverlayPlacer = dynamic(
 
 const MAX_BYTES = 50 * 1024 * 1024 // mirrors lib/actions/plans.ts + imagery.ts
 
-interface Src { file: File; kind: 'pdf' | 'image'; doc: PdfDoc | null; pages: number }
+// `bytes` = an in-memory copy of the PDF taken when it was read: on Android a
+// picked file can stop being readable a minute later, and the upload that
+// follows the review then dies on the phone without ever leaving it.
+interface Src { file: File; bytes: Blob | null; kind: 'pdf' | 'image'; doc: PdfDoc | null; pages: number }
 
 interface Item {
   key: string
@@ -110,6 +113,8 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
   const setRef = useRef<string | null>(null)
   const fileIdsRef = useRef(new Map<number, string>())
   const [voidedN, setVoidedN] = useState(0)
+  const [pdfMissing, setPdfMissing] = useState<number[]>([])
+  const [pdfBusy, setPdfBusy] = useState(false)
   const closeAll = () => { for (const s of srcs.current) void s.doc?.loadingTask.destroy().catch(() => {}) }
 
   // Free every open PDF when the panel goes away — after a set being filed
@@ -182,13 +187,16 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
         const f = list[si]
         if (isPdf(f) && pdfjs) {
           let doc: PdfDoc
+          let bytes: Blob | null = null
           try {
-            doc = await pdfjs.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise as PdfDoc
+            const data = new Uint8Array(await f.arrayBuffer())
+            if (data.byteLength <= MAX_BYTES) bytes = new Blob([data], { type: 'application/pdf' }) // copied before pdf.js takes the buffer
+            doc = await pdfjs.getDocument({ data }).promise as PdfDoc
           } catch {
             setError(`${f.name} wouldn’t open as a PDF — skipped.`)
             continue
           }
-          const idx = srcs.current.push({ file: f, kind: 'pdf', doc, pages: doc.numPages }) - 1
+          const idx = srcs.current.push({ file: f, bytes, kind: 'pdf', doc, pages: doc.numPages }) - 1
           const names = await layerNames(doc)
           for (let p = 1; p <= doc.numPages; p++) {
             if (cancelled.current) break
@@ -205,7 +213,7 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
         } else if (/^image\//.test(f.type)) {
           try {
             const r = await readImageFile(f)
-            const idx = srcs.current.push({ file: f, kind: 'image', doc: null, pages: 1 }) - 1
+            const idx = srcs.current.push({ file: f, bytes: null, kind: 'image', doc: null, pages: 1 }) - 1
             out.push(toItem(`${idx}:img`, idx, null, r.thumb, r.width, r.height, null, null, null, [], null, null))
             setItems([...out])
           } catch {
@@ -248,6 +256,7 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
     importing.current = true
     const done = globalBusy('Filing the set…')
     const problems: string[] = []
+    const missing: number[] = []
     try {
       let setId = setRef.current
       if (!setId) {
@@ -262,14 +271,18 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
       for (let i = 0; i < srcs.current.length; i++) {
         const s = srcs.current[i]
         if (s.kind !== 'pdf' || fileIds.has(i) || !todo.some((it) => it.src === i)) continue
-        if (s.file.size > MAX_BYTES) { problems.push(`${s.file.name} is over 50 MB — its pages file as pictures only.`); continue }
+        if (s.file.size > MAX_BYTES) { problems.push(`${s.file.name} is over 50 MB, so only the sheet pictures were saved — split the PDF to keep the original.`); continue }
         setProgress(`Uploading ${s.file.name.slice(0, 40)}…`)
-        const st = await startPlanFileUploadAction({ setId, name: s.file.name, size: s.file.size }).catch(() => null)
-        const up = st?.ok ? await sb.storage.from('plans').uploadToSignedUrl(st.path, st.token, s.file, { contentType: 'application/pdf' }) : null
-        const fin = st?.ok && up && !up.error
-          ? await finishPlanFileUploadAction({ setId, path: st.path, name: s.file.name, pages: s.pages }).catch(() => null) : null
-        if (fin?.ok) fileIds.set(i, fin.fileId)
-        else problems.push(`${s.file.name} didn’t upload${st && !st.ok ? ` (${st.error})` : ''} — its pages file as pictures; the PDF can be added again later.`)
+        const r = await uploadPdf(setId, i)
+        if (r.ok) {
+          fileIds.set(i, r.fileId)
+          // A re-run ("File the rest") whose PDF finally went: hand it to the sheets filed before it.
+          const pages = results.flatMap((f) => {
+            const it = items.find((x) => x.key === f.key)
+            return f.versionId && it && it.src === i && it.page ? [{ versionId: f.versionId, page: it.page }] : []
+          })
+          if (pages.length) await attachPlanFileAction({ setId, fileId: r.fileId, pages }).catch(() => null)
+        } else missing.push(i)
       }
       let stopped: string | null = null
       for (let i = 0; i < todo.length; i++) {
@@ -334,8 +347,50 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
       if (gone.current) closeAll()
     }
     setError(problems.length ? problems.join(' ') : null)
+    setPdfMissing(missing)
     setFiled(results)
     setPhase('done')
+  }
+
+  /** One PDF into the private bucket, tried twice. */
+  async function uploadPdf(setId: string, i: number): Promise<{ ok: true; fileId: string } | { ok: false }> {
+    const s = srcs.current[i]
+    const body = s.bytes ?? s.file
+    const sb = createClient()
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const st = await startPlanFileUploadAction({ setId, name: s.file.name, size: body.size }).catch(() => null)
+      if (st && !st.ok) return { ok: false }
+      if (!st?.ok) continue
+      const up = await sb.storage.from('plans').uploadToSignedUrl(st.path, st.token, body, { contentType: 'application/pdf' }).catch(() => null)
+      if (!up || up.error) continue
+      const fin = await finishPlanFileUploadAction({ setId, path: st.path, name: s.file.name, pages: s.pages }).catch(() => null)
+      if (fin?.ok) return { ok: true, fileId: fin.fileId }
+    }
+    return { ok: false }
+  }
+
+  /** The PDF again, after the sheets went in without it — then hand it to them. */
+  async function retryPdf() {
+    const setId = setRef.current
+    if (!setId || pdfBusy) return
+    setPdfBusy(true)
+    const still: number[] = []
+    try {
+      for (const i of pdfMissing) {
+        const r = await uploadPdf(setId, i)
+        if (!r.ok) { still.push(i); continue }
+        fileIdsRef.current.set(i, r.fileId)
+        const pages = filed.flatMap((f) => {
+          const it = items.find((x) => x.key === f.key)
+          return f.versionId && it && it.src === i && it.page ? [{ versionId: f.versionId, page: it.page }] : []
+        })
+        const a = pages.length ? await attachPlanFileAction({ setId, fileId: r.fileId, pages }).catch(() => null) : { ok: true }
+        if (!a?.ok) still.push(i)
+      }
+    } finally {
+      setPdfBusy(false)
+    }
+    setPdfMissing(still)
   }
 
   // After placing one sheet by hand: offer its corners to the others of this
@@ -530,6 +585,18 @@ export function AddPlanSet({ zoneId, sheets, ring, onClose, onDone, canVoid = fa
                   {voidedN > 0 && <li>{voidedN} voided</li>}
                 </ul>
               </div>
+              {pdfMissing.length > 0 && (
+                <div className="rounded-xl border border-amber/40 bg-amber/5 p-3 space-y-2">
+                  <p className="text-[12.5px] text-ink">
+                    The sheets are filed, but the original PDF{pdfMissing.length === 1 ? '' : 's'} didn’t save — usually a signal drop.
+                    Without it the sheets are pictures only: zooming in gets blurry, and measuring needs the sheet placed on the map.
+                  </p>
+                  <button type="button" disabled={pdfBusy} onClick={() => void retryPdf()}
+                    className="rounded-lg bg-amber text-[#1a1100] font-bold text-xs px-3 py-1.5 disabled:opacity-50">
+                    {pdfBusy ? 'Uploading the PDF…' : 'Try the PDF again'}
+                  </button>
+                </div>
+              )}
               {copyOffer && (
                 <div className="rounded-xl border border-amber/40 bg-amber/5 p-3 flex items-center gap-3 flex-wrap">
                   <p className="text-[12.5px] text-ink flex-1">Copy {copyOffer.from.number}’s placement to the other {copyOffer.to.length} sheet{copyOffer.to.length === 1 ? '' : 's'} on the same paper?</p>
