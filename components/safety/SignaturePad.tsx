@@ -5,12 +5,14 @@
  * the server keeps nothing else). Pointer events, so a finger, a stylus and a
  * mouse all draw; `touch-action: none` keeps the page from scrolling under it.
  */
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export function SignaturePad({ value, onChange }: { value: string; onChange: (path: string) => void }) {
   const svg = useRef<SVGSVGElement | null>(null)
   const drawing = useRef(false)
   const [path, setPath] = useState(value)
+  // a parent that clears the value (a filed form) clears the drawing too
+  useEffect(() => { setPath(value) }, [value])
 
   function at(e: React.PointerEvent): [number, number] {
     const r = svg.current!.getBoundingClientRect()
@@ -34,7 +36,7 @@ export function SignaturePad({ value, onChange }: { value: string; onChange: (pa
         {path && <path d={path} fill="none" stroke="#0f172a" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />}
         {!path && <text x="150" y="56" textAnchor="middle" fill="#94a3b8" fontSize="13">Sign here with a finger</text>}
       </svg>
-      {path && <button type="button" className="text-[12px] text-muted hover:text-ink" onClick={() => { setPath(''); onChange('') }}>Clear</button>}
+      {path && <button type="button" className="min-h-10 rounded-lg border border-navy-700 px-3 text-[13px] text-muted hover:text-ink" onClick={() => { setPath(''); onChange('') }}>Clear</button>}
     </div>
   )
 }

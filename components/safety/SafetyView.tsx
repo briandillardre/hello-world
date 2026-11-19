@@ -16,9 +16,10 @@ import {
 import type { SafetyData, TalkRow } from '@/lib/db/safety'
 import { closeReportAction, fileReportAction, removeTalkAction, reopenReportAction, signTalkAction, startTalkAction } from '@/lib/actions/safety'
 import { SignatureMark, SignaturePad } from './SignaturePad'
+import { useLang } from '@/lib/i18n'
 
 const box = 'rounded-lg border border-navy-700 bg-navy-950 px-2 py-2 text-ink outline-none text-[14px] w-full'
-const btn = 'inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-1.5 text-[12.5px] text-muted hover:text-ink disabled:opacity-50'
+const btn = 'inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-1.5 text-[13px] text-muted hover:text-ink disabled:opacity-50'
 const primary = 'rounded-xl bg-amber px-4 py-2.5 font-semibold text-navy-950 disabled:opacity-50 text-[14px]'
 const fmtDay = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
 const fmtWhen = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -32,6 +33,7 @@ export function SafetyView({ data, sites, canWrite, canClose, seesAll, canRemove
   data: SafetyData; sites: { id: string; name: string }[]; canWrite: boolean; canClose: boolean; seesAll: boolean; canRemoveAny: boolean; demo: boolean
 }) {
   const router = useRouter()
+  const { t: tr } = useLang()
   const [tab, setTab] = useState<'talks' | 'reports'>('talks')
   const [err, setErr] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
@@ -51,8 +53,8 @@ export function SafetyView({ data, sites, canWrite, canClose, seesAll, canRemove
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="max-w-3xl mx-auto px-4 py-5 space-y-4 text-[13px]">
         <div>
-          <h1 className="font-display font-bold text-xl text-ink flex items-center gap-2"><HardHat className="h-5 w-5 text-amber" /> Safety</h1>
-          <p className="text-faint">Toolbox talks the crew signs on the phone, and reports from the field. Same login as the time clock — no tablet, no paper.</p>
+          <h1 className="font-display font-bold text-xl text-ink flex items-center gap-2"><HardHat className="h-5 w-5 text-amber" /> {tr('Safety')}</h1>
+          <p className="text-faint">{tr('Toolbox talks the crew signs on the phone, and reports from the field. Same login as the time clock — no tablet, no paper.')}</p>
         </div>
         {demo && <p className="rounded-xl border border-navy-700 bg-navy-900/60 px-3 py-2 text-muted">Demo mode — sample talks and reports. Sign in to hold your own.</p>}
         {!data.available && !demo && <p className="rounded-xl border border-amber/40 bg-amber/5 px-3 py-2 text-amber">Safety is being set up — try again in a minute.</p>}
@@ -62,7 +64,7 @@ export function SafetyView({ data, sites, canWrite, canClose, seesAll, canRemove
         <div className="grid grid-cols-2 gap-1 rounded-xl border border-navy-800 bg-navy-900/60 p-1">
           {(['talks', 'reports'] as const).map((t) => (
             <button key={t} type="button" onClick={() => setTab(t)} className={'rounded-lg py-2 font-semibold ' + (tab === t ? 'bg-amber text-navy-950' : 'text-muted')}>
-              {t === 'talks' ? 'Toolbox talks' : `Reports${openReports ? ` (${openReports} open)` : ''}`}
+              {t === 'talks' ? tr('Toolbox talks') : `${tr('Reports')}${openReports ? ` (${openReports})` : ''}`}
             </button>
           ))}
         </div>
@@ -132,6 +134,7 @@ function Talks({ data, sites, canWrite, canRemoveAny, busy, run }: { data: Safet
 }
 
 function TalkCard({ t, me, canWrite, canRemove, busy, run }: { t: TalkRow; me: string | null; canWrite: boolean; canRemove: boolean; busy: string | null; run: Run }) {
+  const { t: tr } = useLang()
   const [open, setOpen] = useState(false)
   const [signing, setSigning] = useState<'me' | 'guest' | null>(null)
   const [sig, setSig] = useState('')
@@ -153,14 +156,14 @@ function TalkCard({ t, me, canWrite, canRemove, busy, run }: { t: TalkRow; me: s
           {topic && <ol className="list-decimal pl-5 space-y-0.5 text-muted">{topic.points.map((p) => <li key={p}>{p}</li>)}</ol>}
           {t.notes && <p className="text-muted whitespace-pre-wrap">{t.notes}</p>}
           <ul className="space-y-1">{t.signatures.map((s) => (
-            <li key={s.id} className="flex items-center gap-2"><SignatureMark d={s.signature} /><span className="text-ink">{s.name}</span>{!s.userId && <span className="text-faint text-[11px]">no login</span>}<span className="text-faint text-[11px] ml-auto">{fmtWhen(s.signedAt)}</span></li>
+            <li key={s.id} className="flex items-center gap-2"><SignatureMark d={s.signature} /><span className="text-ink">{s.name}</span>{!s.userId && <span className="text-faint text-[12px]">signed on another phone</span>}<span className="text-faint text-[11px] ml-auto">{fmtWhen(s.signedAt)}</span></li>
           ))}</ul>
           {canRemove && canWrite && <button type="button" className="inline-flex items-center gap-1 text-[12px] text-faint hover:text-red-400" onClick={() => { if (window.confirm('Remove this talk and its signatures?')) void run('rm', () => removeTalkAction(t.id), 'Couldn’t remove it.') }}><Trash2 className="h-3.5 w-3.5" /> Remove</button>}
         </div>
       )}
       {canWrite && !signing && (
         <div className="flex gap-2 flex-wrap">
-          {!signed && <button type="button" className={btn + ' border-amber/50 text-amber'} onClick={() => setSigning('me')}><PenLine className="h-3.5 w-3.5" /> Sign it</button>}
+          {!signed && <button type="button" className={btn + ' border-amber/50 text-amber'} onClick={() => setSigning('me')}><PenLine className="h-3.5 w-3.5" /> {tr('Sign it')}</button>}
           <button type="button" className={btn} onClick={() => setSigning('guest')}><UserPlus className="h-3.5 w-3.5" /> Someone without a login signs</button>
         </div>
       )}

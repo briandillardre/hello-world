@@ -15,7 +15,7 @@ import { deleteBetaRecordAction, saveBetaRecordAction } from '@/lib/actions/beta
 import type { BetaRecord } from '@/lib/db/beta'
 
 export const box = 'rounded-lg border border-navy-700 bg-navy-950 px-2 py-2 text-ink outline-none text-[14px] w-full min-w-0'
-export const btn = 'inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-1.5 text-[12.5px] text-muted hover:text-ink disabled:opacity-50'
+export const btn = 'inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-1.5 text-[13px] text-muted hover:text-ink disabled:opacity-50'
 export const primary = 'inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber px-4 py-2.5 font-semibold text-navy-950 disabled:opacity-50 text-[14px]'
 export const card = 'rounded-xl border border-navy-800 bg-navy-900/60 p-3'
 export const fmtDay = (d: string | null | undefined) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '—')

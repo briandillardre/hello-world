@@ -32,7 +32,7 @@ export function CredentialsView({ rows, people, addFor, me, today, demo, seesAll
 
   return (
     <BetaPage title={seesAll ? 'Crew cards & certs' : t('My cards')} icon={<IdCard className="h-5 w-5 text-violet-300" />} demo={demo}
-      blurb={seesAll ? 'Who holds which card, and what runs out next. Everyone can add their own from their phone; you can add them for your crew.' : 'Your cards and certifications. Add each one with its expiry — you’ll see it here before it runs out.'}>
+      blurb={seesAll ? 'Who holds which card, and what runs out next. Everyone can add their own from their phone; you can add them for your crew.' : t('Your cards and certifications. Add each one with its expiry — you’ll see it here before it runs out.')}>
       {canWrite && editing === null && <AddButton onClick={() => setEditing('new')}>{t('Add a card')}</AddButton>}
       {editing !== null && (
         <RecordEditor kind="credential" record={editing === 'new' ? null : editing} people={addFor} withMoney={false} onDone={() => setEditing(null)}
@@ -60,7 +60,7 @@ export function CredentialsView({ rows, people, addFor, me, today, demo, seesAll
         </>
       ) : (
         <div className={`${card} space-y-1.5`}>
-          {!mine.length && <p className="text-faint">Nothing yet.</p>}
+          {!mine.length && <p className="text-faint">{t('Nothing yet.')}</p>}
           {mine.map((r) => <Row key={r.id} r={r} today={today} canWrite={canWrite} canRemove onEdit={() => setEditing(r)} t={t} />)}
         </div>
       )}

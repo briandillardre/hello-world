@@ -61,8 +61,8 @@ export function DvirView({ assets, rows, demo, canWrite, canCertify }: { assets:
   }
 
   return (
-    <BetaPage title="Truck inspections (DVIR)" icon={<ClipboardCheck className="h-5 w-5 text-violet-300" />} demo={demo}
-      blurb="Pre- and post-trip inspections, signed on the phone. Every defect opens a work order; out-of-service ones say DO NOT OPERATE until someone signs off the repair.">
+    <BetaPage title={t('Truck inspections (DVIR)')} icon={<ClipboardCheck className="h-5 w-5 text-violet-300" />} demo={demo}
+      blurb={t('Pre- and post-trip inspections, signed on the phone. Every defect opens a work order; out-of-service ones say DO NOT OPERATE until someone signs off the repair.')}>
       {unsafeNow.size > 0 && <Notice tone="bad">Out of service: {Array.from(unsafeNow.keys()).map((id) => name.get(id) ?? 'a truck').join(', ')}</Notice>}
       {canWrite && (
         <div className={`${card} space-y-3`}>
@@ -89,7 +89,7 @@ export function DvirView({ assets, rows, demo, canWrite, canCertify }: { assets:
                   {d && (
                     <div className="mt-1.5 space-y-1.5">
                       <div className="flex gap-1">
-                        {(['minor', 'oos'] as const).map((s) => <button key={s} type="button" onClick={() => patch(i.key, { severity: s })} className={'rounded-md px-2 py-1 text-[12px] ' + (d.severity === s ? (s === 'oos' ? 'bg-red-500 text-white' : 'bg-amber text-navy-950') : 'border border-navy-700 text-muted')}>{t(s === 'oos' ? 'Out of service' : 'Minor')}</button>)}
+                        {(['minor', 'oos'] as const).map((s) => <button key={s} type="button" onClick={() => patch(i.key, { severity: s })} className={'min-h-10 rounded-md px-3 text-[13px] ' + (d.severity === s ? (s === 'oos' ? 'bg-red-500 text-white' : 'bg-amber text-navy-950') : 'border border-navy-700 text-muted')}>{t(s === 'oos' ? 'Out of service' : 'Minor')}</button>)}
                       </div>
                       <input className={box} placeholder={t('What is wrong?')} value={d.note} maxLength={400} onChange={(e) => patch(i.key, { note: e.target.value })} />
                     </div>
@@ -123,12 +123,12 @@ export function DvirView({ assets, rows, demo, canWrite, canCertify }: { assets:
               {d.defects.map((x) => <p key={x.item} className={x.severity === 'oos' ? 'text-red-300' : 'text-amber'}>• {t(itemLabel(x.item))}{x.note ? ` — ${x.note}` : ''}</p>)}
               {d.defects.length > 0 && !d.repair && canCertify && (
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" className={btn} disabled={!!busy} onClick={() => act(r.id, () => certifyDvirAction({ id: r.id, outcome: 'repaired' }))}>Certify repaired</button>
-                  <button type="button" className={btn} disabled={!!busy} onClick={() => act(r.id, () => certifyDvirAction({ id: r.id, outcome: 'not_needed' }))}>Repair not needed</button>
+                  <button type="button" className={btn} disabled={!!busy} onClick={() => act(r.id, () => certifyDvirAction({ id: r.id, outcome: 'repaired' }))}>{t('Certify repaired')}</button>
+                  <button type="button" className={btn} disabled={!!busy} onClick={() => act(r.id, () => certifyDvirAction({ id: r.id, outcome: 'not_needed' }))}>{t('Repair not needed')}</button>
                 </div>
               )}
               {d.repair && !d.reviewedBy && canWrite && (
-                <button type="button" className={btn} disabled={!!busy} onClick={() => act(r.id, () => reviewDvirAction({ id: r.id }))}>I’m the next driver — I saw the sign-off</button>
+                <button type="button" className={btn} disabled={!!busy} onClick={() => act(r.id, () => reviewDvirAction({ id: r.id }))}>{t('I’m the next driver — I saw the sign-off')}</button>
               )}
             </div>
           )

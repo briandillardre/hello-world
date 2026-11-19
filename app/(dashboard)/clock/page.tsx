@@ -1,3 +1,4 @@
+import { ClockHeader } from '@/components/field/ClockHeader'
 import { getMyClockState, getLogFormRaw, getClockPolicyRaw } from '@/lib/db/fieldops'
 import { requireFeature } from '@/lib/permissions-server'
 import { getCurrentCompanyId } from '@/lib/db/company'
@@ -39,10 +40,7 @@ export default async function ClockPage() {
 
   return (
     <div className="h-full overflow-auto pb-[54px] md:pb-20"><div className="max-w-md mx-auto px-4 py-6 space-y-4">
-      <div>
-        <h1 className="font-display font-bold text-xl text-ink">Time clock</h1>
-        <p className="text-[12.5px] text-faint">Clock in to where the day&apos;s going. The daily log is the way out.</p>
-      </div>
+      <ClockHeader />
       <ClockCard openEntry={openEntry} zones={zones} available={available} personName={personName} demo={isMock}
         form={resolveLogForm(logFormRaw).filter((it) => it.enabled)} policy={resolveClockPolicy(policyRaw)} />
     </div></div>

@@ -19,9 +19,9 @@ const EVENT = 'ht:lang'
 
 const ES: Record<string, string> = {
   // bottom bar + drawer
-  'Map': 'Mapa', 'Assets': 'Equipos', 'Alerts': 'Alertas', 'Time clock': 'Reloj', 'Clock in': 'Entrada', 'Time cards': 'Tarjetas de tiempo', 'Cards': 'Tarjetas',
+  'Map': 'Mapa', 'Assets': 'Máquinas', 'Alerts': 'Alertas', 'Time clock': 'Reloj de entrada', 'Clock in': 'Entrada', 'Time cards': 'Tarjetas de tiempo', 'Cards': 'Tarjetas',
   'Zones': 'Zonas', 'Plans': 'Planos', 'Jobs': 'Obras', 'Measurements': 'Medidas', 'Measure': 'Medir', 'Tag scanner': 'Etiquetas', 'Tags': 'Etiquetas',
-  'Command Center': 'Centro de mando', 'Command': 'Mando', 'Share location': 'Compartir ubicación', 'Live': 'En vivo', 'Daily logs': 'Reportes diarios', 'Logs': 'Reportes',
+  'Command Center': 'Centro de mando', 'Command': 'Centro', 'Share location': 'Compartir ubicación', 'Live': 'En vivo', 'Daily logs': 'Reportes diarios', 'Logs': 'Reportes',
   'Photos': 'Fotos', 'Safety': 'Seguridad', 'Team': 'Equipo', 'Team activity': 'Actividad', 'Activity': 'Actividad', 'Maintenance': 'Mantenimiento', 'Service': 'Servicio',
   'Reports': 'Informes', 'Accounting': 'Contabilidad', 'Books': 'Cuentas', 'Receipts': 'Recibos', 'Financials': 'Finanzas', 'Finance': 'Finanzas', 'Trackers': 'Rastreadores',
   'Hardware setup': 'Instalación', 'Hardware': 'Instalación', 'Settings': 'Ajustes', 'Getting started': 'Primeros pasos', 'Start': 'Inicio', 'Help': 'Ayuda',
@@ -40,6 +40,21 @@ const ES: Record<string, string> = {
   'Clock-in failed': 'No se pudo marcar entrada', 'Clock-out failed': 'No se pudo marcar salida',
   'Filing your daily log…': 'Enviando tu reporte diario…',
   'That photo couldn’t be read — try taking it again.': 'No se pudo leer la foto — tómala otra vez.',
+  "Plan for today (one line — what's getting done?)": 'Plan de hoy (una línea — ¿qué se va a hacer?)',
+  'Saved on your phone': 'Guardado en tu teléfono', 'On the clock': 'En turno', 'Take photo': 'Tomar foto', 'From gallery': 'De la galería', 'Back': 'Atrás',
+  'Your company asks for a quick photo of you at clock-in, and clocking in only works at the site or the yard.': 'Tu compañía pide una foto rápida al marcar entrada, y solo se puede marcar en la obra o en el patio.',
+  'Your company asks for a quick photo of you at clock-in — the front camera opens when you tap.': 'Tu compañía pide una foto rápida al marcar entrada — la cámara frontal se abre al tocar.',
+  'Your company has clock-in set to work only at the site or the yard.': 'Tu compañía solo permite marcar entrada en la obra o en el patio.',
+  "Clock in to where the day's going. The daily log is the way out.": 'Marca entrada donde va el día. El reporte diario es la salida.',
+  'Ask AI': 'Pregúntale a la IA', 'Truck inspection': 'Inspección del camión', 'Inspect': 'Inspección',
+  // safety
+  'Toolbox talks': 'Charlas de seguridad', 'Sign it': 'Firmar', 'Report something': 'Reportar algo',
+  'Toolbox talks the crew signs on the phone, and reports from the field. Same login as the time clock — no tablet, no paper.': 'Charlas de seguridad que la cuadrilla firma en el teléfono, y reportes del campo. El mismo acceso del reloj — sin tableta, sin papel.',
+  'Truck inspections (DVIR)': 'Inspecciones del camión (DVIR)',
+  'Pre- and post-trip inspections, signed on the phone. Every defect opens a work order; out-of-service ones say DO NOT OPERATE until someone signs off the repair.': 'Inspecciones antes y después del viaje, firmadas en el teléfono. Cada defecto abre una orden de trabajo; los que lo sacan de servicio dicen NO OPERAR hasta que alguien firme la reparación.',
+  'Certify repaired': 'Certificar reparado', 'Repair not needed': 'No necesita reparación', "I’m the next driver — I saw the sign-off": 'Soy el siguiente chofer — vi la firma',
+  'Your cards and certifications. Add each one with its expiry — you’ll see it here before it runs out.': 'Tus tarjetas y certificaciones. Agrega cada una con su vencimiento — la verás aquí antes de que venza.',
+  'Nothing yet.': 'Nada todavía.',
   // inspections (DVIR)
   'Pre-trip': 'Antes del viaje', 'Post-trip': 'Después del viaje', 'Vehicle': 'Vehículo', 'Odometer': 'Odómetro', 'Trailer (if hooked up)': 'Remolque (si va enganchado)',
   'Tap anything that is wrong': 'Toca lo que esté mal', 'Minor': 'Menor', 'Out of service': 'Fuera de servicio', 'What is wrong?': '¿Qué está mal?',
