@@ -191,7 +191,10 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
         <div className="space-y-0.5">
         {section.items.map(({ href, label, icon: Icon }) => {
           const locked = state(href) === 'locked'
-          const active = !locked && pathname.startsWith(href)
+          // longest match wins: /assets/onboard lights Hardware setup, not Assets too
+          const hits = (h: string) => pathname === h || pathname.startsWith(h + '/')
+          const longer = sections.some((sec) => sec.items.some((it) => it.href !== href && it.href.startsWith(href + '/') && hits(it.href)))
+          const active = !locked && hits(href) && !longer
           const isAlerts = href === '/alerts'
           return (
             <Link

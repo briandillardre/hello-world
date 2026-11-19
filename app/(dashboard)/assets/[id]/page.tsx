@@ -1,3 +1,4 @@
+import { OpenAlertsBanner } from '@/components/assets/OpenAlertsBanner'
 import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
@@ -182,6 +183,9 @@ export default async function AssetDetailPage({ params, searchParams }: { params
       </div>
 
       <div className="p-4 max-w-3xl space-y-5">
+        <Suspense fallback={null}>
+          <OpenAlertsBanner companyId={companyId} assetId={asset.id} canRecover={rankOf(perms) >= RANK.admin && perms.canEdit && !perms.viewingAs && asset.type !== 'personnel'} />
+        </Suspense>
         {/* Recovery (132): the red banner while one runs; Admins + owner start it here
             (a theft alert's "Start recovery" lands with ?recovery=start). */}
         {asset.type !== 'personnel' && (

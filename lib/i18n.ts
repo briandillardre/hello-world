@@ -55,6 +55,7 @@ const ES: Record<string, string> = {
   'Certify repaired': 'Certificar reparado', 'Repair not needed': 'No necesita reparación', "I’m the next driver — I saw the sign-off": 'Soy el siguiente chofer — vi la firma',
   'Your cards and certifications. Add each one with its expiry — you’ll see it here before it runs out.': 'Tus tarjetas y certificaciones. Agrega cada una con su vencimiento — la verás aquí antes de que venza.',
   'Nothing yet.': 'Nada todavía.',
+  'No inspections yet — drivers file their pre-trip and post-trip checks here, and every defect becomes a work order.': 'Todavía no hay inspecciones — los choferes hacen aquí su revisión antes y después del viaje, y cada defecto se vuelve una orden de trabajo.',
   // inspections (DVIR)
   'Pre-trip': 'Antes del viaje', 'Post-trip': 'Después del viaje', 'Vehicle': 'Vehículo', 'Odometer': 'Odómetro', 'Trailer (if hooked up)': 'Remolque (si va enganchado)',
   'Tap anything that is wrong': 'Toca lo que esté mal', 'Minor': 'Menor', 'Out of service': 'Fuera de servicio', 'What is wrong?': '¿Qué está mal?',

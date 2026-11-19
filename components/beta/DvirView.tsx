@@ -107,6 +107,7 @@ export function DvirView({ assets, rows, demo, canWrite, canCertify }: { assets:
           <button type="button" className={primary} disabled={busy === 'file'} onClick={file}>{busy === 'file' ? t('Filing…') : t('File inspection')}</button>
         </div>
       )}
+      {!rows.length && <Notice tone="info">{t('No inspections yet — drivers file their pre-trip and post-trip checks here, and every defect becomes a work order.')}</Notice>}
       <div className="space-y-2">
         {rows.slice(0, 60).map((r) => {
           const d = r.data as unknown as Dvir

@@ -65,7 +65,7 @@ const byHref: Record<string, (typeof allItems)[number]> = Object.fromEntries(all
 const ROLE_BARS: Record<string, string[]> = {
   admin:   ['/map', '/command', '/alerts', '/clock', '/assets'],
   manager: ['/map', '/assets', '/alerts', '/clock', '/reports'],
-  foreman: ['/map', '/clock', '/alerts', '/logs', '/track'],
+  foreman: ['/map', '/clock', '/alerts', '/logs', '/safety'],
   // the crew's day (crew review, Nov 19): clock, the truck check, the talk, the pictures
   associate: ['/map', '/clock', '/beta/dvir', '/safety', '/photos'],
   // A Prospective Client's bar seats only pages that are OPEN for them —

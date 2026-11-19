@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Briefcase, ChevronDown, ChevronRight, FileStack, MapPin, Ruler, Calculator, Layers, Cpu, Plane, Hash, CheckCircle2, AlertTriangle, Receipt, Wallet, ListChecks, FolderOpen, Gauge } from 'lucide-react'
+import { ArrowLeft, Briefcase, ChevronDown, ChevronRight, FileStack, MapPin, Ruler, Calculator, Layers, Cpu, Plane, Hash, CheckCircle2, AlertTriangle, Receipt, Wallet, ListChecks, FolderOpen, Gauge , Scale } from 'lucide-react'
 import {
   bucketOf, CHECK_STAGES, MAIN_PATH, progressOf, readyToStart, sectionsNow, SIDE_STAGES, STAGE_WORDS, type Stage,
 } from '@/lib/jobs/job'
@@ -30,7 +30,8 @@ const NEXT_WORDS: Partial<Record<Stage, string>> = {
 }
 const nextOf = (s: Stage): Stage | null => s === 'on_hold' ? 'active' : (() => { const i = MAIN_PATH.indexOf(s); return i >= 0 && i < MAIN_PATH.length - 1 ? MAIN_PATH[i + 1] : null })()
 
-export function JobView({ zone, page, extras, today, canEdit, canManage, canCosts, canPlans, demo }: {
+export function JobView({ zone, page, extras, today, canEdit, canManage, canCosts, canPlans, demo, canLiens = false }: {
+  canLiens?: boolean
   zone: { id: string; name: string; kind: string | null }; page: JobPage; extras: JobExtras | null; today: string
   canEdit: boolean; canManage: boolean; canCosts: boolean; canPlans: boolean; demo: boolean
 }) {
@@ -100,6 +101,7 @@ export function JobView({ zone, page, extras, today, canEdit, canManage, canCost
   const flow = [
     { href: `/jobs/${zone.id}/billing`, label: 'Pay apps', sub: 'Schedule of values, change orders, G702/G703', Icon: Receipt, show: canCosts },
     { href: `/jobs/${zone.id}/cost`, label: 'Job cost', sub: 'Budget vs actual, WIP', Icon: Wallet, show: canCosts },
+    { href: '/beta/liens', label: 'Lien clock', sub: 'Notice, lien and suit deadlines (beta)', Icon: Scale, show: canLiens },
     { href: `/jobs/${zone.id}/production`, label: 'Production', sub: canCosts ? 'Quantities by item, unit cost vs bid' : 'Log what got built today', Icon: Gauge, show: true },
     { href: `/jobs/${zone.id}/issues`, label: 'Issues & actions', sub: issuesSub, Icon: ListChecks, show: true },
     { href: `/jobs/${zone.id}/documents`, label: 'Documents', sub: extras?.docCount ? `${extras.docCount} filed` : 'COIs, permits, waivers, warranties', Icon: FolderOpen, show: true },

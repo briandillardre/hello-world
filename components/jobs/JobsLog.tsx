@@ -125,7 +125,7 @@ export function JobsLog({ rows, members, available, sites, template, templateCus
           </label>
         </div>
 
-        {!rows.length && available && !demo && (
+        {!rows.length && (available || demo) && (
           <div className="rounded-xl border border-navy-800 bg-navy-900/60 p-4 text-[12.5px] text-muted space-y-1">
             <p className="text-ink font-semibold">No jobs on the log yet.</p>
             <p>Start one from a site — draw the site on the map first if it isn&apos;t there. Each job carries its stage, the contract, its contacts and a checklist from the bid to closeout.</p>

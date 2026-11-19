@@ -319,6 +319,13 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
       </div>
 
       <div className="p-4 max-w-3xl space-y-6">
+        {/* What a foreman opens a site for, ahead of the zone editor (foreman review, Nov 19). */}
+        <nav aria-label="This site" className="-mt-1 flex flex-wrap gap-2">
+          <a href="#inside" className="inline-flex min-h-10 items-center rounded-xl border border-navy-700 bg-navy-900 px-3 text-[13px] text-ink hover:border-navy-600">Who&apos;s here ({inside.length})</a>
+          {jobInfo?.stage && <Link href={`/jobs/${fence.id}`} className="inline-flex min-h-10 items-center rounded-xl border border-navy-700 bg-navy-900 px-3 text-[13px] text-ink hover:border-navy-600">Job</Link>}
+          {jobInfo?.stage && <Link href={`/jobs/${fence.id}/production`} className="inline-flex min-h-10 items-center rounded-xl border border-navy-700 bg-navy-900 px-3 text-[13px] text-ink hover:border-navy-600">Today&apos;s numbers</Link>}
+          {perms.features.includes('plans') && !isProspect(perms) && !isBoundary && !isVendor && <Link href={`/plans/${fence.id}`} className="inline-flex min-h-10 items-center rounded-xl border border-navy-700 bg-navy-900 px-3 text-[13px] text-ink hover:border-navy-600">Plans</Link>}
+        </nav>
         {ring && ring.length >= 3 && (
           <GeofenceEditor
             id={fence.id} name={fence.name} color={fence.color} parentId={fence.parent_id ?? null}
@@ -466,7 +473,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
           lng: ring.reduce((s, p) => s + p[0], 0) / ring.length,
         } : null} />
 
-        <section>
+        <section id="inside" className="scroll-mt-28">
           <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Assets inside ({inside.length})</h2>
           {inside.length === 0 ? (
             <p className="text-sm text-faint rounded-xl border border-navy-800 bg-navy-900 p-4">No assets currently inside this zone.</p>

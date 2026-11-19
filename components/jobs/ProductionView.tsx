@@ -180,7 +180,8 @@ export function ProductionView({ zone, data, roll, canLog, canManage, canCosts, 
               })}
             </div>
             {canLog ? (
-              <div className="flex items-center gap-2">
+              // stays in reach above the phone's bottom bar however long the item list (foreman review, Nov 19)
+              <div className="sticky bottom-[calc(58px+var(--ht-safe-bottom,0px))] md:bottom-2 z-10 -mx-3 flex items-center gap-2 border-t border-navy-800 bg-navy-900/95 px-3 py-2 backdrop-blur">
                 <button type="button" disabled={!!busy} onClick={() => void saveDay()} className="rounded-xl bg-amber px-4 py-2.5 font-semibold text-navy-950 disabled:opacity-50 text-[14px]">{busy === 'day' ? 'Saving…' : 'Save the day'}</button>
                 {saved === day && !fromDraft && <span className="inline-flex items-center gap-1 text-teal"><Check className="h-4 w-4" /> Saved</span>}
               </div>

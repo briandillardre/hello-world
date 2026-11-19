@@ -41,7 +41,9 @@ const FLAG_TONE: Record<TimeCardFlag, string> = {
 }
 const h1 = (n: number) => (Math.round(n * 10) / 10).toFixed(1)
 
-export function TimeCardsView({ cards, verified, integrity = verified, week, tz, canEdit, canPushQbo, seesAll, myId, demo = false }: {
+export function TimeCardsView({ cards, verified, integrity = verified, week, tz, canEdit, canPushQbo, seesAll, myId, demo = false, certifiedPayroll = false }: {
+  /** The Beta certified-payroll tool is open for this login — link it from here. */
+  certifiedPayroll?: boolean
   cards: PersonCard[]
   verified: boolean
   /** The 120 reads (arrived late, left early, away, phone still) are available. */
@@ -101,6 +103,11 @@ export function TimeCardsView({ cards, verified, integrity = verified, week, tz,
             {seesAll && (
               <Link href="/timecards/short-haul" className="mt-1 inline-block text-[12px] font-semibold text-teal underline-offset-2 hover:underline">
                 DOT short-haul records →
+              </Link>
+            )}
+            {certifiedPayroll && (
+              <Link href="/beta/payroll" className="mt-1 ml-3 inline-block text-[12px] font-semibold text-teal underline-offset-2 hover:underline">
+                Certified payroll (WH-347) →
               </Link>
             )}
           </div>
