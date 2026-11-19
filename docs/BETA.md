@@ -23,6 +23,7 @@ Brian, Nov 19: *"Build all of this into hammertrack in a beta section."* These a
 | Español | `/beta/espanol` | everyone | `lib/i18n.ts` |
 | What a machine really costs | `/beta/owning` | Manager+ with $ | `lib/beta/owning.ts` |
 | Rentals | `/beta/rentals` | Foreman+ with $ | `lib/beta/rentals.ts` |
+| Site survey & as-built | `/beta/survey` | Foreman+ with Plans, dirt add-on | `lib/survey/*`, `lib/dirt/versions.ts`, `asbuiltFiles` in `lib/machine/export.ts` (migration 163) |
 | Activation | `/beta/activation` | the founder only | `lib/beta/activation.ts` |
 | Status | `/status` (public) | everyone | `lib/beta/status.ts`, health cron step 14 |
 
@@ -73,3 +74,15 @@ Brian, Nov 19: *"Build all of this into hammertrack in a beta section."* These a
 Harness: `node scripts/beta-test.mjs` (112 assertions). Run it after ANY change to `lib/beta`.
 
 What's next is board #237: reminders that push, a real LCPtracker import, an attorney read of the lien counts, ticket photos, an offline DVIR, more Spanish, and a footer link to /status.
+
+## Site survey & as-built (`/beta/survey`, migration 163)
+
+Brian, Nov 19 (after Nate's drone-for-curb-and-stone idea): *"Yes build the comparison into beta. This needs to be able to be seen on map like everything else. Takeoff / Takeoff changes revisions etc dated versioned etc. / Legends per version, earthwork, assumptions, etc. / Drone images / Drone / lidar overlay for topo map tying in to timeline slider / Asbuilt / subgrade / stone with functionality to export to a usable format for machine."*
+
+- **Takeoff versions** (`dirt_takeoff_versions`): *Freeze as a version* copies the takeoff's design, the server's numbers and its cut/fill picture (`<company>/<takeoff>/version-<n>-<ms>.png`) into an immutable, numbered, dated row with a **legend** (`buildLegend` in `lib/dirt/versions.ts`: earthwork CY, loads, max cut/fill, acres; assumptions — existing ground source, datum offset, shrink, truck size, topsoil, every section and pad, demo, the plan sheets and revisions it was traced from). *Compare* lists what changed between any two (`diffLegends`). Removing one is Manager+. The map's **Cut / fill** layer shows, on a scrubbed day, the version that stood that day (`versionOn`); a takeoff with versions shows nothing before its first.
+- **Drone topo on the timeline:** the map layer **Drone topo & survey** draws 1-ft contours (index every 5th, labelled from z16) from each site's newest flight on or before the scrubbed day (`/api/drone-topo` — the flight's DSM read over the site, resampled, marching squares in `lib/survey/contours.ts`, cached an hour). Drone pictures themselves already ride the timeline-aware Site imagery layer.
+- **Rover shots** (`survey_shots`): paste the data collector's PNEZD (or headed CSV; SC State Plane ft, swapped N/E put right, a local grid refused; or lat/lng). Codes say what a shot is on (`kindOf`: LIP/EOP, FL, BOC/TOC, CP, spot). The server refuses a set whose shots sit > 1 km from the site.
+- **The drone check** (`survey_checks`, `lib/survey/check.ts`): each shot against the flight under it — drone bias (median), 95% spread, share within ¼″ / ½″ / 1″, by kind, and a verdict: good for curb (95% ≤ ½″ after bias), for stone (≤ 1″), for subgrade (≤ 0.1 ft), or not. On the map the shots are coloured by miss (teal ≤ ¼″ … red > 1″).
+- **As-built → machine** (`asbuiltFiles`): the takeoff's finished grade re-fit to the pavement-edge shots (residual at each lip/flowline shot, IDW, faded to zero over the blend distance — `lib/survey/refit.ts`), then **top of stone** (FG less the asphalt only) and **subgrade** (FG less the full section), cut exactly the way the takeoff cuts sections. One LandXML 1.2, SC State Plane ft or UTM, filed in the site's Machine files (and downloadable). A mean residual over 0.5 ft warns that the rover and the plans are on different datums.
+- Writes: Foreman+ with Beta, edit and the dirt add-on; service role after the checks. Prospects nothing (`ht_prospect_lockdown` on all three tables). Health step 8 removes a purged takeoff's version pictures and sweeps strays.
+- Harness `node scripts/survey-test.mjs` (58) — run it after ANY change to `lib/survey`, `lib/dirt/versions.ts` or `asbuiltFiles`.

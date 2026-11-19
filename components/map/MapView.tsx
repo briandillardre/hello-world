@@ -78,6 +78,9 @@ import type { SiteOverlay } from '@/lib/db/imagery'
 import { planFrameIds, subCorners } from '@/lib/plans/crop'
 import { cropKey, cropMade, cropWanted, makeCrop } from './plan-crops'
 import { PhotoLightbox } from '@/components/zones/PhotoLightbox'
+import type { SurveyMapData } from '@/app/api/survey-map/route'
+import { versionOn } from '@/lib/dirt/versions'
+import { dzColor } from '@/lib/survey/check'
 
 const SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
@@ -4802,11 +4805,126 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     const t = setInterval(load, 30 * 60_000)
     return () => { cancelled = true; clearInterval(t) }
   }, [overlaysOn.dirt])
+  // ── Site survey (163, Beta): takeoff VERSIONS on the timeline, drone topo
+  // and rover shots. Live = each takeoff's current cut/fill; scrubbed back =
+  // the version frozen on or before that day (a takeoff with versions shows
+  // nothing before its first). Contours come from the flight that stood on
+  // the scrubbed day, per site.
+  const [survey, setSurvey] = useState<SurveyMapData | null>(null)
+  useEffect(() => {
+    if (!overlaysOn.survey && !overlaysOn.dirt) return
+    let cancelled = false
+    const load = () => {
+      fetch('/api/survey-map')
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`survey ${r.status}`))))
+        .then((j: SurveyMapData) => {
+          if (cancelled) return
+          setSurvey(j)
+          window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'survey', at: Date.now() } }))
+        })
+        .catch((err) => { if (!cancelled) window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'survey', msg: err instanceof Error ? err.message : 'survey unreachable' } })) })
+    }
+    load()
+    const t = setInterval(load, 30 * 60_000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [overlaysOn.survey, overlaysOn.dirt])
+  const surveyCutoff = range !== 'live' && realWindowEff ? realWindowEff.from + pbT * (realWindowEff.to - realWindowEff.from) : Infinity
+  // the day, not the frame — the effects below only fire when the scrubber crosses a date
+  const surveyDayKey = Number.isFinite(surveyCutoff) ? new Date(surveyCutoff).toISOString().slice(0, 10) : 'live'
+  const dirtShown = useMemo(() => {
+    if (surveyDayKey === 'live' || !survey?.versions.length) return dirtItems
+    const cutoff = Date.parse(`${surveyDayKey}T23:59:59`)
+    const byTakeoff = new Map<string, SurveyMapData['versions']>()
+    for (const v of survey.versions) byTakeoff.set(v.takeoffId, [...(byTakeoff.get(v.takeoffId) ?? []), v])
+    const out: typeof dirtItems = []
+    for (const d of dirtItems) {
+      const vs = byTakeoff.get(d.id)
+      if (!vs) { out.push(d); continue }
+      const v = versionOn(vs, cutoff)
+      if (v) out.push({ id: `v-${v.id}`, url: v.url, corners: v.corners, cutCy: v.cutCy, fillCy: v.fillCy, exportCy: 0, importCy: 0 })
+    }
+    return out
+  }, [dirtItems, survey, surveyDayKey])
+  const topoActiveKey = useMemo(() => {
+    if (!survey?.flights.length) return ''
+    const cutoff = surveyDayKey === 'live' ? Infinity : Date.parse(`${surveyDayKey}T23:59:59`)
+    const best = new Map<string, SurveyMapData['flights'][number]>()
+    for (const f of survey.flights) {
+      if (Date.parse(`${f.flownOn}T00:00:00`) > cutoff) continue
+      const k = f.zoneId ?? f.id
+      const b = best.get(k)
+      if (!b || f.flownOn > b.flownOn) best.set(k, f)
+    }
+    return Array.from(best.values()).map((f) => f.id).sort().join(',')
+  }, [survey, surveyDayKey])
+  const topoCache = useRef<Map<string, GeoJSON.FeatureCollection>>(new Map())
+  const [topoTick, setTopoTick] = useState(0)
+  useEffect(() => {
+    if (!overlaysOn.survey || !topoActiveKey) return
+    let cancelled = false
+    for (const id of topoActiveKey.split(',')) {
+      if (topoCache.current.has(id)) continue
+      fetch(`/api/drone-topo?surface=${encodeURIComponent(id)}&interval=1`)
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`topo ${r.status}`))))
+        .then((fc: GeoJSON.FeatureCollection) => { if (!cancelled) { topoCache.current.set(id, fc); setTopoTick((t) => t + 1) } })
+        .catch((err) => { if (!cancelled) window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'survey', msg: err instanceof Error ? err.message : 'topo unreachable' } })) })
+    }
+    return () => { cancelled = true }
+  }, [overlaysOn.survey, topoActiveKey])
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m || !mapAlive(m)) return
+    const on = !!overlaysOn.survey
+    const opacity = overlayOpacity.survey ?? 0.9
+    const ids = on && topoActiveKey ? topoActiveKey.split(',') : []
+    const topo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: ids.flatMap((id) => topoCache.current.get(id)?.features ?? []) }
+    const cutoff = surveyDayKey === 'live' ? Infinity : Date.parse(`${surveyDayKey}T23:59:59`)
+    const pts: GeoJSON.Feature[] = []
+    if (on && survey) {
+      for (const c of survey.checks) {
+        if (Date.parse(c.takenOn ? `${c.takenOn}T00:00:00` : c.at) > cutoff) continue
+        for (const [lng, lat, dz, kind, id] of c.shots) {
+          const off = dz === null ? null : dz - c.bias
+          pts.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: { c: dzColor(dz, c.bias), lbl: off === null ? `${id} · no drone` : `${id} ${off >= 0 ? '+' : '−'}${Math.abs(off * 12).toFixed(2)}"`, kind } })
+        }
+      }
+      for (const st of survey.shots) {
+        if (Date.parse(`${st.takenOn}T00:00:00`) > cutoff) continue
+        for (const [lng, lat, z, kind, id] of st.shots) pts.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: { c: '#e2e8f0', lbl: `${id} ${z.toFixed(2)}`, kind } })
+      }
+    }
+    const shotsFc: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: pts }
+    const tsrc = m.getSource('survey-topo') as maplibregl.GeoJSONSource | undefined
+    if (tsrc) tsrc.setData(topo)
+    else if (topo.features.length) {
+      m.addSource('survey-topo', { type: 'geojson', data: topo })
+      const before = m.getLayer('clusters') ? 'clusters' : undefined
+      m.addLayer({ id: 'survey-topo-line', type: 'line', source: 'survey-topo', minzoom: 13,
+        paint: { 'line-color': ['case', ['==', ['get', 'index'], 1], '#fbbf24', '#fde68a'], 'line-width': ['case', ['==', ['get', 'index'], 1], 1.6, 0.7], 'line-opacity': opacity } }, before)
+      m.addLayer({ id: 'survey-topo-label', type: 'symbol', source: 'survey-topo', minzoom: 16, filter: ['==', ['get', 'index'], 1],
+        layout: { 'symbol-placement': 'line', 'text-field': ['get', 'lbl'], 'text-size': 10, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'] },
+        paint: { 'text-color': '#fde68a', 'text-halo-color': '#04121d', 'text-halo-width': 1.4 } }, before)
+    }
+    if (m.getLayer('survey-topo-line')) m.setPaintProperty('survey-topo-line', 'line-opacity', opacity)
+    const ssrc = m.getSource('survey-shots') as maplibregl.GeoJSONSource | undefined
+    if (ssrc) ssrc.setData(shotsFc)
+    else if (pts.length) {
+      m.addSource('survey-shots', { type: 'geojson', data: shotsFc })
+      const before = m.getLayer('clusters') ? 'clusters' : undefined
+      m.addLayer({ id: 'survey-shots-dot', type: 'circle', source: 'survey-shots', minzoom: 14,
+        paint: { 'circle-color': ['get', 'c'], 'circle-radius': ['interpolate', ['linear'], ['zoom'], 14, 2.5, 19, 6], 'circle-stroke-color': '#04121d', 'circle-stroke-width': 1 } }, before)
+      m.addLayer({ id: 'survey-shots-label', type: 'symbol', source: 'survey-shots', minzoom: 18.5,
+        layout: { 'text-field': ['get', 'lbl'], 'text-size': 10, 'text-offset': [0, 1.1], 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': false },
+        paint: { 'text-color': '#ffffff', 'text-halo-color': '#04121d', 'text-halo-width': 1.4 } }, before)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, overlaysOn.survey, overlayOpacity.survey, topoActiveKey, topoTick, survey, surveyDayKey])
+
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m || !mapAlive(m)) return
     const on = !!overlaysOn.dirt
-    const items = on ? dirtItems : []
+    const items = on ? dirtShown : []
     const known = new Set<string>()
     const opacity = overlayOpacity.dirt ?? 0.8
     for (const d of items) {
@@ -4852,7 +4970,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         paint: { 'text-color': '#ffffff', 'text-halo-color': '#04121d', 'text-halo-width': 1.6 },
       }, m.getLayer('clusters') ? 'clusters' : undefined)
     }
-  }, [mapReady, overlaysOn.dirt, dirtItems, overlayOpacity.dirt])
+  }, [mapReady, overlaysOn.dirt, dirtShown, overlayOpacity.dirt])
 
   // Raster tiles that fail to load (moved WMS layer, dead service, blocked
   // request) used to die in silence — the row looked on, the map drew

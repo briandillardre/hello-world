@@ -1,14 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { Activity, Banknote, CalendarClock, ClipboardCheck, CloudRain, Construction, FlaskConical, Gauge, IdCard, Languages, Scale, Truck } from 'lucide-react'
+import { Activity, Banknote, CalendarClock, ClipboardCheck, CloudRain, Construction, FlaskConical, Gauge, IdCard, Languages, Mountain, Scale, Truck } from 'lucide-react'
 import type { Tool } from '@/lib/beta/tools'
 import { BetaPage, StatePill } from './ui'
 import { useLang } from '@/lib/i18n'
 
 const ICON: Record<string, typeof Truck> = {
   payroll: Banknote, liens: Scale, weather: CloudRain, locates: Construction, haul: Truck, dvir: ClipboardCheck,
-  credentials: IdCard, espanol: Languages, owning: Gauge, rentals: CalendarClock, activation: Activity,
+  credentials: IdCard, espanol: Languages, owning: Gauge, rentals: CalendarClock, activation: Activity, survey: Mountain,
 }
 
 export function BetaHub({ tools, due, demo }: { tools: Omit<Tool, 'canOpen'>[]; due: Record<string, { overdue: number; soon: number }>; demo: boolean }) {

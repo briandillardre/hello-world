@@ -339,3 +339,85 @@ export function designFiles(ctx: TakeoffContext, design: DirtDesign, o: { projec
     dxf: dxf({ design, crs: m.crs, fromLngLat, fg: m.fg, sg: m.sg }),
   }
 }
+
+// ── As-built re-fit (163, Beta) ─────────────────────────────────────────────
+
+export interface AsbuiltShot { lng: number; lat: number; zFt: number; kind: string }
+export interface AsbuiltFiles {
+  landxml: string
+  crs: Crs
+  warnings: string[]
+  /** Per shot used: as-built minus design, feet. */
+  residualsFt: number[]
+  faces: { fg: number; stone: number; sg: number }
+}
+
+/** A LandXML with any number of surfaces (the as-built set: finished grade, top of stone, subgrade). */
+export function landXmlSurfaces(o: { project: string; crs: Crs; surfaces: { name: string; desc: string; mesh: Mesh }[]; now: Date; navd88?: boolean }): string {
+  const base = landXml({ project: o.project, crs: o.crs, fg: o.surfaces[0].mesh, sg: { e: [], n: [], z: [], faces: [] }, now: o.now, navd88: o.navd88 })
+  const body = o.surfaces.filter((s) => s.mesh.faces.length).map((s) => surfaceXml(s.name, s.desc, s.mesh)).join('\n')
+  return base.replace(/ {2}<Surfaces>[\s\S]*<\/Surfaces>/, `  <Surfaces>\n${body}\n  </Surfaces>`)
+}
+
+/**
+ * Re-fit the takeoff's finished grade to the curb as built (lib/survey/refit.ts),
+ * then cut TOP OF STONE (finished grade less the asphalt under every paving
+ * section) and SUBGRADE (less the whole section, pads at their subgrade) from
+ * the re-fit surface by the takeoff's own exact method.
+ */
+export function asbuiltFiles(ctx: TakeoffContext, design: DirtDesign, shots: AsbuiltShot[], o: {
+  project: string; now: Date; grid?: Grid; radiusFt: number; asphaltIn: number; kinds: string[]
+  correctionField: (res: { x: number; y: number; dz: number }[], radiusM: number) => { at: (x: number, y: number) => number }
+}): AsbuiltFiles {
+  if (!ctx.boundary.length) throw new ExportError('Trace the grading limits first.')
+  if (!(ctx.fg instanceof TinSurface)) throw new ExportError('Trace the proposed grades (contours, spots or pads) first — the re-fit starts from the design surface.')
+  const warnings: string[] = []
+  const fg0 = ctx.fg
+  const res: { x: number; y: number; dz: number }[] = []
+  const residualsFt: number[] = []
+  let outside = 0
+  for (const s of shots) {
+    if (!o.kinds.includes(s.kind)) continue
+    const [x, y] = toFrame(ctx.frame, s.lng, s.lat)
+    const z = fg0.zAt(x, y)
+    if (!Number.isFinite(z)) { outside++; continue }
+    const dz = s.zFt * FT - z
+    res.push({ x, y, dz })
+    residualsFt.push(Math.round((dz / FT) * 1000) / 1000)
+  }
+  if (!res.length) throw new ExportError('None of the pavement-edge shots fall on the design surface — check the shots are on this site and coded LIP or FL.')
+  if (outside) warnings.push(`${outside} shot${outside === 1 ? '' : 's'} fell outside the design surface and were left out.`)
+  const mean = residualsFt.reduce((a, b) => a + b, 0) / residualsFt.length
+  if (Math.abs(mean) > 0.5) warnings.push(`The shots sit ${Math.abs(mean).toFixed(2)} ft ${mean > 0 ? 'above' : 'below'} the design on average — check the rover and the plan are on the same vertical datum before sending this to a machine.`)
+  const field = o.correctionField(res, Math.max(1, o.radiusFt) * FT)
+  const m = fg0.mesh()
+  const z2 = m.z.map((z, i) => z + field.at(m.xy[2 * i], m.xy[2 * i + 1]))
+  const refit = new TinSurface(m.xy, z2, Uint32Array.from(m.faces))
+  const { crs, proj, zOut } = crsFor(ctx, o.grid)
+  const look = lookups(ctx)
+  const inside = (x: number, y: number) => look.boundary.at(x, y) >= 0
+  const fg = clipMesh(refit, inside, proj, zOut)
+  const empty: Mesh = { e: [], n: [], z: [], faces: [] }
+  let stone = empty, sg = empty
+  if (!ctx.reduce.length) warnings.push('No paving sections are traced, so there is no stone to cut — trace the paving areas with their thickness on the takeoff.')
+  else {
+    const asphaltM = Math.max(0, o.asphaltIn) * 0.0254
+    const thin = ctx.reduce.filter((r) => r.t < asphaltM - 1e-6)
+    if (thin.length) warnings.push(`${thin.length} paving section${thin.length === 1 ? ' is' : 's are'} thinner than the asphalt typed — top of stone there is the section bottom.`)
+    const stoneCtx: TakeoffContext = { ...ctx, platforms: [], reduce: ctx.reduce.map((r) => ({ ...r, t: Math.min(r.t, asphaltM) })) }
+    const st = subgradeTin(stoneCtx, refit, warnings)
+    if (st) stone = clipMesh(st, inside, proj, zOut)
+    const sgt = subgradeTin(ctx, refit, warnings)
+    if (sgt) sg = clipMesh(sgt, inside, proj, zOut)
+  }
+  const day = o.now.toISOString().slice(0, 10)
+  const landxml = landXmlSurfaces({
+    project: o.project, crs, now: o.now, navd88: design.existing.source === 'lidar' && design.existing.offsetFt === 0,
+    surfaces: [
+      { name: 'Finished grade (as-built fit)', desc: `Design finished grade re-fit to ${res.length} as-built pavement-edge shots, ${day}`, mesh: fg },
+      { name: 'Top of stone', desc: `Finished grade less ${o.asphaltIn}" asphalt under the paving sections`, mesh: stone },
+      { name: 'Subgrade', desc: 'Finished grade less the full section under paving; pads at subgrade', mesh: sg },
+    ],
+  })
+  return { landxml, crs, warnings, residualsFt, faces: { fg: fg.faces.length / 3, stone: stone.faces.length / 3, sg: sg.faces.length / 3 } }
+}

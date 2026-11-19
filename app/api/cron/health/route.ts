@@ -423,6 +423,7 @@ export async function GET(req: NextRequest) {
       const svc = createServiceClient()
       const HEAT_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/heat-[0-9]+\.png$/i
       const PROGRESS_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/progress-[0-9a-f-]{36}-[0-9]+\.png$/i
+      const VERSION_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/version-[0-9]+-[0-9]+\.png$/i
       const GROUND_PATH = /^ground\/[0-9a-f-]{36}_[0-9]+_[0-9]+_[0-9]+_[0-9]+_[0-9]+_[0-9]+\.bin$/i
       const DAY = 86_400_000
       const { data: gone, error: goneErr } = await svc.from('dirt_takeoffs').select('id, heat_path')
@@ -433,6 +434,9 @@ export async function GET(req: NextRequest) {
       if (gone?.length) {
         const { data: prog } = await svc.from('dirt_progress').select('heat_path').in('takeoff_id', gone.map((r) => r.id as string)).limit(1000)
         pics.push(...(prog ?? []).map((r) => r.heat_path).filter((x): x is string => typeof x === 'string' && PROGRESS_PATH.test(x)))
+        // …and their frozen versions' pictures (163).
+        const { data: vers } = await svc.from('dirt_takeoff_versions').select('heat_path').in('takeoff_id', gone.map((r) => r.id as string)).limit(1000)
+        pics.push(...(vers ?? []).map((r) => r.heat_path).filter((x): x is string => typeof x === 'string' && VERSION_PATH.test(x)))
       }
       if (pics.length) await svc.storage.from('dirt').remove(pics)
       if (gone?.length) {
@@ -458,6 +462,15 @@ export async function GET(req: NextRequest) {
           if (!keptErr) {
             const live = new Set((kept ?? []).map((r) => String(r.heat_path)))
             stray.push(...progressPics.filter((x) => !live.has(x)))
+          }
+        }
+        // A version picture no live version row points at (a removed version, or a freeze that died mid-way).
+        const versionPics = old.filter((x) => VERSION_PATH.test(x))
+        if (versionPics.length) {
+          const { data: kept, error: keptErr } = await svc.from('dirt_takeoff_versions').select('heat_path').in('heat_path', versionPics).is('deleted_at', null)
+          if (!keptErr) {
+            const live = new Set((kept ?? []).map((r) => String(r.heat_path)))
+            stray.push(...versionPics.filter((x) => !live.has(x)))
           }
         }
         if (stray.length) { await svc.storage.from('dirt').remove(stray); strays += stray.length }

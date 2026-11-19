@@ -5,7 +5,7 @@
  */
 import { rankOf, RANK, type Permissions } from '@/lib/permissions'
 
-export type ToolKey = 'payroll' | 'liens' | 'weather' | 'locates' | 'owning' | 'rentals' | 'haul' | 'credentials' | 'espanol' | 'dvir' | 'activation'
+export type ToolKey = 'survey' | 'payroll' | 'liens' | 'weather' | 'locates' | 'owning' | 'rentals' | 'haul' | 'credentials' | 'espanol' | 'dvir' | 'activation'
 
 export interface Tool {
   key: ToolKey
@@ -35,6 +35,8 @@ export const TOOLS: Tool[] = [
     canOpen: () => true },
   { key: 'espanol', href: '/beta/espanol', group: 'Field', title: 'Español', blurb: 'The crew’s screens in Spanish — the bottom bar, the time clock, inspections — switched per phone.',
     canOpen: () => true },
+  { key: 'survey', href: '/beta/survey', group: 'Machines', title: 'Site survey & as-built', blurb: 'Takeoff versions with their legends, drone topo on the map’s timeline, drone vs rover checks, and the stone / subgrade surfaces re-fit to the curb as built — out to the machines.',
+    canOpen: (p) => rankOf(p) >= RANK.foreman && has(p, 'plans') },
   { key: 'owning', href: '/beta/owning', group: 'Machines', title: 'What a machine really costs', blurb: 'Owning + operating cost per hour on the hours it really ran — rent-vs-own and replace-now in plain words.',
     canOpen: (p) => rankOf(p) >= RANK.manager && p.canViewCosts },
   { key: 'rentals', href: '/beta/rentals', group: 'Machines', title: 'Rentals', blurb: 'Everything on rent, what it has cost so far, and the rented machine that hasn’t moved in a week.',
