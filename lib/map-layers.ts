@@ -203,6 +203,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'siteimg', label: 'Site imagery', group: 'jobs', status: 'live', hasOpacity: true, hint: 'placed drone and satellite shots pinned to the ground · follows the timeline — scrub to see the site that day' },
   { id: 'siteplans', advanced: true, label: 'Scaled plans', group: 'jobs', status: 'live', hasOpacity: true, hint: 'the sheets switched to Map in each site’s plan room — the current version live, the version current on the day when you scrub back' },
   { id: 'dirt', advanced: true, label: 'Cut / fill', group: 'jobs', status: 'live', hasOpacity: true, hint: 'each site’s saved dirt takeoff where its grading plan puts it — red = cut, blue = fill, deeper = darker · yards on the label from street zoom · the dirt takeoff add-on' },
+  { id: 'survey', advanced: true, label: 'Drone topo & survey', group: 'jobs', status: 'live', hasOpacity: true, hint: 'contours off each site’s drone flight (1 ft, index every 5) and rover shots coloured by how far the drone was off — teal within ¼", green ½", amber 1", red beyond · follows the timeline: scrub back to see the site as flown that day · Beta' },
   { id: 'measures', advanced: true, label: 'Measurements', group: 'jobs', status: 'live', hint: 'saved points, lines & areas — tap one on the map to open, edit, or delete it' },
 
   // ── Weather ───────────────────────────────────────────────────────────────

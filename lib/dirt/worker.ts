@@ -6,7 +6,8 @@
 import { buildContext, runTakeoff, type DirtDesign, type GroundGrid } from './takeoff'
 import { heatRaster } from './heat'
 import { groundResults, type BoringIn } from '../borings/ground'
-import { designFiles } from '../machine/export'
+import { asbuiltFiles, designFiles, type AsbuiltShot } from '../machine/export'
+import { correctionField } from '../survey/refit'
 import type { Grid } from '../machine/grid'
 
 let ground: GroundGrid | null = null
@@ -18,6 +19,8 @@ type In =
   | { type: 'run'; seq: number; design: DirtDesign }
   /** The design out to the machines (LandXML + DXF) — sent to its own worker instance by the export panel. */
   | { type: 'export'; design: DirtDesign; project: string; grid: Grid }
+  /** The design re-fit to as-built curb shots, with top of stone and subgrade (163, Beta). */
+  | { type: 'asbuilt'; design: DirtDesign; project: string; grid: Grid; shots: AsbuiltShot[]; radiusFt: number; asphaltIn: number; kinds: string[] }
 
 const post = (msg: unknown, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(msg, transfer)
 
@@ -31,6 +34,15 @@ self.onmessage = (e: MessageEvent<In>) => {
       post({ type: 'exported', landxml: f.landxml, dxf: f.dxf, crs: f.crs, warnings: f.warnings, fgFaces: f.fg.faces.length / 3, sgFaces: f.sg.faces.length / 3 })
     } catch (err) {
       post({ type: 'export-error', error: err instanceof Error && err.name === 'ExportError' ? err.message : 'The design couldn’t be exported — check the traces.' })
+    }
+    return
+  }
+  if (m.type === 'asbuilt') {
+    try {
+      const f = asbuiltFiles(buildContext(m.design, ground), m.design, m.shots, { project: m.project, now: new Date(), grid: m.grid, radiusFt: m.radiusFt, asphaltIn: m.asphaltIn, kinds: m.kinds, correctionField })
+      post({ type: 'asbuilt', landxml: f.landxml, crs: f.crs, warnings: f.warnings, residualsFt: f.residualsFt, faces: f.faces })
+    } catch (err) {
+      post({ type: 'asbuilt-error', error: err instanceof Error && err.name === 'ExportError' ? err.message : 'The as-built surfaces couldn’t be built — check the takeoff traces.' })
     }
     return
   }
