@@ -33,14 +33,6 @@ const navSections: { title: string | null; items: { href: string; label: string;
     { href: '/team', label: 'Team', icon: Users },
     { href: '/beta', label: 'Beta', icon: FlaskConical },
   ]},
-  { title: 'Setup', items: [
-    { href: '/trackers', label: 'Trackers', icon: Satellite },
-    { href: '/assets/onboard', label: 'Hardware setup', icon: Cpu },
-    { href: '/settings', label: 'Settings', icon: Settings },
-    { href: '/settings/phone', label: 'My phone', icon: BellRing },
-    { href: '/welcome', label: 'Getting started', icon: Rocket },
-    { href: '/help', label: 'Help', icon: HelpCircle },
-  ]},
   // Useful but rarely opened — same list as the phone drawer's Advanced group.
   { title: 'Advanced', items: [
     { href: '/measurements', label: 'Measurements', icon: Ruler },
@@ -51,6 +43,14 @@ const navSections: { title: string | null; items: { href: string; label: string;
     { href: '/finance', label: 'Financials', icon: Scale },
     { href: '/activity', label: 'Team activity', icon: Activity },
     { href: '/aircraft', label: 'Flight log', icon: Plane },
+  ]},
+  { title: 'Setup', items: [
+    { href: '/trackers', label: 'Trackers', icon: Satellite },
+    { href: '/assets/onboard', label: 'Hardware setup', icon: Cpu },
+    { href: '/settings', label: 'Settings', icon: Settings },
+    { href: '/settings/phone', label: 'My phone', icon: BellRing },
+    { href: '/welcome', label: 'Getting started', icon: Rocket },
+    { href: '/help', label: 'Help', icon: HelpCircle },
   ]},
 ]
 
@@ -191,7 +191,10 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
         <div className="space-y-0.5">
         {section.items.map(({ href, label, icon: Icon }) => {
           const locked = state(href) === 'locked'
-          const active = !locked && pathname.startsWith(href)
+          // longest match wins: /assets/onboard lights Hardware setup, not Assets too
+          const hits = (h: string) => pathname === h || pathname.startsWith(h + '/')
+          const longer = sections.some((sec) => sec.items.some((it) => it.href !== href && it.href.startsWith(href + '/') && hits(it.href)))
+          const active = !locked && hits(href) && !longer
           const isAlerts = href === '/alerts'
           return (
             <Link

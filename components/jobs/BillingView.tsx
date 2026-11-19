@@ -8,9 +8,9 @@
  * Excel come straight off the screen.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, FileText, FileSpreadsheet, Plus, Send, Trash2, Pencil, AlertTriangle, Receipt } from 'lucide-react'
+import { FileText, FileSpreadsheet, Plus, Send, Trash2, Pencil, AlertTriangle, Receipt } from 'lucide-react'
+import { JobTabs } from './JobTabs'
 import {
   APP_STATUS_WORDS, CO_STATUSES, CO_STATUS_WORDS, CO_TYPES, CO_TYPE_WORDS, counts, lineMath, linesFor, money, readDollars, thisPeriodFromPct, totalsFor, appWarnings,
   type AppView, type ChangeOrder, type SovLine,
@@ -84,7 +84,7 @@ export function BillingView({ zone, info, contract, billing, canEdit, canManage,
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="max-w-5xl mx-auto px-4 py-5 space-y-4">
         <div>
-          <Link href={`/jobs/${zone.id}`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink mb-2"><ArrowLeft className="h-4 w-4" /> The job</Link>
+          <JobTabs zoneId={zone.id} costs={true} />
           <h1 className="font-display font-bold text-xl text-ink flex items-center gap-2"><Receipt className="h-5 w-5 text-amber flex-none" /> <span className="truncate">Pay apps · {zone.name}</span></h1>
           <p className="text-[12.5px] text-faint">The schedule of values, change orders and each month&apos;s application for payment — the application page and the continuation sheet, as a PDF or an Excel with live formulas.</p>
         </div>

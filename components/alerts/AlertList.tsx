@@ -418,8 +418,9 @@ function GroupCard({ group: g, onAcknowledge, onAcknowledgeMany, onSnooze, canRe
           {onAcknowledgeMany && g.nonCriticalIds.length > 0 && !g.critical && (
             <button
               onClick={() => onAcknowledgeMany(g.unreadIds)}
-              className="p-1.5 text-faint hover:text-[#34d399] hover:bg-[#34d399]/15 rounded-lg"
+              className="grid place-items-center min-h-10 min-w-10 text-faint hover:text-[#34d399] hover:bg-[#34d399]/15 rounded-lg"
               title="Mark everything on this machine as handled"
+              aria-label="Mark everything on this machine as handled"
             >
               <CheckCheck className="h-4 w-4" />
             </button>
@@ -446,7 +447,7 @@ function GroupCard({ group: g, onAcknowledge, onAcknowledgeMany, onSnooze, canRe
                 {l.count > 1
                   ? `latest ${formatRelativeTime(l.newest.triggered_at)} · since ${formatRelativeTime(l.oldestAt)}`
                   : formatRelativeTime(l.newest.triggered_at)}
-                <span className="ml-2 text-teal opacity-0 group-hover:opacity-100 transition-opacity">view on map →</span>
+                <span className="ml-2 text-teal md:opacity-0 md:group-hover:opacity-100 transition-opacity">on the map →</span>
               </p>
             </Link>
             {onAcknowledge && (
@@ -454,10 +455,10 @@ function GroupCard({ group: g, onAcknowledge, onAcknowledgeMany, onSnooze, canRe
                 // ONE bulk action for a coalesced line — 30 serial POSTs on
                 // field LTE froze every other tap (ship-check P1).
                 onClick={() => (onAcknowledgeMany ? onAcknowledgeMany(l.ids) : l.ids.forEach((id) => onAcknowledge(id)))}
-                className="flex-none p-1.5 text-faint hover:text-[#34d399] hover:bg-[#34d399]/15 rounded-lg transition-colors"
+                className="flex-none inline-flex items-center gap-1 min-h-10 px-2 text-[12px] text-faint hover:text-[#34d399] hover:bg-[#34d399]/15 rounded-lg transition-colors"
                 title={l.count > 1 ? `Mark all ${l.count} as handled` : 'Mark as handled'}
               >
-                <CheckCheck className="h-4 w-4" />
+                <CheckCheck className="h-4 w-4" /> Handled
               </button>
             )}
           </div>
@@ -526,7 +527,7 @@ function AlertRow({ alert, onAcknowledge }: { alert: AlertEvent; onAcknowledge?:
             client hydration — cosmetic, not worth a mismatch error. */}
         <p className="text-xs text-faint mt-0.5" suppressHydrationWarning>
           {formatRelativeTime(alert.triggered_at)}
-          <span className="ml-2 text-teal opacity-0 group-hover:opacity-100 transition-opacity">view on map →</span>
+          <span className="ml-2 text-teal md:opacity-0 md:group-hover:opacity-100 transition-opacity">on the map →</span>
         </p>
       </Link>
 
@@ -543,10 +544,10 @@ function AlertRow({ alert, onAcknowledge }: { alert: AlertEvent; onAcknowledge?:
       {isUnread && onAcknowledge && (
         <button
           onClick={() => onAcknowledge(alert.id)}
-          className="flex-shrink-0 p-1.5 text-faint hover:text-[#34d399] hover:bg-[#34d399]/15 rounded-lg transition-colors"
-          title="Mark as read"
+          className="flex-shrink-0 inline-flex items-center gap-1 min-h-10 px-2 text-[12px] text-faint hover:text-[#34d399] hover:bg-[#34d399]/15 rounded-lg transition-colors"
+          title="Mark as handled"
         >
-          <CheckCheck className="h-4 w-4" />
+          <CheckCheck className="h-4 w-4" /> Handled
         </button>
       )}
     </div>

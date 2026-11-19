@@ -128,6 +128,18 @@ export function MapTour({ canDrawZones = true }: { canDrawZones?: boolean }) {
     }
   }, [step, box, finish])
 
+  // A tap anywhere outside the card ends the tour AND still does what it was
+  // for (crew review, Nov 19: the backdrop ate the first bottom-nav tap).
+  useEffect(() => {
+    if (step === null) return
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as Element | null)?.closest?.('[data-tour-card]')) return
+      finish()
+    }
+    document.addEventListener('pointerdown', onDown, true)
+    return () => document.removeEventListener('pointerdown', onDown, true)
+  }, [step, finish])
+
   if (step === null) return null
   const s = steps[step]
   const last = step === steps.length - 1
@@ -141,9 +153,9 @@ export function MapTour({ canDrawZones = true }: { canDrawZones?: boolean }) {
   const cy = box ? (below ? Math.min(box.y + box.h + 14, vh - 220) : Math.max(12, box.y - 14)) : vh / 2
 
   return (
-    <div className="fixed inset-0 z-[95]">
-      {/* dim backdrop — click skips nothing, X/Skip are explicit */}
-      <div className="absolute inset-0 bg-navy-950/55" onClick={finish} />
+    <div className="fixed inset-0 z-[95] pointer-events-none">
+      {/* dim backdrop — never blocks a tap; a tap outside the card ends the tour and goes through */}
+      <div className="absolute inset-0 bg-navy-950/55" />
       {/* glow ring on the target */}
       {box && (
         <div
@@ -153,13 +165,14 @@ export function MapTour({ canDrawZones = true }: { canDrawZones?: boolean }) {
       )}
       {/* the card */}
       <div
-        className="absolute w-[300px] rounded-2xl bg-navy-900 border border-navy-600 shadow-panel p-4 transition-all duration-300"
+        data-tour-card
+        className="absolute w-[300px] rounded-2xl bg-navy-900 border border-navy-600 shadow-panel p-4 transition-all duration-300 pointer-events-auto"
         style={{ left: cx, top: cy, transform: below ? undefined : 'translateY(-100%)' }}
       >
         <button
           onClick={finish}
           aria-label="Close tour"
-          className="absolute -top-3 right-3 grid place-items-center w-7 h-7 rounded-full bg-navy-900 border border-navy-600 text-faint hover:text-ink"
+          className="absolute -top-4 right-2 grid place-items-center w-10 h-10 rounded-full bg-navy-900 border border-navy-600 text-faint hover:text-ink"
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -171,13 +184,13 @@ export function MapTour({ canDrawZones = true }: { canDrawZones?: boolean }) {
               <span key={i} className={'w-1.5 h-1.5 rounded-full ' + (i === step ? 'bg-amber' : 'bg-navy-700')} />
             ))}
           </span>
-          <button onClick={finish} className="ml-auto text-[12px] font-semibold text-faint hover:text-ink px-2 py-1">
+          <button onClick={finish} className="ml-auto min-h-10 text-[13px] font-semibold text-muted hover:text-ink px-3">
             Skip
           </button>
           {step > 0 && (
             <button
               onClick={() => setStep(step - 1)}
-              className="grid place-items-center w-8 h-8 rounded-lg border border-navy-700 text-faint hover:text-ink"
+              className="grid place-items-center w-10 h-10 rounded-lg border border-navy-700 text-faint hover:text-ink"
               aria-label="Back"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -185,7 +198,7 @@ export function MapTour({ canDrawZones = true }: { canDrawZones?: boolean }) {
           )}
           <button
             onClick={() => (last ? finish() : setStep(step + 1))}
-            className="flex items-center gap-1 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-[13px] px-3 py-1.5 hover:bg-amber-600"
+            className="flex items-center gap-1 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-[13px] px-4 min-h-10 hover:bg-amber-600"
           >
             {last ? 'Done' : 'Next'} {!last && <ChevronRight className="h-3.5 w-3.5" />}
           </button>

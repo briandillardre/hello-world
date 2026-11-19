@@ -8,9 +8,9 @@
  * until it saves, so a dead zone never loses a day.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, ArrowLeft, Check, Gauge, Pencil, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, Check, Gauge, Pencil, Plus, Trash2 } from 'lucide-react'
+import { JobTabs } from './JobTabs'
 import { PROD_UNITS, qtyWords, readQty, type ProdItem, type ProdUnit, type ProductionRollup } from '@/lib/jobs/production'
 import { money } from '@/lib/jobs/payapp'
 import type { ProductionData } from '@/lib/db/production'
@@ -103,7 +103,7 @@ export function ProductionView({ zone, data, roll, canLog, canManage, canCosts, 
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="max-w-4xl mx-auto px-4 py-5 space-y-4 text-[12.5px]">
         <div>
-          <Link href={`/jobs/${zone.id}`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink mb-2"><ArrowLeft className="h-4 w-4" /> The job</Link>
+          <JobTabs zoneId={zone.id} costs={canCosts} />
           <h1 className="font-display font-bold text-xl text-ink flex items-center gap-2"><Gauge className="h-5 w-5 text-amber flex-none" /> <span className="truncate">Production · {zone.name}</span></h1>
           <p className="text-faint">Type what got built each day — that&apos;s all. The hours come from the crew&apos;s GPS time cards on this site and the machines&apos; own hours{canCosts ? ', and the cost is shared across the day’s items by the value each earned' : ''}.</p>
         </div>
@@ -180,7 +180,8 @@ export function ProductionView({ zone, data, roll, canLog, canManage, canCosts, 
               })}
             </div>
             {canLog ? (
-              <div className="flex items-center gap-2">
+              // stays in reach above the phone's bottom bar however long the item list (foreman review, Nov 19)
+              <div className="sticky bottom-[calc(58px+var(--ht-safe-bottom,0px))] md:bottom-2 z-10 -mx-3 flex items-center gap-2 border-t border-navy-800 bg-navy-900/95 px-3 py-2 backdrop-blur">
                 <button type="button" disabled={!!busy} onClick={() => void saveDay()} className="rounded-xl bg-amber px-4 py-2.5 font-semibold text-navy-950 disabled:opacity-50 text-[14px]">{busy === 'day' ? 'Saving…' : 'Save the day'}</button>
                 {saved === day && !fromDraft && <span className="inline-flex items-center gap-1 text-teal"><Check className="h-4 w-4" /> Saved</span>}
               </div>

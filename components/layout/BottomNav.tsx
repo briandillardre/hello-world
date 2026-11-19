@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock, BellRing, Plane, Lock, FileStack, Briefcase, HardHat, FlaskConical } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock, BellRing, Plane, Lock, FileStack, Briefcase, HardHat, FlaskConical, ClipboardCheck } from 'lucide-react'
 import { ViewAsPicker } from './ViewAsPicker'
 import { cn } from '@/lib/utils'
 import { navStateFor, lockedHref } from '@/lib/permissions'
@@ -33,6 +33,7 @@ const allItems = [
   { href: '/logs', label: 'Daily logs', short: 'Logs', icon: ClipboardList },
   { href: '/photos', label: 'Photos', icon: Camera },
   { href: '/safety', label: 'Safety', icon: HardHat },
+  { href: '/beta/dvir', label: 'Truck inspection', short: 'Inspect', icon: ClipboardCheck },
   { href: '/team', label: 'Team', icon: Users },
   { href: '/activity', label: 'Team activity', short: 'Activity', icon: Activity },
   { href: '/maintenance', label: 'Maintenance', short: 'Service', icon: Wrench },
@@ -64,8 +65,9 @@ const byHref: Record<string, (typeof allItems)[number]> = Object.fromEntries(all
 const ROLE_BARS: Record<string, string[]> = {
   admin:   ['/map', '/command', '/alerts', '/clock', '/assets'],
   manager: ['/map', '/assets', '/alerts', '/clock', '/reports'],
-  foreman: ['/map', '/clock', '/alerts', '/logs', '/track'],
-  associate: ['/map', '/clock', '/alerts', '/logs', '/maintenance'],
+  foreman: ['/map', '/clock', '/alerts', '/logs', '/safety'],
+  // the crew's day (crew review, Nov 19): clock, the truck check, the talk, the pictures
+  associate: ['/map', '/clock', '/beta/dvir', '/safety', '/photos'],
   // A Prospective Client's bar seats only pages that are OPEN for them —
   // the locked ones live in the drawer (Brian, Sep 23).
   prospect: ['/map', '/command', '/alerts', '/assets', '/zones'],
@@ -80,7 +82,7 @@ const canonOrder = (role?: string | null): string[] => {
 // user's saved order still decides the bar and the edit grid.
 const DRAWER_GROUPS: { title: string; hrefs: string[] }[] = [
   { title: 'Watch',  hrefs: ['/map', '/command', '/alerts'] },
-  { title: 'Field',  hrefs: ['/clock', '/timecards', '/logs', '/photos', '/safety', '/assets', '/zones', '/plans'] },
+  { title: 'Field',  hrefs: ['/clock', '/timecards', '/logs', '/photos', '/safety', '/beta/dvir', '/assets', '/zones', '/plans'] },
   { title: 'Office', hrefs: ['/jobs', '/reports', '/team', '/beta'] },
   // Mirrors the desktop sidebar's Setup group exactly — a page missing here
   // fell into "Other" (Hardware setup, Sep 4) or off the phone entirely
@@ -221,7 +223,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-1">
-              <span className="text-sm font-semibold text-muted">More</span>
+              <span className="text-sm font-semibold text-muted">{t('More')}</span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => { setEditing(v => !v); setSel(null) }}
@@ -395,7 +397,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
             <span className="grid place-items-center w-10 h-10 -mt-5 rounded-full bg-amber text-[#1a1100] shadow-glow-amber border-4 border-navy-950">
               <Sparkles className="h-5 w-5" />
             </span>
-            <span className="-mt-0.5 text-amber">Ask AI</span>
+            <span className="-mt-0.5 text-amber">{t('Ask AI')}</span>
           </button>
           )}
           {barItems.slice(3).map(({ href, label, short, icon: Icon }) => {
@@ -430,7 +432,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
               <MoreHorizontal className="h-5 w-5" />
               {!barItems.some((i) => i.href === '/alerts') && isOpen('/alerts') && alertBadge('/alerts')}
             </span>
-            <span>More</span>
+            <span>{t('More')}</span>
           </button>
         </div>
       </nav>

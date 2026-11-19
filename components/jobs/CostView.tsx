@@ -6,9 +6,9 @@
  * the costs entered or pasted from accounting, and WIP: earned against billed.
  */
 import { useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Wallet, Plus, Trash2, Pencil, AlertTriangle, ClipboardPaste } from 'lucide-react'
+import { Wallet, Plus, Trash2, Pencil, AlertTriangle, ClipboardPaste } from 'lucide-react'
+import { JobTabs } from './JobTabs'
 import { BUDGET_PCATS, PCATS, PCAT_WORDS, type CostRollup, type Pcat, type Wip } from '@/lib/jobs/cost'
 import { money } from '@/lib/jobs/payapp'
 import type { JobCostData } from '@/lib/db/jobcost'
@@ -49,7 +49,7 @@ export function CostView({ zone, data, roll, wip, canEdit, canManage, demo }: {
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="max-w-5xl mx-auto px-4 py-5 space-y-4 text-[12.5px]">
         <div>
-          <Link href={`/jobs/${zone.id}`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink mb-2"><ArrowLeft className="h-4 w-4" /> The job</Link>
+          <JobTabs zoneId={zone.id} costs={true} />
           <h1 className="font-display font-bold text-xl text-ink flex items-center gap-2"><Wallet className="h-5 w-5 text-amber flex-none" /> <span className="truncate">Job cost · {zone.name}</span></h1>
           <p className="text-faint">The budget against what has been spent — labor from the time cards, machines from the trackers&apos; hours, fuel, repairs and material from receipts, the rest entered or pasted from accounting. {data.from ? `Counting from ${fmtDay(data.from)}.` : ''}</p>
         </div>

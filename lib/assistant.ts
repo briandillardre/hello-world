@@ -278,9 +278,11 @@ export function answerQuestion(question: string, ctx: AssistantContext): Assista
   const online = assets.filter((a) => a.location).length
   // Same rule as the nav bell — zone-log crossings aren't "active alerts".
   const openAlerts = unreadActionableCount(alerts)
+  // job sites only — yards, boundaries and vendors aren't "sites" to an owner (owner review, Nov 19)
+  const siteCount = geofences.filter((g) => (g.kind ?? 'site') === 'site' && !g.owner_id).length
   return {
-    answer: `${online} of ${assets.length} assets are online across ${geofences.length} sites${openAlerts ? `, with ${openAlerts} active alert${openAlerts > 1 ? 's' : ''}` : ''}. Ask me who's at a site, what's on it, labor hours, or today's cost.`,
-    facts: { online, total: assets.length, sites: geofences.length, openAlerts },
+    answer: `${online} of ${assets.length} assets are online across ${siteCount} site${siteCount === 1 ? '' : 's'}${openAlerts ? `, with ${openAlerts} active alert${openAlerts > 1 ? 's' : ''}` : ''}. Ask me who's at a site, what's on it, labor hours, or today's cost.`,
+    facts: { online, total: assets.length, sites: siteCount, openAlerts },
   }
 }
 

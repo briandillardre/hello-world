@@ -1,5 +1,5 @@
 import { requireBetaTool } from '@/lib/beta/server'
-import { companyPeople, companySites, companyToday, jobsBySite, listRecords, siteDays, timeEntries } from '@/lib/db/beta'
+import { companyPeople, companySites, companyToday, jobSiteChoices, jobsBySite, listRecords, siteDays, timeEntries } from '@/lib/db/beta'
 import { addDays, isDay } from '@/lib/beta/registers'
 import { buildPayroll, weekStart, type WageRate, type WorkerClass } from '@/lib/beta/payroll'
 import { outranks, normalizeRole } from '@/lib/permissions'
@@ -16,8 +16,9 @@ export default async function PayrollPage({ searchParams }: { searchParams: { si
   const wageBySite = new Map<string, number>()
   for (const r of recs.rows) if (r.kind === 'wage_rate' && r.siteId) wageBySite.set(r.siteId, (wageBySite.get(r.siteId) ?? 0) + 1)
   // jobs on the books first, then any site with a wage decision typed
-  const choices = sites.filter((s) => jobs.has(s.id) || wageBySite.has(s.id))
-  const list = choices.length ? choices : sites
+  const ordered = jobSiteChoices(sites, jobs)
+  const choices = ordered.filter((s) => jobs.has(s.id) || wageBySite.has(s.id))
+  const list = choices.length ? choices : ordered
   const siteId = list.some((s) => s.id === searchParams.site) ? searchParams.site! : list[0]?.id ?? null
   const ws = weekStart(isDay(searchParams.week) ? searchParams.week : addDays(today, -7))
   const { zonedMidnightMs, dayKey } = await import('@/lib/dates')
@@ -43,7 +44,7 @@ export default async function PayrollPage({ searchParams }: { searchParams: { si
   // pay classes: set for the people strictly below you (or anyone, for the owner)
   const payFor = people.filter((p) => perms.isMaster || outranks(perms, { role: normalizeRole(p.role, 'associate'), isMaster: p.id === companyId }))
   return (
-    <PayrollView sites={list.map(({ id, name }) => ({ id, name }))} siteId={siteId} weekStart={ws} today={today} lines={lines} wages={wages}
+    <PayrollView sites={list.map(({ id, label }) => ({ id, name: label }))} siteId={siteId} weekStart={ws} today={today} lines={lines} wages={wages}
       classes={recs.rows.filter((r) => r.kind === 'worker_class')} people={people.map(({ id, name }) => ({ id, name }))} payFor={payFor.map(({ id, name }) => ({ id, name }))}
       payrollNo={payrollNo} job={{ number: job?.number ?? null, contractNo: job?.contractNo ?? null }} companyName={String(co?.name ?? 'Our company')}
       demo={demo} canWrite={canWrite} />

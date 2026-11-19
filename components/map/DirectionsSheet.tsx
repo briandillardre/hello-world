@@ -211,6 +211,16 @@ export function DirectionsSheet({
       title={dest.name}
       subtitle={subtitle}
       onClose={onEnd}
+      // the collapsed phone sheet still carries the one thing you came for (foreman review, Nov 19)
+      peek={onStart && route && route.steps.length > 0 ? ({ expand }) => (
+        <div className="flex gap-2">
+          <button type="button" onClick={() => onStart(route)}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-teal text-[#04212b] font-display font-bold text-[15px] min-h-11 hover:brightness-110">
+            <Navigation2 className="h-4.5 w-4.5" /> Start
+          </button>
+          <button type="button" onClick={expand} className="rounded-lg border border-navy-700 px-4 min-h-11 text-sm text-muted hover:text-ink">Steps</button>
+        </div>
+      ) : undefined}
     >
       <div className="space-y-3">
         {from && (

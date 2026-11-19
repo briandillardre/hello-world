@@ -366,6 +366,7 @@ export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, o
     lastFixMs: loc?.timestamp ? Date.parse(loc.timestamp) : null,
     engineOn: enginePower.engineOn,
     lastMovedMs: stats?.lastMovedIso ? Date.parse(stats.lastMovedIso) : null,
+    assetType: asset.type,
   })
   const idleTodayMin = stats?.ranges.find((r) => r.key === 'today')?.idleMin ?? null
   const derived: Derived = { place, poi, stats, liveStatus, idleTodayMin, showStatus }

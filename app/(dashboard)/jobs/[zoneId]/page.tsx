@@ -1,3 +1,4 @@
+import { toolByKey } from '@/lib/beta/tools'
 import { notFound } from 'next/navigation'
 import { requireFeature } from '@/lib/permissions-server'
 import { isProspect, rankOf, RANK } from '@/lib/permissions'
@@ -34,6 +35,7 @@ export default async function Page({ params }: { params: { zoneId: string } }) {
   const canEdit = perms.canEdit && !perms.viewingAs && !isMock
   return (
     <JobView
+      canLiens={perms.features.includes('beta') && toolByKey('liens').canOpen(perms, false)}
       zone={{ id: fence.id, name: fence.name, kind: fence.kind ?? null }}
       page={page}
       extras={extras}

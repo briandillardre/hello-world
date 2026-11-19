@@ -10,6 +10,7 @@ const WHERE = [
   ['The time clock — clock in, clock out, the daily log', 'El reloj — entrada, salida, el reporte diario'],
   ['Truck inspections (DVIR)', 'Inspecciones del camión (DVIR)'],
   ['My cards', 'Mis tarjetas'],
+  ['Safety — the page and its buttons (the talks themselves are still English)', 'Seguridad — la página y sus botones (las charlas todavía están en inglés)'],
 ]
 
 export function EspanolView({ demo }: { demo: boolean }) {

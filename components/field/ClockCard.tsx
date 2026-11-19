@@ -406,7 +406,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
           value={plan}
           onChange={(e) => setPlan(e.target.value)}
           rows={2}
-          placeholder="Plan for today (one line — what's getting done?)"
+          placeholder={t("Plan for today (one line — what's getting done?)")}
           className="w-full bg-navy-900 border border-navy-700 rounded-lg px-3 py-2.5 text-sm text-ink placeholder:text-faint outline-none focus:border-amber/50 resize-none"
         />
 
@@ -415,7 +415,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
         {queued.in > 0 ? (
           <div className="rounded-xl border border-amber/40 bg-amber/10 p-4 space-y-1.5">
             <p className="flex items-center gap-2 font-display font-bold text-amber">
-              <CloudOff className="h-5 w-5 flex-none" /> Saved on your phone
+              <CloudOff className="h-5 w-5 flex-none" /> {t('Saved on your phone')}
               <span className="ml-auto rounded-full border border-amber/40 bg-amber/15 px-2 py-0.5 font-mono text-[11px] tabular-nums">{queued.in}</span>
             </p>
             <p className="text-[12.5px] text-muted leading-snug">
@@ -442,11 +442,11 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
         )}
         {(policy.photoIn || policy.atSite) && !demo && (
           <p className="text-[11.5px] text-faint leading-snug">
-            {policy.photoIn && policy.atSite
+            {t(policy.photoIn && policy.atSite
               ? 'Your company asks for a quick photo of you at clock-in, and clocking in only works at the site or the yard.'
               : policy.photoIn
                 ? 'Your company asks for a quick photo of you at clock-in — the front camera opens when you tap.'
-                : 'Your company has clock-in set to work only at the site or the yard.'}
+                : 'Your company has clock-in set to work only at the site or the yard.')}
           </p>
         )}
       </div>
@@ -463,7 +463,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     <div className="rounded-xl border border-navy-700 bg-navy-950 p-4 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-teal">On the clock · {whereLabel}</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-teal">{t('On the clock')} · {whereLabel}</p>
           <p className="font-display font-bold text-2xl text-ink tabular-nums">{now == null ? '—' : elapsedLabel(openEntry.clock_in_at, now)}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -494,7 +494,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
       {queued.out > 0 ? (
         <div className="rounded-xl border border-amber/40 bg-amber/10 p-4 space-y-1.5">
           <p className="flex items-center gap-2 font-display font-bold text-amber">
-            <CloudOff className="h-5 w-5 flex-none" /> Saved on your phone
+            <CloudOff className="h-5 w-5 flex-none" /> {t('Saved on your phone')}
             <span className="ml-auto rounded-full border border-amber/40 bg-amber/15 px-2 py-0.5 font-mono text-[11px] tabular-nums">{queued.out}</span>
           </p>
           <p className="text-[12.5px] text-muted leading-snug">
@@ -649,12 +649,12 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
                 )}
                 <div className="grid grid-cols-2 gap-2">
                   <label className={`flex items-center justify-center gap-1.5 rounded-lg border border-navy-700 bg-navy-950 py-2.5 text-[12.5px] font-semibold text-muted cursor-pointer hover:text-ink transition ${isReceipts ? 'hover:border-amber/50' : 'hover:border-teal/50'}`}>
-                    <Camera className={`h-4 w-4 ${isReceipts ? 'text-amber' : 'text-teal'}`} /> Take photo
+                    <Camera className={`h-4 w-4 ${isReceipts ? 'text-amber' : 'text-teal'}`} /> {t('Take photo')}
                     <input type="file" accept="image/*" capture="environment" multiple hidden
                       onChange={(e) => { addPhotos(name, e.target.files); e.target.value = '' }} />
                   </label>
                   <label className={`flex items-center justify-center gap-1.5 rounded-lg border border-navy-700 bg-navy-950 py-2.5 text-[12.5px] font-semibold text-muted cursor-pointer hover:text-ink transition ${isReceipts ? 'hover:border-amber/50' : 'hover:border-teal/50'}`}>
-                    <Images className={`h-4 w-4 ${isReceipts ? 'text-amber' : 'text-teal'}`} /> From gallery
+                    <Images className={`h-4 w-4 ${isReceipts ? 'text-amber' : 'text-teal'}`} /> {t('From gallery')}
                     <input type="file" accept="image/*" multiple hidden
                       onChange={(e) => { addPhotos(name, e.target.files); e.target.value = '' }} />
                   </label>

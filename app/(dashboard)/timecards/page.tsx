@@ -1,3 +1,4 @@
+import { toolByKey } from '@/lib/beta/tools'
 import { cookies } from 'next/headers'
 import { requireFeature, getRealPermissions } from '@/lib/permissions-server'
 import { rankOf } from '@/lib/permissions'
@@ -40,6 +41,7 @@ export default async function Page({ searchParams }: { searchParams: { week?: st
       seesAll={scope.seesAll}
       myId={real.userId}
       demo={isMock}
+      certifiedPayroll={perms.features.includes('beta') && toolByKey('payroll').canOpen(perms, false)}
     />
   )
 }
