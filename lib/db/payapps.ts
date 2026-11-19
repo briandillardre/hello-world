@@ -3,6 +3,7 @@
  * is behind the costs ability, so a login without it gets nothing back.
  */
 import { computeApps, type AppLine, type AppRow, type AppTotals, type AppView, type ChangeOrder, type CoStatus, type CoType, type SovLine } from '@/lib/jobs/payapp'
+import { demoBilling } from '@/lib/demo/jobs'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -40,7 +41,7 @@ export interface Billing { available: boolean; sov: SovLine[]; cos: ChangeOrder[
 /** A job's schedule of values, change orders and applications (computed). */
 export async function getBilling(jobId: string, contractAmount: number | null): Promise<Billing> {
   const empty: Billing = { available: false, sov: [], cos: [], apps: [] }
-  if (isMock) return { ...empty, available: true }
+  if (isMock) return demoBilling(jobId)
   try {
     const { createClient } = await import('@/lib/supabase-server')
     const db = createClient()

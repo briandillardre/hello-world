@@ -17,7 +17,7 @@ export default async function SurveyPage({ searchParams }: { searchParams: { sit
   const site = sites.find((s) => s.id === searchParams.site) ?? sites[0] ?? null
   const data = site ? await getSurveySite(companyId, site.id) : null
   return (
-    <SurveyView sites={sites.map((s) => ({ id: s.id, name: s.label, lat: s.lat, lng: s.lng, hasData: has.has(s.id) }))} siteId={site?.id ?? null}
+    <SurveyView key={site?.id ?? 'none'} sites={sites.map((s) => ({ id: s.id, name: s.label, lat: s.lat, lng: s.lng, hasData: has.has(s.id) }))} siteId={site?.id ?? null}
       data={data} addon={addon} demo={demo} canWrite={canWrite && perms.canEdit} canManage={rankOf(perms) >= RANK.manager} />
   )
 }

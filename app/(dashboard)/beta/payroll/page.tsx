@@ -26,7 +26,25 @@ export default async function PayrollPage({ searchParams }: { searchParams: { si
   const entries = await timeEntries(companyId, new Date(zonedMidnightMs(ws, tz)).toISOString(), new Date(zonedMidnightMs(addDays(ws, 7), tz)).toISOString())
   const names = new Map(people.map((p) => [p.id, p.name]))
   for (const e of entries) if (!names.has(e.userId) && e.name) names.set(e.userId, e.name)
-  const classes: WorkerClass[] = recs.rows.filter((r) => r.kind === 'worker_class' && r.personId).map((r) => ({
+  // pay classes follow the ladder (164 in SQL — RLS sees the REAL login, so a
+  // view-as preview is cut here to what the previewed role may see): yourself,
+  // the people your effective role outranks, and — the owner alone — anyone no
+  // longer on the roster
+  let selfId: string | null = perms.viewingAs?.id ?? null
+  if (!selfId && !demo) {
+    const { data: { user } } = await (await import('@/lib/supabase-server')).createClient().auth.getUser()
+    selfId = user?.id ?? null
+  }
+  const roster = new Map(people.map((p) => [p.id, p]))
+  const seesPay = (pid: string | null) => {
+    if (!pid) return false
+    if (pid === selfId) return true
+    const p = roster.get(pid)
+    if (!p) return perms.isMaster
+    return outranks(perms, { role: normalizeRole(p.role, 'associate'), isMaster: p.id === companyId })
+  }
+  const classRows = recs.rows.filter((r) => r.kind === 'worker_class' && seesPay(r.personId ?? null))
+  const classes: WorkerClass[] = classRows.map((r) => ({
     userId: r.personId!, name: names.get(r.personId!) ?? 'Crew', classification: String(r.data.classification ?? ''), idLast4: r.data.idLast4 as string | undefined,
     base: Number(r.data.base) || 0, fringeCash: r.data.fringeCash as number | undefined, fringePlan: r.data.fringePlan as number | undefined, apprentice: r.data.apprentice === true,
   }))
@@ -45,7 +63,7 @@ export default async function PayrollPage({ searchParams }: { searchParams: { si
   const payFor = people.filter((p) => perms.isMaster || outranks(perms, { role: normalizeRole(p.role, 'associate'), isMaster: p.id === companyId }))
   return (
     <PayrollView sites={list.map(({ id, label }) => ({ id, name: label }))} siteId={siteId} weekStart={ws} today={today} lines={lines} wages={wages}
-      classes={recs.rows.filter((r) => r.kind === 'worker_class')} people={people.map(({ id, name }) => ({ id, name }))} payFor={payFor.map(({ id, name }) => ({ id, name }))}
+      classes={classRows} people={people.map(({ id, name }) => ({ id, name }))} payFor={payFor.map(({ id, name }) => ({ id, name }))}
       payrollNo={payrollNo} job={{ number: job?.number ?? null, contractNo: job?.contractNo ?? null }} companyName={String(co?.name ?? 'Our company')}
       demo={demo} canWrite={canWrite} />
   )

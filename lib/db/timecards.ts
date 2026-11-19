@@ -7,6 +7,7 @@ import { addDaysKey, isDayKey, zonedMidnightMs } from '@/lib/dates'
 import { resolveClockPolicy } from '@/lib/clock-policy'
 import { privacyZoneAt, privacyZonesFromRows, workZonesFromRows, type PrivacyZoneSet } from '@/lib/location-policy'
 import { MASTER_RANK, RANK, type Permissions, type Role } from '@/lib/permissions'
+import { demoTimeCards } from '@/lib/demo/jobs'
 
 /**
  * Time cards — the loader. Reads time_entries for a window, joins the job
@@ -64,7 +65,7 @@ export async function getTimeCards(db: SupabaseClient, opts: {
    *  read as "no phone fixes at all" on the Manager's list. Default: sees all. */
   viewerRank?: number
 }): Promise<TimeCardsResult> {
-  if (isMock) return { cards: [], verified: false, integrity: false }
+  if (isMock) return { cards: demoTimeCards(opts.fromMs, opts.toMs, opts.tz, opts.nowMs), verified: true, integrity: true }
   const nowMs = opts.nowMs ?? Date.now()
   const viewerRank = opts.viewerRank ?? MASTER_RANK
 

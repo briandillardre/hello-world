@@ -21,7 +21,7 @@
  * the statute's day counts, never a substitute for the company's attorney.
  * While work goes on, "last furnished" is today — the lien date moves with it.
  */
-import { addDays, daysUntil, isDay } from './registers'
+import { addDays, addMonths, daysUntil, isDay } from './registers'
 
 export type LienRole = 'prime' | 'sub' | 'sub2' | 'supplier'
 export interface LienSheet {
@@ -75,7 +75,7 @@ export function lienClock(sheet: LienSheet, site: SiteDays, today: string, still
     if (role === 'sub2' || role === 'supplier') {
       out.push(mk('bond_notice', 'Bond notice to the prime', last ? addDays(last, 90) : null, undefined, '90 days after last furnished', lastMoving))
     }
-    if (role !== 'prime') out.push(mk('bond_suit', 'Suit on the payment bond', last ? addDays(last, 365) : null, undefined, 'One year after last furnished', lastMoving))
+    if (role !== 'prime') out.push(mk('bond_suit', 'Suit on the payment bond', last ? addMonths(last, 12) : null, undefined, 'One year after last furnished', lastMoving))
   } else {
     if (role !== 'prime') {
       const nof = mk('nof', 'Notice of furnishing', first ? addDays(first, 90) : null, sheet.nofServed, `90 days after first furnished${sheet.nocFiled ? ' — the owner filed a Notice of Project Commencement' : ''}`)
@@ -84,7 +84,7 @@ export function lienClock(sheet: LienSheet, site: SiteDays, today: string, still
       out.push(nof)
     }
     out.push(mk('lien', 'Serve and file the lien', last ? addDays(last, 90) : null, sheet.lienFiled, '90 days after last furnished', lastMoving))
-    if (isDay(sheet.lienFiled)) out.push(mk('suit', 'Suit to enforce the lien', addDays(sheet.lienFiled, 182), undefined, 'Six months after the lien was filed'))
+    if (isDay(sheet.lienFiled)) out.push(mk('suit', 'Suit to enforce the lien', addMonths(sheet.lienFiled, 6), undefined, 'Six months after the lien was filed'))
   }
   if (stopped) for (const d of out) if (d.state !== 'done') { d.state = 'done'; d.words = `Paid / released ${sheet.released}` }
   return { first, last, lastMoving, deadlines: out, stopped }

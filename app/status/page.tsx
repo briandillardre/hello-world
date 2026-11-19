@@ -5,7 +5,7 @@ import { COMPONENTS, current, dailyBars, uptime, type Check } from '@/lib/beta/s
 
 export const metadata: Metadata = {
   title: 'HammerTrack — Status',
-  description: 'Is HammerTrack up? The app, tracker data and Ask AI, checked every hour, with 90 days of history.',
+  description: 'Is HammerTrack up? The app, tracker data and Ask AI, checked every hour.',
 }
 export const revalidate = 300
 

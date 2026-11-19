@@ -359,6 +359,166 @@ export function landXmlSurfaces(o: { project: string; crs: Crs; surfaces: { name
   return base.replace(/ {2}<Surfaces>[\s\S]*<\/Surfaces>/, `  <Surfaces>\n${body}\n  </Surfaces>`)
 }
 
+/** Densifying near the shots stops past this many triangles (the export cap is MAX_FACES). */
+const REFIT_MAX_FACES = 400_000
+const REFIT_ROUNDS = 12
+
+const distToSeg = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
+  const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy
+  const u = l2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0
+  return Math.hypot(px - ax - u * dx, py - ay - u * dy)
+}
+const orient = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number) => (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+
+/**
+ * The design surface re-fit so it PASSES THROUGH every shot. Applying the
+ * correction only at the design's own vertices is not enough: traced contours
+ * sit 40+ ft apart, so a shot between vertices was missed by nearly its whole
+ * residual, and a shot with no vertex inside the blend radius got no
+ * correction at all. So: (1) every triangle within the radius of a shot is
+ * split at its edge midpoints until no edge there is longer than radius/4
+ * (conforming — a split edge is split in both its triangles; a midpoint takes
+ * the design's own linear height, so the design surface is unchanged by the
+ * splitting); (2) each shot goes in as a vertex (into its triangle, or onto
+ * the edge it sits on); (3) every vertex takes design + correction. The
+ * correction is exactly the residual at a shot and 0 past the radius, so the
+ * surface meets each shot and triangles beyond the radius are the design's.
+ */
+function refitTin(fg0: TinSurface, res: { x: number; y: number; dz: number }[], R: number, corr: (x: number, y: number) => number, warnings: string[]): TinSurface {
+  const m = fg0.mesh()
+  const xy: number[] = Array.from(m.xy)
+  const zd: number[] = m.z.slice()
+  let faces: number[] = m.faces.slice()
+  // Shots by bins of the radius: "is this triangle within R of any shot?"
+  let sb: Box | null = null
+  for (const r of res) sb = sb ? { x0: Math.min(sb.x0, r.x), y0: Math.min(sb.y0, r.y), x1: Math.max(sb.x1, r.x), y1: Math.max(sb.y1, r.y) } : { x0: r.x, y0: r.y, x1: r.x, y1: r.y }
+  const shotIdx = new BinIndex(sb!, R)
+  res.forEach((r, i) => shotIdx.insert(i, { x0: r.x, y0: r.y, x1: r.x, y1: r.y }))
+  const hits: number[] = [], seen = new Set<number>()
+  const nearShot = (a: number, b: number, c: number) => {
+    const ax = xy[2 * a], ay = xy[2 * a + 1], bx = xy[2 * b], by = xy[2 * b + 1], cx = xy[2 * c], cy = xy[2 * c + 1]
+    shotIdx.query({ x0: Math.min(ax, bx, cx) - R, y0: Math.min(ay, by, cy) - R, x1: Math.max(ax, bx, cx) + R, y1: Math.max(ay, by, cy) + R }, hits, seen)
+    for (const i of hits) {
+      const { x, y } = res[i]
+      const d1 = orient(ax, ay, bx, by, x, y), d2 = orient(bx, by, cx, cy, x, y), d3 = orient(cx, cy, ax, ay, x, y)
+      if ((d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0)) return true
+      if (Math.min(distToSeg(x, y, ax, ay, bx, by), distToSeg(x, y, bx, by, cx, cy), distToSeg(x, y, cx, cy, ax, ay)) <= R) return true
+    }
+    return false
+  }
+  // (1) Densify within the radius.
+  const L = R / 4, L2 = L * L
+  const ek = (a: number, b: number) => (a < b ? `${a},${b}` : `${b},${a}`)
+  const len2 = (a: number, b: number) => (xy[2 * a] - xy[2 * b]) ** 2 + (xy[2 * a + 1] - xy[2 * b + 1]) ** 2
+  let capped = false
+  for (let round = 0; round < REFIT_ROUNDS; round++) {
+    const marked = new Map<string, number>()
+    for (let t = 0; t < faces.length; t += 3) {
+      const a = faces[t], b = faces[t + 1], c = faces[t + 2]
+      if (len2(a, b) <= L2 && len2(b, c) <= L2 && len2(c, a) <= L2) continue
+      if (!nearShot(a, b, c)) continue
+      for (const [p, q] of [[a, b], [b, c], [c, a]]) if (len2(p, q) > L2) marked.set(ek(p, q), -1)
+    }
+    if (!marked.size) break
+    if (faces.length / 3 + 3 * marked.size > REFIT_MAX_FACES) { capped = true; break }
+    for (const k of Array.from(marked.keys())) {
+      const [p, q] = k.split(',').map(Number)
+      marked.set(k, xy.length / 2)
+      xy.push((xy[2 * p] + xy[2 * q]) / 2, (xy[2 * p + 1] + xy[2 * q + 1]) / 2)
+      zd.push((zd[p] + zd[q]) / 2)
+    }
+    const next: number[] = []
+    for (let t = 0; t < faces.length; t += 3) {
+      const v = [faces[t], faces[t + 1], faces[t + 2]]
+      const mid = [marked.get(ek(v[0], v[1])), marked.get(ek(v[1], v[2])), marked.get(ek(v[2], v[0]))]
+      const n = mid.filter((x) => x !== undefined).length
+      if (n === 0) { next.push(v[0], v[1], v[2]); continue }
+      if (n === 3) {
+        const [m0, m1, m2] = mid as number[]
+        next.push(v[0], m0, m2, m0, v[1], m1, m2, m1, v[2], m0, m1, m2)
+        continue
+      }
+      // Rotate so edge 0 (v0→v1) is split; with two splits, edge 1 or edge 2 is the other.
+      let r = mid.findIndex((x) => x !== undefined)
+      if (n === 2 && mid[0] !== undefined && mid[2] !== undefined) r = 2
+      const a = v[r], b = v[(r + 1) % 3], c = v[(r + 2) % 3]
+      const mab = mid[r]!, mbc = mid[(r + 1) % 3]
+      if (n === 1) next.push(a, mab, c, mab, b, c)
+      else next.push(mab, b, mbc!, a, mab, mbc!, a, mbc!, c)
+    }
+    faces = next
+  }
+  if (capped) warnings.push('The re-fit hit its triangle budget near the shots — the surface still meets every shot, but the blend between them is coarser. Use fewer shots or a smaller blend radius.')
+  // (2) Shots in as vertices.
+  let box: Box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }
+  for (let i = 0; i < xy.length; i += 2) box = { x0: Math.min(box.x0, xy[i]), y0: Math.min(box.y0, xy[i + 1]), x1: Math.max(box.x1, xy[i]), y1: Math.max(box.y1, xy[i + 1]) }
+  const faceIdx = new BinIndex(box, Math.max(L, 0.5))
+  const live: boolean[] = []
+  const tri: number[] = faces
+  const addFace = (a: number, b: number, c: number) => {
+    const id = tri.length / 3
+    tri.push(a, b, c); live.push(true)
+    faceIdx.insert(id, { x0: Math.min(xy[2 * a], xy[2 * b], xy[2 * c]), y0: Math.min(xy[2 * a + 1], xy[2 * b + 1], xy[2 * c + 1]), x1: Math.max(xy[2 * a], xy[2 * b], xy[2 * c]), y1: Math.max(xy[2 * a + 1], xy[2 * b + 1], xy[2 * c + 1]) })
+  }
+  {
+    const init = tri.splice(0)
+    for (let t = 0; t < init.length; t += 3) addFace(init[t], init[t + 1], init[t + 2])
+  }
+  const fh: number[] = [], fs = new Set<number>()
+  const EDGE = 1e-4 // m: a shot this close to an edge goes ON the edge (no sliver)
+  for (const r of res) {
+    faceIdx.query({ x0: r.x, y0: r.y, x1: r.x, y1: r.y }, fh, fs)
+    let done = false
+    for (const t of fh) {
+      if (!live[t] || done) continue
+      const v = [tri[3 * t], tri[3 * t + 1], tri[3 * t + 2]]
+      const P = v.map((i) => [xy[2 * i], xy[2 * i + 1]])
+      const area = orient(P[0][0], P[0][1], P[1][0], P[1][1], P[2][0], P[2][1])
+      if (Math.abs(area) < 1e-12) continue
+      const s = Math.sign(area)
+      // Signed distance of the shot inside each edge (edge k = v[k] → v[k+1]).
+      const dIn = [0, 1, 2].map((k) => {
+        const [ax, ay] = P[k], [bx, by] = P[(k + 1) % 3]
+        return (s * orient(ax, ay, bx, by, r.x, r.y)) / Math.hypot(bx - ax, by - ay)
+      })
+      if (Math.min(...dIn) < -EDGE) continue
+      done = true
+      // Already a vertex (within a millimetre)?
+      if (P.some(([x, y]) => Math.hypot(x - r.x, y - r.y) < 1e-3)) break
+      const k = dIn.indexOf(Math.min(...dIn))
+      if (dIn[k] <= EDGE) {
+        // On edge k: split it in both triangles that share it, at the shot's foot on the edge.
+        const a = v[k], b = v[(k + 1) % 3]
+        const [ax, ay] = P[k], [bx, by] = P[(k + 1) % 3]
+        const u = Math.max(0, Math.min(1, ((r.x - ax) * (bx - ax) + (r.y - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2)))
+        const nv = xy.length / 2
+        xy.push(ax + u * (bx - ax), ay + u * (by - ay)); zd.push(zd[a] + u * (zd[b] - zd[a]))
+        const share: number[] = []
+        faceIdx.query({ x0: Math.min(ax, bx), y0: Math.min(ay, by), x1: Math.max(ax, bx), y1: Math.max(ay, by) }, share)
+        for (const f of share) {
+          if (!live[f]) continue
+          const w = [tri[3 * f], tri[3 * f + 1], tri[3 * f + 2]]
+          const j = [0, 1, 2].find((q) => (w[q] === a && w[(q + 1) % 3] === b) || (w[q] === b && w[(q + 1) % 3] === a))
+          if (j === undefined) continue
+          live[f] = false
+          const p0 = w[j], p1 = w[(j + 1) % 3], p2 = w[(j + 2) % 3]
+          addFace(p0, nv, p2); addFace(nv, p1, p2)
+        }
+      } else {
+        const nv = xy.length / 2
+        xy.push(r.x, r.y); zd.push(fg0.zAt(r.x, r.y))
+        live[t] = false
+        addFace(v[0], v[1], nv); addFace(v[1], v[2], nv); addFace(v[2], v[0], nv)
+      }
+    }
+  }
+  // (3) Design + correction at every vertex.
+  const out: number[] = []
+  for (let t = 0; t < live.length; t++) if (live[t]) out.push(tri[3 * t], tri[3 * t + 1], tri[3 * t + 2])
+  const z2 = zd.map((z, i) => z + corr(xy[2 * i], xy[2 * i + 1]))
+  return new TinSurface(Float64Array.from(xy), z2, Uint32Array.from(out))
+}
+
 /**
  * Re-fit the takeoff's finished grade to the curb as built (lib/survey/refit.ts),
  * then cut TOP OF STONE (finished grade less the asphalt under every paving
@@ -389,10 +549,9 @@ export function asbuiltFiles(ctx: TakeoffContext, design: DirtDesign, shots: Asb
   if (outside) warnings.push(`${outside} shot${outside === 1 ? '' : 's'} fell outside the design surface and were left out.`)
   const mean = residualsFt.reduce((a, b) => a + b, 0) / residualsFt.length
   if (Math.abs(mean) > 0.5) warnings.push(`The shots sit ${Math.abs(mean).toFixed(2)} ft ${mean > 0 ? 'above' : 'below'} the design on average — check the rover and the plan are on the same vertical datum before sending this to a machine.`)
-  const field = o.correctionField(res, Math.max(1, o.radiusFt) * FT)
-  const m = fg0.mesh()
-  const z2 = m.z.map((z, i) => z + field.at(m.xy[2 * i], m.xy[2 * i + 1]))
-  const refit = new TinSurface(m.xy, z2, Uint32Array.from(m.faces))
+  const radiusM = Math.max(1, o.radiusFt) * FT
+  const field = o.correctionField(res, radiusM)
+  const refit = refitTin(fg0, res, radiusM, field.at, warnings)
   const { crs, proj, zOut } = crsFor(ctx, o.grid)
   const look = lookups(ctx)
   const inside = (x: number, y: number) => look.boundary.at(x, y) >= 0
