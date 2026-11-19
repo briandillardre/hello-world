@@ -19,7 +19,7 @@ export interface Tool {
 const has = (p: Pick<Permissions, 'features'>, k: string) => p.features.includes(k as never)
 
 export const TOOLS: Tool[] = [
-  { key: 'payroll', href: '/beta/payroll', group: 'Money & paperwork', title: 'Certified payroll', blurb: 'WH-347 for prevailing-wage jobs, straight from GPS-verified time cards — with the wage check and an LCPtracker file.',
+  { key: 'payroll', href: '/beta/payroll', group: 'Money & paperwork', title: 'Certified payroll', blurb: 'WH-347 for prevailing-wage jobs, straight from GPS-verified time cards — with the wage check and an LCPtracker-style spreadsheet.',
     canOpen: (p) => rankOf(p) >= RANK.manager && p.canViewCosts && has(p, 'clock') },
   { key: 'liens', href: '/beta/liens', group: 'Money & paperwork', title: 'Lien clock', blurb: 'SC notice-of-furnishing, lien and suit deadlines per job, counted from the first and last day you were on site.',
     canOpen: (p) => rankOf(p) >= RANK.manager && has(p, 'jobs') },
@@ -35,7 +35,7 @@ export const TOOLS: Tool[] = [
     canOpen: () => true },
   { key: 'espanol', href: '/beta/espanol', group: 'Field', title: 'Español', blurb: 'The crew’s screens in Spanish — the bottom bar, the time clock, inspections — switched per phone.',
     canOpen: () => true },
-  { key: 'survey', href: '/beta/survey', group: 'Machines', title: 'Site survey & as-built', blurb: 'Takeoff versions with their legends, drone topo on the map’s timeline, drone vs rover checks, and the stone / subgrade surfaces re-fit to the curb as built — out to the machines.',
+  { key: 'survey', href: '/beta/survey', group: 'Machines', title: 'Site survey & as-built', blurb: 'Takeoff versions with their legends, drone topo on the map’s timeline, drone vs rover checks, and the stone / subgrade surfaces re-fit to the curb as built — as a LandXML file for the machines (dealer check pending).',
     canOpen: (p) => rankOf(p) >= RANK.foreman && has(p, 'plans') },
   { key: 'owning', href: '/beta/owning', group: 'Machines', title: 'What a machine really costs', blurb: 'Owning + operating cost per hour on the hours it really ran — rent-vs-own and replace-now in plain words.',
     canOpen: (p) => rankOf(p) >= RANK.manager && p.canViewCosts },

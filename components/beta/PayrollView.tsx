@@ -57,7 +57,7 @@ export function PayrollView({ sites, siteId, weekStart, today, lines, wages, cla
 
   return (
     <BetaPage title="Certified payroll" icon={<Banknote className="h-5 w-5 text-violet-300" />} demo={demo}
-      blurb="The weekly WH-347 for prevailing-wage jobs (SCDOT, federal-aid, city and county work), filled from GPS-verified time cards — with the wage check on every line.">
+      blurb="The weekly WH-347 for Davis-Bacon jobs (federal and federal-aid work, including federally funded SCDOT, city and county jobs), filled from GPS-verified time cards — with the wage check on every line.">
       <div className="flex flex-wrap items-end gap-2">
         <label className="min-w-0"><span className="text-faint text-[12px] block">Job</span>
           <select className={box} value={siteId ?? ''} onChange={(e) => go({ site: e.target.value })}>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
@@ -110,7 +110,7 @@ export function PayrollView({ sites, siteId, weekStart, today, lines, wages, cla
           <label className="flex items-center gap-2 text-muted"><input type="checkbox" className="h-4 w-4 accent-amber" checked={final} onChange={(e) => setFinal(e.target.checked)} /> Final payroll for this job</label>
           <div className="flex flex-wrap gap-2">
             <button type="button" className={btn} disabled={!!busy || !lines.length} onClick={exportPdf}><FileDown className="h-4 w-4" /> {busy === 'pdf' ? 'Building…' : 'WH-347 PDF'}</button>
-            <button type="button" className={btn} disabled={!!busy || !lines.length} onClick={exportXlsx}><FileSpreadsheet className="h-4 w-4" /> {busy === 'xlsx' ? 'Building…' : 'LCPtracker spreadsheet'}</button>
+            <button type="button" className={btn} disabled={!!busy || !lines.length} onClick={exportXlsx}><FileSpreadsheet className="h-4 w-4" /> {busy === 'xlsx' ? 'Building…' : 'LCPtracker-style spreadsheet'}</button>
           </div>
           <p className="text-faint text-[11.5px]">Overtime is hours past 40 in the week across all jobs, at 1.5 × the base rate (fringe isn’t multiplied). Deductions and net pay come from your payroll company; they fill those columns and sign the statement of compliance.</p>
         </>

@@ -646,8 +646,16 @@ export async function GET(req: NextRequest) {
     const dbOk = typeof out.recentByDevice === 'number'
     const ingestOk = dbOk ? (Number(out.recentByDevice) > 0 || Number(out.recentByArrival ?? 0) > 0) : null
     const aiOk = typeof out.ai === 'string' ? out.ai.startsWith('ok') : null
-    await db.from('status_checks').insert({ db_ok: dbOk, ingest_ok: ingestOk, ai_ok: process.env.ANTHROPIC_API_KEY ? aiOk : null })
-    await db.from('status_checks').delete().lt('checked_at', new Date(Date.now() - 120 * 86_400_000).toISOString())
+    // at most one row per ~hour: a re-fired or manual run (the route is public
+    // behind CRON_SECRET) must not pile rows into the public page
+    const { data: last, error: lastErr } = await db.from('status_checks').select('checked_at').order('checked_at', { ascending: false }).limit(1).maybeSingle()
+    if (lastErr) throw lastErr
+    const lastMs = last?.checked_at ? Date.parse(String(last.checked_at)) : NaN
+    if (Number.isFinite(lastMs) && Date.now() - lastMs < 50 * 60_000) out.statusCheck = 'skipped (last row < 50 min old)'
+    else {
+      await db.from('status_checks').insert({ db_ok: dbOk, ingest_ok: ingestOk, ai_ok: process.env.ANTHROPIC_API_KEY ? aiOk : null })
+      await db.from('status_checks').delete().lt('checked_at', new Date(Date.now() - 120 * 86_400_000).toISOString())
+    }
   } catch (err) { out.statusCheck = err instanceof Error ? err.message : 'failed' }
 
   return NextResponse.json({ ok: true, at: new Date().toISOString(), ...out })

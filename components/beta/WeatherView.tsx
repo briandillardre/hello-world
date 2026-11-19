@@ -44,7 +44,7 @@ export function WeatherView({ sites, defaultFrom, defaultTo, demo, canRun }: { s
     setPacket(r.packet)
   }
 
-  const letter = packet && result ? claimLetter({ companyName: packet.companyName, jobName: packet.site.name, jobNumber: packet.job.number, customer: packet.job.customer, contractNo: packet.job.contractNo, from: packet.from, to: packet.to, summary: result.summary, verdicts: result.verdicts, normalHours: result.normalHours, today: new Date().toISOString().slice(0, 10), lat: packet.site.lat, lng: packet.site.lng }) : ''
+  const letter = packet && result ? claimLetter({ companyName: packet.companyName, jobName: packet.site.name, jobNumber: packet.job.number, customer: packet.job.customer, contractNo: packet.job.contractNo, from: packet.from, to: packet.to, summary: result.summary, verdicts: result.verdicts, normalHours: result.normalHours, today: new Date().toLocaleDateString('en-CA'), lat: packet.site.lat, lng: packet.site.lng }) : ''
 
   async function pdf() {
     if (!packet || !result) return

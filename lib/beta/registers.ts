@@ -123,7 +123,7 @@ export const KINDS: Record<BetaKind, KindDef> = {
     fields: [
       { key: 'type', label: 'Card / cert', type: 'select', required: true, options: CREDENTIAL_KINDS.map(({ value, label }) => ({ value, label })) },
       { key: 'other', label: 'Name it', type: 'text', len: 80, hint: 'Only for "Other"' },
-      { key: 'number', label: 'Number', type: 'text', len: 40, hint: 'Last digits are enough' },
+      { key: 'number', label: 'Number (last 6)', type: 'text', len: 40, hint: 'Only the last six letters/digits are kept — never the whole number' },
       { key: 'issued', label: 'Issued', type: 'date' },
       { key: 'expires', label: 'Expires', type: 'date', hint: 'Blank = does not expire' },
       { key: 'issuer', label: 'Issued by', type: 'text', len: 80 },
@@ -276,6 +276,12 @@ export function cleanRecord(kind: BetaKind, raw: unknown, names: { site?: string
   if (kind === 'owning' && typeof data.salvage === 'number' && typeof data.price === 'number' && data.salvage > data.price) return { ok: false, error: 'Salvage is more than the price.' }
   if (kind === 'worker_class' && data.idLast4 !== undefined && !/^\d{4}$/.test(String(src.idLast4).trim())) return { ok: false, error: 'ID: the last four digits only.' }
   if (kind === 'credential' && data.type === 'other' && !data.other) return { ok: false, error: 'Name the card.' }
+  // a card number is an identifier (a CDL number IS the licence): keep the last six letters/digits only
+  if (kind === 'credential' && typeof data.number === 'string') {
+    const tail = data.number.replace(/[^A-Za-z0-9]/g, '').slice(-6)
+    if (tail) data.number = tail
+    else delete data.number
+  }
   if (kind === 'haul_ticket' && data.tons === undefined && data.cy === undefined) return { ok: false, error: 'Tons or cubic yards — one of them.' }
   const title = def.title(data, names).replace(/\s+/g, ' ').trim().slice(0, 160) || def.noun
   return { ok: true, value: { data, title, dueOn: def.due?.(data) ?? null } }
@@ -309,6 +315,14 @@ export function dueWords(due: string, today: string, verb = 'Due'): string {
 /** Add n calendar days to a YYYY-MM-DD. */
 export function addDays(day: string, n: number): string {
   return new Date(Date.parse(`${day}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+}
+
+/** Add n calendar MONTHS, clamped to the month's last day (Aug 31 + 6 months = Feb 28) — legal deadlines run by the calendar, never by 30-day months. */
+export function addMonths(day: string, n: number): string {
+  const [y, m, d] = day.split('-').map(Number)
+  const t = new Date(Date.UTC(y, m - 1 + n, 1))
+  const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate()
+  return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), Math.min(d, last))).toISOString().slice(0, 10)
 }
 
 /** Add n WORKING days (Mon–Fri; holidays are not modelled — said on the page). */

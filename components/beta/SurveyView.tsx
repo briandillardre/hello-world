@@ -11,7 +11,7 @@
  *  4. As-built → machine — the takeoff's finished grade re-fit to the curb as
  *     shot, cut to top of stone and subgrade, out as LandXML to Machine files.
  */
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Cpu, Map as MapIcon, Mountain } from 'lucide-react'
@@ -40,7 +40,7 @@ export function SurveyView({ sites, siteId, data, addon, demo, canWrite, canMana
   const mapHref = site && site.lat !== null ? `/map?lat=${site.lat.toFixed(6)}&lng=${site.lng!.toFixed(6)}&z=17&layer=survey` : '/map?layer=survey'
   return (
     <BetaPage title="Site survey & as-built" icon={<Mountain className="h-5 w-5 text-violet-300" />} demo={demo}
-      blurb="Takeoff versions with their legends, the drone’s topo on the map’s timeline, drone vs rover checks, and stone / subgrade surfaces re-fit to the curb as it was built — out to the machines.">
+      blurb="Takeoff versions with their legends, the drone’s topo on the map’s timeline, drone vs rover checks, and stone / subgrade surfaces re-fit to the curb as it was built — as a LandXML file for the machines (dealer check pending).">
       {!addon && !demo && <Notice tone="warn">This rides the dirt takeoff add-on — ask us to turn it on for your company.</Notice>}
       <div className="flex flex-wrap items-end gap-2">
         <label className="min-w-0"><span className="text-faint text-[12px] block">Site</span>
@@ -112,8 +112,8 @@ function Versions({ data, canWrite, canManage }: { data: SurveySite; canWrite: b
                         <span className="font-mono text-[12px] text-violet-200">v{v.versionNo}</span> <span className="text-ink">{v.label}</span> <span className="text-faint text-[12px]">· {when(v.createdAt)} · cut {n0(v.legend.earthwork.cutCy)} · fill {n0(v.legend.earthwork.fillCy)} · {v.legend.earthwork.exportCy ? `export ${n0(v.legend.earthwork.exportCy)}` : `import ${n0(v.legend.earthwork.importCy)}`} CY</span>
                       </button>
                       <span className="flex items-center gap-1.5">
-                        {vs.length > 1 && <button type="button" className={btn} onClick={() => setCmp(cmp && cmp[1] === v.id ? null : [vs.find((x) => x.versionNo < v.versionNo)?.id ?? vs[vs.length - 1].id, v.id])}>Compare</button>}
-                        {canManage && canWrite && <button type="button" className={btn} onClick={async () => { if (await act(() => deleteTakeoffVersionAction({ id: v.id }), setErr)) router.refresh() }}>Remove</button>}
+                        {vs.some((x) => x.versionNo < v.versionNo) && <button type="button" className={btn} onClick={() => setCmp(cmp && cmp[1] === v.id ? null : [vs.find((x) => x.versionNo < v.versionNo)!.id, v.id])}>Compare</button>}
+                        {canManage && canWrite && <ConfirmRemove what={`version ${v.versionNo}`} onConfirm={async () => { if (await act(() => deleteTakeoffVersionAction({ id: v.id }), setErr)) router.refresh() }} />}
                       </span>
                     </div>
                     {open === v.id && <LegendView v={v} />}
@@ -205,7 +205,7 @@ function Shots({ data, zoneId, canWrite }: { data: SurveySite; zoneId: string; c
   const [busy, setBusy] = useState<string | null>(null)
   const [text, setText] = useState('')
   const [name, setName] = useState('')
-  const [takenOn, setTakenOn] = useState(new Date().toISOString().slice(0, 10))
+  const [takenOn, setTakenOn] = useState(() => new Date().toLocaleDateString('en-CA'))
   const [flightFor, setFlightFor] = useState<Record<string, string>>({})
   const ready = data.flights.filter((f) => f.ready)
   return (
@@ -248,7 +248,7 @@ function Shots({ data, zoneId, canWrite }: { data: SurveySite; zoneId: string; c
                     setBusy(null)
                     if (r) router.refresh()
                   }}>{busy === s.id ? 'Reading the flight…' : 'Check the drone'}</button>
-                  <button type="button" className={btn} onClick={async () => { if (await act(() => deleteShotsAction({ id: s.id }), setErr)) router.refresh() }}>Remove</button>
+                  <ConfirmRemove what="these shots and their checks" onConfirm={async () => { if (await act(() => deleteShotsAction({ id: s.id }), setErr)) router.refresh() }} />
                 </span>
               )}
             </div>
@@ -301,8 +301,12 @@ function Asbuilt({ data, site, canWrite }: { data: SurveySite; site: Site; canWr
   const [grid, setGrid] = useState<Grid>(() => (site.lng !== null ? defaultGrid(site.lng, site.lat!) : 'utm'))
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [done, setDone] = useState<{ summary: string; warnings: string[]; faces: { fg: number; stone: number; sg: number }; filed: boolean; xml: string; name: string } | null>(null)
+  const [done, setDone] = useState<{ summary: string; warnings: string[]; faces: { fg: number; stone: number; sg: number }; filed: boolean | null; xml: string; name: string } | null>(null)
   const worker = useRef<Worker | null>(null)
+  const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { worker.current?.terminate(); worker.current = null; if (stopTimer.current) clearTimeout(stopTimer.current) }, [])
+  const [inApp, setInApp] = useState(false)
+  useEffect(() => { import('@/lib/native').then((m) => setInApp(m.isNativeApp())).catch(() => {}) }, [])
   const shotSet = useMemo(() => data.shotSets.find((s) => s.id === shotsId) ?? null, [data.shotSets, shotsId])
   const edge = shotSet ? shotSet.shots.filter((s) => s.kind === 'lip' || (useFl && s.kind === 'flowline')).length : 0
 
@@ -329,6 +333,7 @@ function Asbuilt({ data, site, canWrite }: { data: SurveySite; site: Site; canWr
         const w = new Worker(new URL('../../lib/dirt/worker.ts', import.meta.url))
         worker.current = w
         const stop = setTimeout(() => { w.terminate(); reject(new Error('That took too long — try on a computer.')) }, 180_000)
+        stopTimer.current = stop
         w.onmessage = (e: MessageEvent<{ type: string; error?: string; landxml?: string; warnings?: string[]; residualsFt?: number[]; faces?: { fg: number; stone: number; sg: number } }>) => {
           clearTimeout(stop); w.terminate()
           if (e.data.type === 'asbuilt') resolve(e.data as never)
@@ -342,15 +347,16 @@ function Asbuilt({ data, site, canWrite }: { data: SurveySite; site: Site; canWr
       const FT = 0.3048
       const sum = refitSummary(out.residualsFt.map((r) => ({ x: 0, y: 0, dz: r * FT })))
       const base = `${d.name} as-built ${shotSet.takenOn}`.replace(/[^A-Za-z0-9 ._-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80)
-      let filed = false
+      let filed: boolean | null = null
       if (canWrite) {
+        filed = false
         setBusy('Filing in Machine files…')
         const blob = new Blob([out.landxml], { type: 'application/xml' })
         const st = await startMachineUploadAction({ zoneId: site.id, filename: `${base}.xml`, size: blob.size }).catch(() => null)
         if (st?.ok) {
           const { error } = await createClient().storage.from('machine').uploadToSignedUrl(st.path, st.token, blob, { contentType: 'application/octet-stream' })
           if (!error) {
-            const fin = await finishMachineFileAction({ zoneId: site.id, id: st.id, name: `${base}`, filename: `${base}.xml`, kind: 'landxml', takeoffId, grid: grid === 'sc' ? 'NAD83 / South Carolina (ft)' : 'NAD83 / UTM, metres', builtBy: 'HammerTrack as-built re-fit', builtOn: new Date().toISOString().slice(0, 10), note: `Re-fit to ${sum.shotsUsed} shots from "${shotSet.name}"; top of stone = FG − ${asphaltIn}" asphalt` }).catch(() => null)
+            const fin = await finishMachineFileAction({ zoneId: site.id, id: st.id, name: `${base}`, filename: `${base}.xml`, kind: 'landxml', takeoffId, grid: grid === 'sc' ? 'NAD83 / South Carolina (ft)' : 'NAD83 / UTM, metres', builtBy: 'HammerTrack as-built re-fit', builtOn: new Date().toLocaleDateString('en-CA'), note: `Re-fit to ${sum.shotsUsed} shots from "${shotSet.name}"; top of stone = FG − ${asphaltIn}" asphalt` }).catch(() => null)
             filed = !!fin?.ok
           }
         }
@@ -375,7 +381,7 @@ function Asbuilt({ data, site, canWrite }: { data: SurveySite; site: Site; canWr
   return (
     <section className={`${card} space-y-3`}>
       <h2 className="font-semibold text-ink flex items-center gap-2"><Cpu className="h-4 w-4 text-violet-300" /> 4 · As-built → stone and subgrade for the machines</h2>
-      <p className="text-faint text-[12.5px]">The takeoff’s finished grade, re-fit so the pavement meets the curb as it was really poured (rover shots on the gutter lip / flowline), faded back to the design in the middle of the lot. Then top of stone (finished grade less the asphalt) and subgrade (less the full section), all in one LandXML the dealer loads into the machine.</p>
+      <p className="text-faint text-[12.5px]">The takeoff’s finished grade, re-fit so the pavement meets the curb as it was really poured (rover shots on the gutter lip / flowline), faded back to the design in the middle of the lot. Then top of stone (finished grade less the asphalt) and subgrade (less the full section), all in one LandXML 1.2 file for the dealer. It hasn’t been checked in dealer software yet — have the dealer check it before a machine runs on it.</p>
       {!data.takeoffs.length || !data.shotSets.length ? <Notice tone="info">Needs a dirt takeoff with the paving sections traced, and a set of curb shots on this site.</Notice> : (
         <div className="grid gap-2 sm:grid-cols-3">
           <label className="min-w-0"><span className="text-faint text-[12px] block">Takeoff (design)</span><select className={box} value={takeoffId} onChange={(e) => setTakeoff(e.target.value)}>{data.takeoffs.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
@@ -392,13 +398,29 @@ function Asbuilt({ data, site, canWrite }: { data: SurveySite; site: Site; canWr
       {done && (
         <div className="space-y-2">
           <Notice tone="good">{done.summary} Surfaces: finished grade {n0(done.faces.fg)} triangles, top of stone {n0(done.faces.stone)}, subgrade {n0(done.faces.sg)}.{done.filed ? ' Filed in the site’s Machine files.' : ''}</Notice>
+          {done.filed === false && <Notice tone="bad">The surfaces were built but couldn’t be filed in Machine files — check your signal and build again{inApp ? '.' : ', or download them below.'}</Notice>}
           {done.warnings.map((w) => <Notice key={w} tone="warn">{w}</Notice>)}
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={btn} onClick={download}>Download the LandXML</button>
-            <Link href={`/plans/${site.id}/machine`} className={btn}>Machine files</Link>
+            {/* the app's web view has no download door — the filed copy downloads from Machine files there */}
+            {!inApp && <button type="button" className={btn} onClick={download}>Download the LandXML</button>}
+            <Link href={`/plans/${site.id}/machine`} className={btn}>{inApp && done.filed ? 'Open it in Machine files' : 'Machine files'}</Link>
           </div>
+          {inApp && !done.filed && <p className="text-faint text-[12px]">To download the file itself, open this page on a computer.</p>}
         </div>
       )}
     </section>
+  )
+}
+
+function ConfirmRemove({ what, onConfirm }: { what: string; onConfirm: () => Promise<void> }) {
+  const [asking, setAsking] = useState(false)
+  const [busy, setBusy] = useState(false)
+  if (!asking) return <button type="button" className={btn} onClick={() => setAsking(true)}>Remove</button>
+  return (
+    <span className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
+      Remove {what}?
+      <button type="button" className={btn} disabled={busy} onClick={async () => { setBusy(true); await onConfirm(); setBusy(false); setAsking(false) }}>{busy ? 'Removing…' : 'Yes, remove'}</button>
+      <button type="button" className={btn} disabled={busy} onClick={() => setAsking(false)}>Keep</button>
+    </span>
   )
 }

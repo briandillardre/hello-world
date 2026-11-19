@@ -12,6 +12,7 @@ import { rollup } from '@/lib/jobs/cost'
 import { lastSentByJob, type PApp, type WipInput } from '@/lib/jobs/portfolio'
 import type { AppStatus } from '@/lib/jobs/payapp'
 import type { Stage } from '@/lib/jobs/job'
+import { demoPortfolio } from '@/lib/demo/jobs'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -32,7 +33,7 @@ export interface Portfolio {
 
 export async function getPortfolio(companyId: string): Promise<Portfolio> {
   const empty: Portfolio = { available: false, partial: false, jobs: [], apps: [], wip: [] }
-  if (isMock) return { ...empty, available: true }
+  if (isMock) return demoPortfolio()
   try {
     const log = await listJobs(true)
     if (!log.available) return empty

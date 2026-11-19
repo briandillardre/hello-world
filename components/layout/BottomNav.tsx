@@ -82,15 +82,15 @@ const canonOrder = (role?: string | null): string[] => {
 // user's saved order still decides the bar and the edit grid.
 const DRAWER_GROUPS: { title: string; hrefs: string[] }[] = [
   { title: 'Watch',  hrefs: ['/map', '/command', '/alerts'] },
-  { title: 'Field',  hrefs: ['/clock', '/timecards', '/logs', '/photos', '/safety', '/beta/dvir', '/assets', '/zones', '/plans'] },
-  { title: 'Office', hrefs: ['/jobs', '/reports', '/team', '/beta'] },
+  { title: 'Field',  hrefs: ['/clock', '/timecards', '/logs', '/photos', '/safety', '/beta/dvir', '/assets', '/maintenance', '/zones', '/plans'] },
+  { title: 'Office', hrefs: ['/jobs', '/receipts', '/finance', '/reports', '/team', '/beta'] },
   // Mirrors the desktop sidebar's Setup group exactly — a page missing here
   // fell into "Other" (Hardware setup, Sep 4) or off the phone entirely
   // (Team activity).
   { title: 'Setup',  hrefs: ['/trackers', '/assets/onboard', '/settings', '/welcome', '/help'] },
   // Useful but rarely opened (Brian, Nov 6: "if the items are genuinely
   // useful that's fine, they just need to be put somewhere under advanced").
-  { title: 'Advanced', hrefs: ['/measurements', '/tags', '/maintenance', '/track', '/accounting', '/receipts', '/finance', '/activity', '/aircraft'] },
+  { title: 'Advanced', hrefs: ['/measurements', '/tags', '/track', '/accounting', '/activity', '/aircraft'] },
 ]
 
 // Drop unknown hrefs, splice newly-shipped pages in at their canonical slot

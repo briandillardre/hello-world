@@ -160,6 +160,75 @@ const eq = (a, b, msg) => ok(JSON.stringify(a) === JSON.stringify(b), `${msg}: $
   ok(off.warnings.some((w) => /vertical datum/.test(w)), 'a 2 ft miss warns about the datum')
 }
 
+// ── as-built on a SPARSE design: shots between vertices are met exactly ──
+{
+  const FT = 0.3048
+  const T = tm.makeFrame(-82.394, 34.8526, 17)
+  const ll = (xf, yf) => tm.fromFrame(T, xf * FT * T.k, yf * FT * T.k)
+  const rect = (x0, y0, x1, y1) => [ll(x0, y0), ll(x1, y0), ll(x1, y1), ll(x0, y1)]
+  const nx = 400, ny = 400, zg = new Float32Array(nx * ny).fill(299 * FT)
+  const ground = { zone: 17, epsg: 26917, x0: T.e0 - 20, y0: T.n0 - 20, dx: 1, dy: 1, nx, ny, z: zg, source: 't', resolutionM: 1 }
+  // spot grades 75 ft apart on a sloped plane — the design's vertices are sparse
+  const spots = []
+  for (let x = 0; x <= 300; x += 75) for (let y = 0; y <= 300; y += 75) spots.push([x, y])
+  const design = { v: 1, existing: { source: 'lidar', offsetFt: 0 }, settings: { shrinkPct: 0, truckCy: 12 }, features: [
+    { id: 'lim', kind: 'boundary', coords: rect(0, 0, 300, 300) },
+    { id: 'lot', kind: 'reduce', coords: rect(100, 100, 200, 200), thicknessIn: 8, label: 'Parking' },
+    ...spots.map(([x, y], i) => ({ id: `s${i}`, kind: 'fg_spot', coords: [ll(x, y)], z: 300 + 0.01 * x + 0.02 * y })),
+  ] }
+  const ctx = tk.buildContext(design, ground)
+  const designFt = (lng, lat) => { const [x, y] = tm.toFrame(ctx.frame, lng, lat); return ctx.fg.zAt(x, y) / FT }
+  // between vertices, inside the lot; the first two are > 40 ft (the radius) from every design vertex
+  const spec = [[112, 113, 0.2], [187, 112, -0.1], [150, 185, 0.15], [131, 160, 0.05]]
+  const shots = spec.map(([x, y, dz]) => { const [lng, lat] = ll(x, y); return { lng, lat, zFt: designFt(lng, lat) + dz, kind: 'lip' } })
+  const radiusFt = 40
+  const f = X.asbuiltFiles(ctx, design, shots, { project: 'Sparse', now: new Date('2026-11-19T12:00:00Z'), grid: 'sc', radiusFt, asphaltIn: 2, kinds: ['lip', 'flowline'], correctionField: R.correctionField })
+  ok(f.residualsFt.every((r, i) => Math.abs(r - spec[i][2]) < 0.002), `sparse residuals as placed (${f.residualsFt})`)
+  const surf = (name) => {
+    const block = f.landxml.split('<Surface name="').find((b) => b.startsWith(name))
+    const pts = [...block.matchAll(/<P id="\d+">([\d.-]+) ([\d.-]+) ([\d.-]+)<\/P>/g)].map((m) => ({ n: +m[1], e: +m[2], z: +m[3] }))
+    const faces = [...block.matchAll(/<F>(\d+) (\d+) (\d+)<\/F>/g)].map((m) => [+m[1] - 1, +m[2] - 1, +m[3] - 1])
+    return { pts, faces }
+  }
+  // height of an output surface at (e, n): the triangle holding it, linear inside
+  const zOn = (s, e, n) => {
+    for (const [a, b, c] of s.faces) {
+      const A = s.pts[a], B = s.pts[b], C = s.pts[c]
+      const det = (B.e - A.e) * (C.n - A.n) - (C.e - A.e) * (B.n - A.n)
+      if (Math.abs(det) < 1e-12) continue
+      const u = ((e - A.e) * (C.n - A.n) - (C.e - A.e) * (n - A.n)) / det
+      const v = ((B.e - A.e) * (n - A.n) - (e - A.e) * (B.n - A.n)) / det
+      if (u < -1e-6 || v < -1e-6 || u + v > 1 + 1e-6) continue
+      return A.z + u * (B.z - A.z) + v * (C.z - A.z)
+    }
+    return NaN
+  }
+  const fg = surf('Finished grade'), st = surf('Top of stone'), sg = surf('Subgrade')
+  spec.forEach(([x, y], i) => {
+    const [e, n] = SP.toStatePlane(...ll(x, y))
+    const zf = zOn(fg, e, n)
+    near(zf, shots[i].zFt, 0.01, `re-fit FG passes through shot ${i + 1} (between design vertices)`)
+    near(zf - zOn(st, e, n), 2 / 12, 0.01, `top of stone = FG − 2" at shot ${i + 1}`)
+    near(zf - zOn(sg, e, n), 8 / 12, 0.01, `subgrade = FG − 8" at shot ${i + 1}`)
+  })
+  // 2× the radius from every shot: the design, untouched
+  for (const [x, y] of [[270, 30], [30, 270], [280, 280], [20, 20]]) {
+    const dmin = Math.min(...spec.map(([sx, sy]) => Math.hypot(sx - x, sy - y)))
+    ok(dmin >= 2 * radiusFt, `far point (${x},${y}) is ≥ 2× radius from the shots`)
+    const [lng, lat] = ll(x, y)
+    const [e, n] = SP.toStatePlane(lng, lat)
+    near(zOn(fg, e, n), designFt(lng, lat), 0.002, `FG at (${x},${y}), far from every shot, is the design`)
+  }
+  // smooth inside the radius: halfway to the radius the correction is partial, never an overshoot
+  {
+    const [lng, lat] = ll(112, 133)
+    const [e, n] = SP.toStatePlane(lng, lat)
+    const d = zOn(fg, e, n) - designFt(lng, lat)
+    ok(d > 0.01 && d < 0.2, `20 ft from a +0.20 ft shot the lift is partial (${d.toFixed(3)} ft)`)
+  }
+  ok(f.faces.fg < 50_000, `triangle count stays bounded (${f.faces.fg})`)
+}
+
 // ── versions ──
 {
   const design = { v: 1, existing: { source: 'lidar', offsetFt: 0 }, settings: { shrinkPct: 15, truckCy: 12 }, features: [{ id: 't', kind: 'topsoil', coords: [], thicknessIn: 4, label: 'Fields' }, { id: 'c', kind: 'fg_contour', coords: [] }] }

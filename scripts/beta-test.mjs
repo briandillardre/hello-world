@@ -53,6 +53,10 @@ const near = (a, b, tol, msg) => ok(Math.abs(a - b) <= tol, `${msg}: ${a} vs ${b
   ok(R.cleanRecord('worker_class', { classification: 'Laborer', base: 20, idLast4: '6789' }, {}, true).ok, 'last four is fine')
   ok(!R.cleanRecord('haul_ticket', { ticket: '1', day: '2026-11-03', source: 'Pit 4', direction: 'in', material: 'abc' }, {}, false).ok, 'a ticket needs tons or CY')
   ok(!R.cleanRecord('credential', { type: 'nope' }, { person: 'X' }, false).ok, 'credential type must be on the list')
+  { const c = R.cleanRecord('credential', { type: R.CREDENTIAL_KINDS[0].value, number: 'SC-0123 4567-89' }, { person: 'X' }, false)
+    eq(c.ok && c.value.data.number, '456789', 'a card number keeps only its last six letters/digits') }
+  { const c = R.cleanRecord('credential', { type: R.CREDENTIAL_KINDS[0].value, number: '--' }, { person: 'X' }, false)
+    ok(c.ok && !('number' in c.value.data), 'a card number with no letters or digits is dropped') }
   eq(R.addWorkdays('2026-11-20', 3), '2026-11-25', 'Fri + 3 working days = Wed')
   eq(R.dueState('2026-11-18', '2026-11-19'), 'overdue', 'due yesterday = overdue')
   eq(R.dueState('2026-12-10', '2026-11-19'), 'soon', 'due in 21 days = soon')
@@ -251,6 +255,20 @@ const near = (a, b, tol, msg) => ok(Math.abs(a - b) <= tol, `${msg}: ${a} vs ${b
   eq(S.uptime(checks, 'ai'), 50, 'uptime ignores nulls')
   eq(S.current(checks, now).ai, 'up', 'current = newest fresh check')
   eq(S.current(checks, now + 5 * 3_600_000).app, 'unknown', 'stale = unknown, not up')
+}
+
+{ // legal deadlines by the calendar, never 30-day months (ship-check Nov 19)
+  eq(R.addMonths('2026-08-31', 6), '2027-02-28', 'Aug 31 + 6 months = Feb 28')
+  eq(R.addMonths('2027-01-31', 6), '2027-07-31', 'Jan 31 + 6 months = Jul 31')
+  eq(R.addMonths('2027-08-31', 6), '2028-02-29', 'leap year')
+  eq(R.addMonths('2026-03-15', 12), '2027-03-15', 'one calendar year')
+  const f = L.lienClock({ role: 'sub', lastFurnished: '2026-06-01', lienFiled: '2026-08-31' }, { first: null, last: null }, '2026-09-01', false)
+  eq(f.deadlines.find((d) => d.key === 'suit')?.due, '2027-02-28', 'suit = six calendar months after filing')
+  // no worked days on record = no evidence = nothing claimed
+  const days = ['2026-11-02', '2026-11-03']
+  const wx = new Map(days.map((d) => [d, { precipIn: 1.2, tMaxF: 60, gustMph: 10 }]))
+  const j = W.judgeDays(days, wx, new Map(), W.DEFAULT_THRESHOLDS)
+  eq(j.verdicts.filter((v) => v.lost).length, 0, 'no hours on record claims no lost days')
 }
 
 console.log(`\nbeta: ${pass} passed, ${fail} failed`)

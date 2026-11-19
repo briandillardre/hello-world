@@ -17,6 +17,8 @@ import { checkShots, type CheckResults } from '@/lib/survey/check'
 import { buildLegend, type LegendSheet } from '@/lib/dirt/versions'
 import type { DirtDesign, DirtResults } from '@/lib/dirt/takeoff'
 
+import { toolByKey } from '@/lib/beta/tools'
+
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -30,12 +32,22 @@ async function writer(opts: { manager?: boolean } = {}) {
   if (perms.viewingAs) return { ok: false as const, error: 'You’re previewing another login — exit the preview to change this.' }
   if (isProspect(perms) || !perms.features.includes('beta')) return { ok: false as const, error: 'Beta isn’t open for your login.' }
   if (!perms.canEdit || rankOf(perms) < (opts.manager ? RANK.manager : RANK.foreman)) return { ok: false as const, error: opts.manager ? 'Managers and up do that.' : 'Foreman and up do that.' }
+  // the page's own gate (Foreman+ with Plans) — a narrowed view-levels table holds for a direct call too
+  if (!toolByKey('survey').canOpen(perms, false)) return { ok: false as const, error: 'The site survey isn’t open for your login.' }
   const companyId = await getCurrentCompanyId()
   const { createClient, createServiceClient } = await import('@/lib/supabase-server')
   const { data: { user } } = await createClient().auth.getUser()
   if (!user || !companyId) return { ok: false as const, error: 'Sign in first.' }
   if (!(await dirtAddonActive(companyId))) return { ok: false as const, error: 'The site survey rides the dirt takeoff add-on — ask us to turn it on for your company.' }
-  return { ok: true as const, companyId, userId: user.id, svc: createServiceClient() }
+  return { ok: true as const, companyId, userId: user.id, svc: createServiceClient(), rank: rankOf(perms) }
+}
+
+/** Per company per day — a loop can't fill the disk (each version copies a design of up to 3 MB and a picture). */
+const DAILY_VERSIONS = 200
+const DAILY_SHOT_SETS = 100
+async function dailyCount(svc: Svc, table: 'dirt_takeoff_versions' | 'survey_shots', companyId: string): Promise<number> {
+  const { count } = await svc.from(table).select('id', { count: 'exact', head: true }).eq('company_id', companyId).gte('created_at', new Date(Date.now() - 86_400_000).toISOString())
+  return count ?? 0
 }
 type Svc = ReturnType<typeof import('@/lib/supabase-server').createServiceClient>
 
@@ -79,7 +91,14 @@ export async function saveTakeoffVersionAction(raw: { takeoffId?: unknown; label
     .eq('id', raw.takeoffId).eq('company_id', companyId).is('deleted_at', null).maybeSingle()
   if (!t?.geofence_id || !(await companySite(svc, companyId, t.geofence_id))) return { ok: false, error: 'That takeoff wasn’t found.' }
   if (!t.results) return { ok: false, error: 'Save the takeoff (so the server runs it) before freezing a version.' }
-  const { data: last } = await svc.from('dirt_takeoff_versions').select('version_no').eq('takeoff_id', t.id).order('version_no', { ascending: false }).limit(1)
+  if (keyRateLimited(userId, 'takeoff-version', 6)) return { ok: false, error: 'That’s a lot of versions in a minute — wait a moment.' }
+  if ((await dailyCount(svc, 'dirt_takeoff_versions', companyId)) >= DAILY_VERSIONS) return { ok: false, error: 'That’s the most versions a company can freeze in a day.' }
+  const { data: last } = await svc.from('dirt_takeoff_versions').select('version_no, created_at, deleted_at').eq('takeoff_id', t.id).order('version_no', { ascending: false }).limit(1)
+  // nothing changed since the last live version = nothing to freeze
+  const prev = last?.[0]
+  if (prev && !prev.deleted_at && t.computed_at && Date.parse(String(t.computed_at)) <= Date.parse(String(prev.created_at))) {
+    return { ok: false, error: `Nothing changed since version ${prev.version_no} — save the takeoff with its changes first.` }
+  }
   const versionNo = (Number(last?.[0]?.version_no) || 0) + 1
   const label = (typeof raw.label === 'string' && raw.label.trim() ? raw.label.trim() : `Version ${versionNo}`).slice(0, 120)
   const note = typeof raw.note === 'string' ? raw.note.trim().slice(0, 2000) || null : null
@@ -128,6 +147,7 @@ export async function fileShotsAction(raw: { zoneId?: unknown; name?: unknown; t
   if (!w.ok) return w
   const site = await companySite(w.svc, w.companyId, raw?.zoneId)
   if (!site || site.ring.length < 3) return { ok: false, error: 'Pick the site.' }
+  if ((await dailyCount(w.svc, 'survey_shots', w.companyId)) >= DAILY_SHOT_SETS) return { ok: false, error: 'That’s the most shot sets a company can file in a day.' }
   if (typeof raw.text !== 'string' || raw.text.length > 2_000_000) return { ok: false, error: 'Paste the shots (up to 5,000).' }
   if (keyRateLimited(w.userId, 'survey-shots', 30)) return { ok: false, error: 'That’s a lot in a minute — wait a moment.' }
   const p = parseShots(raw.text)
@@ -138,7 +158,7 @@ export async function fileShotsAction(raw: { zoneId?: unknown; name?: unknown; t
   if (far > p.shots.length / 2) return { ok: false, error: 'Most of these shots are over a kilometre from the site — check the coordinate system (SC State Plane feet, or lat / lng).' }
   const shots = p.shots.filter((s) => metres([s.lng, s.lat], c) <= 1000)
   if (far) p.problems.push(`${far} shots more than a kilometre from the site were left out.`)
-  const takenOn = typeof raw.takenOn === 'string' && DAY.test(raw.takenOn) ? raw.takenOn : new Date().toISOString().slice(0, 10)
+  const takenOn = typeof raw.takenOn === 'string' && DAY.test(raw.takenOn) ? raw.takenOn : new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
   const source = ['rover', 'total_station', 'level', 'other'].includes(String(raw.source)) ? String(raw.source) : 'rover'
   const name = (typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : `Shots ${takenOn}`).slice(0, 120)
   const { data, error } = await w.svc.from('survey_shots').insert({
@@ -153,6 +173,9 @@ export async function deleteShotsAction(raw: { id?: unknown }): Promise<Res> {
   const w = await writer()
   if (!w.ok) return w
   if (typeof raw?.id !== 'string' || !UUID.test(raw.id)) return { ok: false, error: 'Not found.' }
+  const { data: own } = await w.svc.from('survey_shots').select('created_by').eq('id', raw.id).eq('company_id', w.companyId).is('deleted_at', null).maybeSingle()
+  if (!own) return { ok: false, error: 'Not found.' }
+  if (own.created_by !== w.userId && w.rank < RANK.manager) return { ok: false, error: 'Only whoever filed these shots, or a Manager, removes them.' }
   await w.svc.from('survey_shots').update({ deleted_at: new Date().toISOString() }).eq('id', raw.id).eq('company_id', w.companyId)
   await w.svc.from('survey_checks').update({ deleted_at: new Date().toISOString() }).eq('shots_id', raw.id).eq('company_id', w.companyId)
   revalidatePath('/beta/survey')
@@ -209,7 +232,8 @@ export async function runSurveyCheckAction(raw: { shotsId?: unknown; surfaceId?:
 export async function readTakeoffDesignAction(raw: { takeoffId?: unknown }): Promise<Res<{ design: DirtDesign; name: string; zoneId: string }>> {
   if (isMock) return { ok: false, error: 'Demo mode.' }
   const perms = await getMyPermissions()
-  if (isProspect(perms) || !perms.features.includes('beta')) return { ok: false, error: 'Beta isn’t open for your login.' }
+  if (perms.viewingAs) return { ok: false, error: 'You’re previewing another login — exit the preview to build files.' }
+  if (isProspect(perms) || !perms.features.includes('beta') || !toolByKey('survey').canOpen(perms, false)) return { ok: false, error: 'The site survey isn’t open for your login.' }
   if (typeof raw?.takeoffId !== 'string' || !UUID.test(raw.takeoffId)) return { ok: false, error: 'That takeoff wasn’t found.' }
   const { createClient } = await import('@/lib/supabase-server')
   const { data } = await createClient().from('dirt_takeoffs').select('design, name, geofence_id').eq('id', raw.takeoffId).is('deleted_at', null).maybeSingle()

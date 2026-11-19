@@ -220,7 +220,7 @@ function AppPanel({ app, apps, sov, cos, contract, info, canEdit, canManage, run
       )}
 
       <div className="overflow-x-auto -mx-3 px-3">
-        <table className="min-w-[860px] w-full text-[12px]">
+        <table className="min-w-[860px] w-full text-[12px] text-ink">
           <thead className="text-faint text-[10.5px] uppercase tracking-wider">
             <tr className="text-left">
               <th className="py-1 pr-2">Item</th><th className="py-1 pr-2">Description</th>

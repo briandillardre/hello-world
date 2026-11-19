@@ -5,6 +5,7 @@
  * prospect reads nothing.
  */
 import { allRows } from '@/lib/db/paged'
+import { demoJobLog, demoJobPage, DEMO_MEMBERS } from '@/lib/demo/jobs'
 import {
   cleanTemplate, DEFAULT_CHECKLIST, isCheckStage, isLinkKey, isStage, JOB_COLUMNS, NO_MONEY,
   type CheckItem, type Contact, type ContactRole, type JobFields, type JobMoney, type Stage, type TemplateItem,
@@ -87,7 +88,7 @@ export interface JobPage {
 /** Everything the job page shows for one site. `withMoney` = the caller may see costs. */
 export async function getJob(companyId: string, zoneId: string, withMoney: boolean): Promise<JobPage> {
   const empty: JobPage = { job: null, money: null, checklist: [], contacts: [], members: [] }
-  if (isMock) return empty
+  if (isMock) return demoJobPage(zoneId, withMoney)
   try {
     const sb = await db()
     const { data: j, error } = await sb.from('jobs').select(JOB_SELECT).eq('geofence_id', zoneId).maybeSingle()
@@ -122,7 +123,7 @@ export interface LogRow {
 
 /** The project log: every job of the company, with its site's name. */
 export async function listJobs(withMoney: boolean): Promise<{ rows: LogRow[]; members: Member[]; available: boolean }> {
-  if (isMock) return { rows: [], members: [], available: true }
+  if (isMock) return { rows: demoJobLog(withMoney), members: DEMO_MEMBERS, available: true }
   try {
     const sb = await db()
     const { rows: js, error } = await allRows((from, to) => sb.from('jobs').select(JOB_SELECT).order('id').range(from, to), { max: 5000 })

@@ -10,6 +10,7 @@ import { counts, type AppStatus } from '@/lib/jobs/payapp'
 import { closeoutChecks, type CloseCheck, type CloseoutFacts } from '@/lib/jobs/closeout'
 import { isIssueCategory, isIssuePriority, isIssueStatus, issueSummary, type Issue, type IssueSummary } from '@/lib/jobs/issues'
 import { costsOnly, expiring, isDocKind, type JobDocument } from '@/lib/jobs/documents'
+import { demoDocuments, demoIssues } from '@/lib/demo/jobs'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -47,7 +48,7 @@ async function userDb() {
 
 /** A job's issues; their dollars only when `money` (and RLS agrees). */
 export async function getIssues(jobId: string, money: boolean): Promise<{ available: boolean; issues: Issue[] }> {
-  if (isMock) return { available: true, issues: [] }
+  if (isMock) return { available: true, issues: demoIssues(jobId, money) }
   try {
     const db = await userDb()
     const [a, m] = await Promise.all([
@@ -64,7 +65,7 @@ export async function getIssues(jobId: string, money: boolean): Promise<{ availa
 
 /** A job's documents (RLS leaves out the money papers for a login without costs). */
 export async function getDocuments(jobId: string): Promise<{ available: boolean; docs: JobDocument[] }> {
-  if (isMock) return { available: true, docs: [] }
+  if (isMock) return { available: true, docs: demoDocuments(jobId) }
   try {
     const { data, error } = await (await userDb()).from('job_documents').select(DOC_COLS).eq('job_id', jobId)
       .order('kind').order('doc_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }).limit(1000)
@@ -154,7 +155,7 @@ export async function getJobExtras(companyId: string, job: { id: string; zoneId:
 
 /** The change orders' numbers by id (costs only, through RLS) — an issue shows "→ CO 4". */
 export async function getCoNumbers(jobId: string): Promise<Record<string, number>> {
-  if (isMock) return {}
+  if (isMock) return { co1: 1, co2: 2, co3: 3 }
   try {
     const { data } = await (await userDb()).from('job_change_orders').select('id, number').eq('job_id', jobId).limit(1000)
     return Object.fromEntries((data ?? []).map((r) => [String(r.id), Number(r.number)]))

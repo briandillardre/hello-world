@@ -51,7 +51,8 @@ export function judgeDays(days: string[], wx: Map<string, WxDay>, hours: Map<str
     if (w?.gustMph != null && w.gustMph >= th.windMph) reasons.push(`gusts to ${Math.round(w.gustMph)} mph`)
     const h = Math.round((hours.get(d) ?? 0) * 10) / 10
     const bad = reasons.length > 0
-    const lost = bad && (normalHours === 0 ? h === 0 : h < normalHours / 2)
+    // No worked days on record = no evidence the weather stopped anything: claim nothing.
+    const lost = bad && normalHours > 0 && h < normalHours / 2
     verdicts.push({ day: d, weekday: WD[wday(d)], wx: w, hours: h, reasons, bad, lost, workedThrough: bad && !lost })
   }
   return { verdicts, normalHours: Math.round(normalHours * 10) / 10 }

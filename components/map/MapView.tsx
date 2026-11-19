@@ -4784,7 +4784,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   // grading plan puts it (red cut · blue fill, lib/dirt/heat.ts), with the
   // headline yards as a label from street zoom. The pictures are private
   // (signed URLs, 1 h) — re-asked every 30 min while the layer is on.
-  const [dirtItems, setDirtItems] = useState<{ id: string; url: string; corners: [number, number][]; cutCy: number; fillCy: number; exportCy: number; importCy: number }[]>([])
+  const [dirtItems, setDirtItems] = useState<{ id: string; url: string; corners: [number, number][]; cutCy: number; fillCy: number; exportCy: number; importCy: number; computedAt?: string | null }[]>([])
   const dirtUrls = useRef<Map<string, string>>(new Map())
   useEffect(() => {
     if (!overlaysOn.dirt) return
@@ -4815,7 +4815,8 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     if (!overlaysOn.survey && !overlaysOn.dirt) return
     let cancelled = false
     const load = () => {
-      fetch('/api/survey-map')
+      // the Cut / fill layer alone needs only the versions — never every rover shot
+      fetch(overlaysOn.survey ? '/api/survey-map' : '/api/survey-map?parts=versions')
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`survey ${r.status}`))))
         .then((j: SurveyMapData) => {
           if (cancelled) return
@@ -4829,8 +4830,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     return () => { cancelled = true; clearInterval(t) }
   }, [overlaysOn.survey, overlaysOn.dirt])
   const surveyCutoff = range !== 'live' && realWindowEff ? realWindowEff.from + pbT * (realWindowEff.to - realWindowEff.from) : Infinity
-  // the day, not the frame — the effects below only fire when the scrubber crosses a date
-  const surveyDayKey = Number.isFinite(surveyCutoff) ? new Date(surveyCutoff).toISOString().slice(0, 10) : 'live'
+  // the LOCAL day, not the frame — the effects below only fire when the scrubber
+  // crosses a date (a UTC key put the next day's versions on the map after 7 PM Eastern)
+  const surveyDayKey = Number.isFinite(surveyCutoff) ? new Date(surveyCutoff).toLocaleDateString('en-CA') : 'live'
   const dirtShown = useMemo(() => {
     if (surveyDayKey === 'live' || !survey?.versions.length) return dirtItems
     const cutoff = Date.parse(`${surveyDayKey}T23:59:59`)
@@ -4841,7 +4843,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       const vs = byTakeoff.get(d.id)
       if (!vs) { out.push(d); continue }
       const v = versionOn(vs, cutoff)
-      if (v) out.push({ id: `v-${v.id}`, url: v.url, corners: v.corners, cutCy: v.cutCy, fillCy: v.fillCy, exportCy: 0, importCy: 0 })
+      // the takeoff as saved stands from its last save — newer than the best version, it wins
+      const saved = d.computedAt ? Date.parse(d.computedAt) : NaN
+      if (Number.isFinite(saved) && saved <= cutoff && (!v || saved > Date.parse(v.createdAt))) { out.push(d); continue }
+      if (v) out.push({ id: `v-${v.id}`, url: v.url, corners: v.corners, cutCy: v.cutCy, fillCy: v.fillCy, exportCy: v.exportCy, importCy: v.importCy })
     }
     return out
   }, [dirtItems, survey, surveyDayKey])
@@ -4858,14 +4863,21 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     return Array.from(best.values()).map((f) => f.id).sort().join(',')
   }, [survey, surveyDayKey])
   const topoCache = useRef<Map<string, GeoJSON.FeatureCollection>>(new Map())
+  /** Flights whose contours failed this visit — asked once, never re-read on every scrub. */
+  const topoFailed = useRef<Set<string>>(new Set())
   const [topoTick, setTopoTick] = useState(0)
   useEffect(() => {
     if (!overlaysOn.survey || !topoActiveKey) return
     let cancelled = false
     for (const id of topoActiveKey.split(',')) {
-      if (topoCache.current.has(id)) continue
+      if (topoCache.current.has(id) || topoFailed.current.has(id)) continue
       fetch(`/api/drone-topo?surface=${encodeURIComponent(id)}&interval=1`)
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`topo ${r.status}`))))
+        .then(async (r) => {
+          if (r.ok) return r.json()
+          if (r.status !== 429) topoFailed.current.add(id)
+          const j = await r.json().catch(() => null) as { error?: string } | null
+          throw new Error(j?.error ? `Drone topo: ${j.error}` : `topo ${r.status}`)
+        })
         .then((fc: GeoJSON.FeatureCollection) => { if (!cancelled) { topoCache.current.set(id, fc); setTopoTick((t) => t + 1) } })
         .catch((err) => { if (!cancelled) window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'survey', msg: err instanceof Error ? err.message : 'topo unreachable' } })) })
     }

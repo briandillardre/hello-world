@@ -12,6 +12,7 @@ import { isProspect } from '@/lib/permissions'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { dirtAddonActive } from '@/lib/db/dirt'
 import { keyRateLimited } from '@/lib/rate-limit'
+import { toolByKey } from '@/lib/beta/tools'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -22,7 +23,9 @@ const cache = new Map<string, { at: number; body: string }>()
 
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('surface') ?? ''
-  const interval = Math.min(10, Math.max(0.25, Number(req.nextUrl.searchParams.get('interval')) || 1))
+  // snapped to a fixed ladder — a free float in the cache key let every request skip the cache
+  const asked = Number(req.nextUrl.searchParams.get('interval')) || 1
+  const interval = [0.25, 0.5, 1, 2, 5, 10].reduce((b, v) => (Math.abs(v - asked) < Math.abs(b - asked) ? v : b), 1)
   if (!UUID.test(id)) return NextResponse.json({ error: 'surface?' }, { status: 400 })
   try {
     const { createClient, createServiceClient } = await import('@/lib/supabase-server')
@@ -30,7 +33,7 @@ export async function GET(req: NextRequest) {
     const { data: { user } } = await db.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Sign in' }, { status: 401 })
     const perms = await getMyPermissions()
-    if (isProspect(perms) || !perms.features.includes('zones') || !perms.features.includes('beta')) return NextResponse.json({ error: 'Not open' }, { status: 403 })
+    if (isProspect(perms) || !perms.features.includes('zones') || !perms.features.includes('beta') || !toolByKey('survey').canOpen(perms, false)) return NextResponse.json({ error: 'Not open' }, { status: 403 })
     const companyId = await getCurrentCompanyId()
     if (!(await dirtAddonActive(companyId))) return NextResponse.json({ error: 'Add-on' }, { status: 403 })
     const key = `${companyId}|${id}|${interval}`
@@ -79,22 +82,32 @@ export async function GET(req: NextRequest) {
     const { contourLevels, contours, simplify } = await import('@/lib/survey/contours')
     let iv = interval
     while (Number.isFinite(lo) && (hi - lo) / iv > 150) iv *= 2
-    const lines = contours({ nx, ny, z }, contourLevels(lo, hi, iv), iv, 5)
-    let budget = 60_000
-    const features: GeoJSON.Feature[] = []
-    for (const l of lines) {
-      if (budget <= 0) break
-      const pts = simplify(l.pts, 0.25).map(([i, j]) => fromFrame(frame, x0 + i * step, y0 + j * step).map((v) => Math.round(v * 1e7) / 1e7) as [number, number])
-      if (pts.length < 2) continue
-      budget -= pts.length
-      features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: pts }, properties: { z: l.level, index: l.index ? 1 : 0, lbl: l.index ? `${Math.round(l.level)}` : '' } })
+    // Every level or none: past the point budget the interval doubles and the site is contoured
+    // again (cutting the list short dropped the top of a big site without a word).
+    let features: GeoJSON.Feature[] = []
+    let usedIv = iv
+    for (let tries = 0; tries < 4; tries++, iv *= 2) {
+      usedIv = iv
+      const lines = contours({ nx, ny, z }, contourLevels(lo, hi, iv), iv, 5)
+      let budget = 60_000
+      features = []
+      for (const l of lines) {
+        const pts = simplify(l.pts, 0.25).map(([i, j]) => fromFrame(frame, x0 + i * step, y0 + j * step).map((v) => Math.round(v * 1e7) / 1e7) as [number, number])
+        if (pts.length < 2) continue
+        budget -= pts.length
+        features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: pts }, properties: { z: l.level, index: l.index ? 1 : 0, lbl: l.index ? `${Math.round(l.level)}` : '' } })
+      }
+      if (budget >= 0) break
     }
-    const body = JSON.stringify({ type: 'FeatureCollection', features, interval: iv, min: lo, max: hi })
+    const body = JSON.stringify({ type: 'FeatureCollection', features, interval: usedIv, min: lo, max: hi })
     if (cache.size > 40) cache.delete(cache.keys().next().value as string)
     cache.set(key, { at: Date.now(), body })
     return new NextResponse(body, { headers: { 'content-type': 'application/json', 'cache-control': 'private, max-age=3600' } })
   } catch (err) {
     const m = err instanceof Error ? err.message : ''
-    return NextResponse.json({ error: m === 'outside' ? 'The flight doesn’t cover the site.' : 'Couldn’t read the flight.' }, { status: 502 })
+    const words = m === 'outside' ? 'The flight doesn’t cover the site.'
+      : m === 'too-big' ? 'The flight is too detailed to contour over a site this big — export the surface at 10 cm or coarser.'
+      : 'Couldn’t read the flight.'
+    return NextResponse.json({ error: words }, { status: m === 'outside' || m === 'too-big' ? 422 : 502 })
   }
 }

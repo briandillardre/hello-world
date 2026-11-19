@@ -11,6 +11,7 @@ import { allRows } from '@/lib/db/paged'
 import { isPcat, pcatOfReceipt, type BudgetLine, type CostEntry, type Pcat } from '@/lib/jobs/cost'
 import { shiftHours } from '@/lib/timecards'
 import type { AssetType } from '@/lib/types'
+import { demoJobCost } from '@/lib/demo/jobs'
 
 /** Entered costs a job may hold (the paste and the form refuse past it; the reader pages up to it). */
 export const MAX_JOB_COSTS = 20_000
@@ -46,7 +47,7 @@ const empty: JobCostData = {
 }
 
 export async function getJobCost(companyId: string, job: { id: string; zoneId: string; from: string | null }): Promise<JobCostData> {
-  if (isMock) return { ...empty, available: true }
+  if (isMock) return demoJobCost(job.id)
   try {
     const { createClient, createServiceClient } = await import('@/lib/supabase-server')
     const db = createClient()
