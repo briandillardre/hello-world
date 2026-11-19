@@ -112,8 +112,8 @@ export function ReceiptsInbox({ pending, done, zoneNames }: {
         <div className="rounded-xl border border-navy-700 bg-navy-950 p-8 text-center">
           <Receipt className="h-8 w-8 text-faint mx-auto mb-2" />
           <p className="text-sm text-muted">
-            Inbox zero. Receipts land here when the crew snaps them at clock-out — AI reads them,
-            you approve, QuickBooks gets the expense.
+            No receipts waiting for your approval. Snapped receipts land here — AI reads them,
+            you approve, and they post as the expense.
           </p>
         </div>
       ) : (

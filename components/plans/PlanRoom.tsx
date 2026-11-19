@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, FileStack, Plus, MapPin, Pencil, Trash2, RotateCcw, Map as MapIcon, Layers, Drill, Cpu, Plane, Briefcase } from 'lucide-react'
+import { ArrowLeft, FileStack, Plus, MapPin, Pencil, Trash2, RotateCcw, Map as MapIcon, Layers, Drill, Cpu, Plane, Briefcase , Calculator } from 'lucide-react'
 import {
   groupSheets, revLabel, setKindLabel, SET_KINDS, placementWords, type PlanSetKind,
 } from '@/lib/plans/room'
@@ -102,6 +102,11 @@ export function PlanRoom({ zone, data, canEdit, ring, demo, canDelete = false, i
             <Link href={`/plans/${zone.id}/takeoff`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
               <Layers className="h-4 w-4" /> Takeoff
             </Link>
+            {canCosts && canGround && (
+              <Link href={`/plans/${zone.id}/estimate`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
+                <Calculator className="h-4 w-4" /> Estimate
+              </Link>
+            )}
             {canGround && (
               <Link href={`/plans/${zone.id}/ground`} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-700 px-3 py-2 text-[12.5px] text-muted hover:text-ink">
                 <Drill className="h-4 w-4" /> Ground

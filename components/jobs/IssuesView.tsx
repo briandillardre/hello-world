@@ -9,7 +9,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, ListChecks, Plus, Pencil, Trash2, AlertTriangle, ChevronDown, FilePlus2 } from 'lucide-react'
+import { ListChecks, Plus, Pencil, Trash2, AlertTriangle, ChevronDown, FilePlus2 } from 'lucide-react'
+import { JobTabs } from './JobTabs'
 import {
   ISSUE_CATEGORIES, ISSUE_CATEGORY_WORDS, ISSUE_PRIORITIES, ISSUE_PRIORITY_WORDS, ISSUE_STATUSES, ISSUE_STATUS_WORDS,
   isOverdue, issueSummary, sortIssues, type Issue, type IssueCategory, type IssuePriority, type IssueStatus,
@@ -121,7 +122,7 @@ export function IssuesView({ zone, issues, available, members, coNumbers, today,
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="max-w-4xl mx-auto px-4 py-5 space-y-4 text-[12.5px]">
         <div>
-          <Link href={`/jobs/${zone.id}`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink mb-2"><ArrowLeft className="h-4 w-4" /> The job</Link>
+          <JobTabs zoneId={zone.id} costs={canCosts} />
           <h1 className="font-display font-bold text-xl text-ink flex items-center gap-2"><ListChecks className="h-5 w-5 text-amber flex-none" /> <span className="truncate">Issues & actions · {zone.name}</span></h1>
           <p className="text-faint">What came up on the job — who owns it, who has to decide and by when, what it could cost in dollars and days, and how it ended. Extra work becomes a change order.</p>
         </div>

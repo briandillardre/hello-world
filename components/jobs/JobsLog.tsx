@@ -121,7 +121,7 @@ export function JobsLog({ rows, members, available, sites, template, templateCus
           })}
           <label className="ml-auto flex items-center gap-1.5 rounded-xl border border-navy-700 bg-navy-900/60 px-2.5 py-1.5 text-[12.5px]">
             <Search className="h-3.5 w-3.5 text-faint" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Number, name or customer" className="bg-transparent outline-none text-ink w-44" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Number, name or customer" aria-label="Search jobs" className="bg-transparent outline-none text-ink w-44" />
           </label>
         </div>
 

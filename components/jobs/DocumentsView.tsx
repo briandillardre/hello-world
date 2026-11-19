@@ -8,9 +8,9 @@
  * run out. The money papers show only to logins that can see costs.
  */
 import { useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, FolderOpen, Upload, Download, Pencil, Trash2, AlertTriangle, X } from 'lucide-react'
+import { FolderOpen, Upload, Download, Pencil, Trash2, AlertTriangle, X } from 'lucide-react'
+import { JobTabs } from './JobTabs'
 import { createClient } from '@/lib/supabase'
 import {
   costsOnly, DOC_KIND_WORDS, DOC_KINDS, EXPIRING_KINDS, expiryState, expiryWords, kindFromName, MAX_DOC_BYTES, sizeWords,
@@ -114,7 +114,7 @@ export function DocumentsView({ zone, docs, available, apps, members, today, can
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="max-w-4xl mx-auto px-4 py-5 space-y-4 text-[12.5px]">
         <div>
-          <Link href={`/jobs/${zone.id}`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink mb-2"><ArrowLeft className="h-4 w-4" /> The job</Link>
+          <JobTabs zoneId={zone.id} costs={canCosts} />
           <h1 className="font-display font-bold text-xl text-ink flex items-center gap-2"><FolderOpen className="h-5 w-5 text-amber flex-none" /> <span className="truncate">Documents · {zone.name}</span></h1>
           <p className="text-faint">Every paper the job collects, by type. Plans live in the plan room, photos on the site page.{canCosts ? '' : ' Contracts, change orders, lien waivers, invoices, W-9s and bonds are for logins that can see costs.'}</p>
         </div>

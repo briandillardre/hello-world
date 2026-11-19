@@ -20,6 +20,7 @@ export function SearchInput({ value, onChange, placeholder = 'Search…' }: {
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-faint" />
       <Input
         placeholder={placeholder}
+        aria-label={placeholder.replace(/…$/, "")}
         className="pl-9"
         value={value}
         onChange={(e) => onChange(e.target.value)}

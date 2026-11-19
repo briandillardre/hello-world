@@ -59,7 +59,7 @@ export async function listRecords(companyId: string, kinds: BetaKind[], opts: { 
 }
 
 /** Company sites (no personal zones, boundaries, vendors) with a centre point. */
-export async function companySites(companyId: string): Promise<(Named & { lat: number | null; lng: number | null })[]> {
+export async function companySites(companyId: string): Promise<(Named & { lat: number | null; lng: number | null; kind: string })[]> {
   const { getGeofences } = await import('@/lib/db/zones')
   const fences = await getGeofences(companyId).catch(() => [])
   return fences
@@ -69,7 +69,7 @@ export async function companySites(companyId: string): Promise<(Named & { lat: n
       const n = ring.length || 1
       const lng = ring.length ? ring.reduce((t, p) => t + p[0], 0) / n : null
       const lat = ring.length ? ring.reduce((t, p) => t + p[1], 0) / n : null
-      return { id: String(f.id), name: String(f.name), lat, lng }
+      return { id: String(f.id), name: String(f.name), lat, lng, kind: String(f.kind ?? 'site') }
     })
     .sort((a, b) => a.name.localeCompare(b.name))
 }
@@ -241,4 +241,18 @@ export async function siteHoursByDay(companyId: string, siteId: string, from: st
     out.set(d, (out.get(d) ?? 0) + shiftHours(String(r.clock_in_at), String(r.clock_out_at), Number(r.break_minutes) || 0, Date.now()).paid)
   }
   return out
+}
+
+const ACTIVE_STAGES = ['active', 'awarded', 'substantial', 'on_hold', 'closeout']
+/**
+ * Job sites for the money / paperwork tools (payroll, weather claims, haul
+ * tickets): never a yard; running jobs first, newest number first, labelled
+ * "26-014 · Riverfront" (office review, Nov 19: the tools opened on the
+ * equipment yard).
+ */
+export function jobSiteChoices<T extends { id: string; name: string; kind: string }>(sites: T[], jobs: Map<string, { stage: string; number: string | null }>): (T & { label: string })[] {
+  const rank = (id: string) => { const j = jobs.get(id); return !j ? 2 : ACTIVE_STAGES.includes(j.stage) ? 0 : 1 }
+  return sites.filter((s) => s.kind !== 'yard')
+    .map((s) => { const n = jobs.get(s.id)?.number; return { ...s, label: n && !s.name.startsWith(n) ? `${n} · ${s.name}` : s.name } })
+    .sort((a, b) => rank(a.id) - rank(b.id) || String(jobs.get(b.id)?.number ?? '').localeCompare(String(jobs.get(a.id)?.number ?? '')) || a.name.localeCompare(b.name))
 }

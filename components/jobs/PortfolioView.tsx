@@ -89,7 +89,7 @@ export function PortfolioView({ jobs, ar, wip, cash, retHeld, terms, partial, av
                     </tr>
                   )
                 })}
-                {!ar.rows.length && <tr><td colSpan={6} className="py-2 text-faint">Nothing owed — every sent application is paid.</td></tr>}
+                {!ar.rows.length && <tr><td colSpan={6} className="py-2 text-faint">Nothing owed — no unpaid applications sent.</td></tr>}
               </tbody>
             </table>
           </div>
