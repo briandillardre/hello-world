@@ -55,7 +55,7 @@ export type FeatureKey =
   | 'map' | 'command' | 'alerts' | 'aircraft'
   | 'clock' | 'logs' | 'assets' | 'zones' | 'plans' | 'measurements' | 'tags' | 'maintenance' | 'track'
   | 'jobs' | 'reports' | 'accounting' | 'receipts' | 'finance' | 'team' | 'activity'
-  | 'trackers' | 'hardware' | 'settings'
+  | 'trackers' | 'hardware' | 'settings' | 'beta'
   | 'costs' | 'edit' | 'billing' | 'manage_team' | 'ask_ai'
 
 export interface FeatureDef {
@@ -95,6 +95,7 @@ export const FEATURES: FeatureDef[] = [
   { key: 'activity',     group: 'Office', label: 'Team activity',   hint: 'Who did what, when', href: '/activity', masterOnly: true },
   { key: 'trackers',     group: 'Setup',  label: 'Trackers',        hint: 'The drawer, swaps, undo', href: '/trackers' },
   { key: 'hardware',     group: 'Setup',  label: 'Hardware setup',  hint: 'SIM + config checklist per box', href: '/assets/onboard' },
+  { key: 'beta',         group: 'Office', label: 'Beta',            hint: 'Tools being tried out — certified payroll, lien clock, 811 tickets, rentals, inspections…', href: '/beta' },
   { key: 'settings',     group: 'Setup',  label: 'Settings',        hint: 'Company settings (your own account is always yours)', href: '/settings' },
   { key: 'costs',        group: 'Abilities', label: 'See $ figures',  hint: 'Rates, job costs, $/day on the map' },
   { key: 'edit',         group: 'Abilities', label: 'Edit things',    hint: 'Add/edit assets, zones, alerts, maintenance' },
@@ -117,7 +118,7 @@ export const MASTER_ONLY: FeatureKey[] = FEATURES.filter((f) => f.masterOnly).ma
  *  except PROSPECT_HIDDEN. Everything else — the map, Command Center,
  *  alerts, the flight log, assets, zones, measurements, maintenance,
  *  reports — the Master switches per company in the view-levels table. */
-export const PROSPECT_NEVER: FeatureKey[] = ['jobs', 'edit', 'costs', 'billing', 'manage_team', 'ask_ai', 'team', 'activity', 'finance', 'clock', 'logs', 'track', 'tags', 'receipts', 'accounting', 'settings', 'trackers', 'hardware']
+export const PROSPECT_NEVER: FeatureKey[] = ['jobs', 'edit', 'costs', 'billing', 'manage_team', 'ask_ai', 'team', 'activity', 'finance', 'clock', 'logs', 'track', 'tags', 'receipts', 'accounting', 'settings', 'trackers', 'hardware', 'beta']
 /** The pages a Prospective Client must not even see in a nav (Brian, Sep
  *  23: "they should not see team or financials or be seen by anyone else on
  *  the team except for me"). Absent from every nav, 404 on a typed URL. */
@@ -138,19 +139,19 @@ export const ROLE_FEATURE_DEFAULTS: Record<Role, Record<FeatureKey, boolean>> = 
   manager: on(
     'map', 'command', 'alerts', 'aircraft',
     'clock', 'logs', 'assets', 'zones', 'plans', 'measurements', 'tags', 'maintenance', 'track',
-    'jobs', 'reports', 'receipts', 'team', 'trackers', 'hardware',
+    'jobs', 'reports', 'receipts', 'team', 'trackers', 'hardware', 'beta',
     'costs', 'edit', 'ask_ai',
   ),
   foreman: on(
     'map', 'command', 'alerts', 'aircraft',
     'clock', 'logs', 'assets', 'zones', 'plans', 'measurements', 'tags', 'maintenance', 'track',
-    'jobs', 'reports', 'receipts', 'trackers', 'hardware',
+    'jobs', 'reports', 'receipts', 'trackers', 'hardware', 'beta',
     'edit', 'ask_ai',
   ),
   associate: on(
     'map', 'alerts', 'aircraft',
     'clock', 'logs', 'assets', 'zones', 'plans', 'tags', 'maintenance', 'track',
-    'receipts',
+    'receipts', 'beta',
     'ask_ai',
   ),
   // A prospect looks at the product the way the owner does (Brian, Sep 23:
@@ -309,7 +310,7 @@ export function featureForPath(pathname: string): FeatureKey | null {
     ['/clock', 'clock'], ['/timecards', 'clock'], ['/logs', 'logs'], ['/photos', 'logs'], ['/safety', 'logs'], ['/assets', 'assets'], ['/zones', 'zones'], ['/plans', 'plans'], ['/costbook', 'plans'], ['/jobs', 'jobs'],
     ['/measurements', 'measurements'], ['/tags', 'tags'], ['/maintenance', 'maintenance'], ['/track', 'track'],
     ['/reports', 'reports'], ['/accounting', 'accounting'], ['/receipts', 'receipts'], ['/finance', 'finance'],
-    ['/team', 'team'], ['/activity', 'activity'], ['/trackers', 'trackers'], ['/settings', 'settings'],
+    ['/team', 'team'], ['/activity', 'activity'], ['/trackers', 'trackers'], ['/settings', 'settings'], ['/beta', 'beta'],
   ]
   let best: [string, FeatureKey] | null = null
   for (const m of map) if (pathname === m[0] || pathname.startsWith(m[0] + '/')) if (!best || m[0].length > best[0].length) best = m

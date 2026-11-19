@@ -623,6 +623,20 @@ export async function GET(req: NextRequest) {
   try { out.jobDocOrphansSwept = await sweepUnfiled('jobdocs', 'job_documents') }
   catch (err) { out.jobDocSweep = err instanceof Error ? err.message : 'failed' }
 
+  // 14 — the public status page (162): one row per run, up / down only.
+  // db = steps 1–2 read asset_locations; ingest = tracker data arrived inside
+  // the stale window; ai = the probe answered (no key configured = no data).
+  // Kept 120 days.
+  try {
+    const { createServiceClient: svcClient } = await import('@/lib/supabase-server')
+    const db = svcClient()
+    const dbOk = typeof out.recentByDevice === 'number'
+    const ingestOk = dbOk ? (Number(out.recentByDevice) > 0 || Number(out.recentByArrival ?? 0) > 0) : null
+    const aiOk = typeof out.ai === 'string' ? out.ai.startsWith('ok') : null
+    await db.from('status_checks').insert({ db_ok: dbOk, ingest_ok: ingestOk, ai_ok: process.env.ANTHROPIC_API_KEY ? aiOk : null })
+    await db.from('status_checks').delete().lt('checked_at', new Date(Date.now() - 120 * 86_400_000).toISOString())
+  } catch (err) { out.statusCheck = err instanceof Error ? err.message : 'failed' }
+
   return NextResponse.json({ ok: true, at: new Date().toISOString(), ...out })
 }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useLang } from '@/lib/i18n'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Clock, HardHat, Camera, Receipt, LogIn, LogOut, ShieldAlert, Fuel, Check, Images, CloudOff, WifiOff } from 'lucide-react'
@@ -61,6 +62,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
   policy?: ClockPolicy
 }) {
   const router = useRouter()
+  const { t, lang } = useLang()
   const [category, setCategory] = useState<ClockCategory>('project')
   const [zoneId, setZoneId] = useState<string>(zones[0]?.id ?? '')
   // GPS preselect: rank job sites by distance to the phone and pick the
@@ -365,7 +367,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
       <div className="rounded-xl border border-navy-700 bg-navy-950 p-4 space-y-4">
         <div className="flex items-center gap-2">
           <HardHat className="h-5 w-5 text-amber flex-none" />
-          <p className="font-display font-bold text-ink flex-1">{greeting}, {personName.split(' ')[0]}. Where&apos;s the day going?</p>
+          <p className="font-display font-bold text-ink flex-1">{t(greeting)}, {personName.split(' ')[0]}. {lang === 'es' ? '¿Dónde va el día?' : <>Where&apos;s the day going?</>}</p>
           {offlineChip}
         </div>
 
@@ -381,7 +383,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
                   : 'bg-navy-900 text-muted border-navy-700 hover:text-ink')
               }
             >
-              {c.label}
+              {t(c.label)}
             </button>
           ))}
         </div>
@@ -408,7 +410,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
           className="w-full bg-navy-900 border border-navy-700 rounded-lg px-3 py-2.5 text-sm text-ink placeholder:text-faint outline-none focus:border-amber/50 resize-none"
         />
 
-        {error && <p className="text-[12.5px] text-alert">{error}</p>}
+        {error && <p className="text-[12.5px] text-alert">{t(error)}</p>}
 
         {queued.in > 0 ? (
           <div className="rounded-xl border border-amber/40 bg-amber/10 p-4 space-y-1.5">
@@ -425,7 +427,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
           // front camera, the picture clocks you in. Cancelling the camera
           // does nothing, which is the honest outcome.
           <label className={`w-full flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold text-lg py-4 transition ${busy ? 'opacity-50 pointer-events-none' : 'cursor-pointer hover:brightness-110'}`}>
-            <Camera className="h-5 w-5" /> {busy ? (waitingFix ? 'Waiting for location…' : 'Clocking in…') : 'Clock in with a photo'}
+            <Camera className="h-5 w-5" /> {t(busy ? (waitingFix ? 'Waiting for location…' : 'Clocking in…') : 'Clock in with a photo')}
             <input type="file" accept="image/*" capture="user" hidden disabled={busy}
               onChange={(e) => { const f = e.target.files?.[0] ?? null; e.target.value = ''; if (f) void clockIn(f) }} />
           </label>
@@ -435,7 +437,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
             disabled={busy}
             className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold text-lg py-4 disabled:opacity-50 hover:brightness-110 transition"
           >
-            <LogIn className="h-5 w-5" /> {busy ? (waitingFix ? 'Waiting for location…' : 'Clocking in…') : 'Clock in'}
+            <LogIn className="h-5 w-5" /> {t(busy ? (waitingFix ? 'Waiting for location…' : 'Clocking in…') : 'Clock in')}
           </button>
         )}
         {(policy.photoIn || policy.atSite) && !demo && (
@@ -478,14 +480,14 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
       <p className={`text-[12px] flex items-center gap-1.5 ${shift?.denied ? 'text-amber' : 'text-faint'}`}>
         <span aria-hidden>📍</span>
         {shift?.denied
-          ? 'Location is off — your shift is not being recorded. Turn it on to keep your time card GPS-verified.'
+          ? t('Location is off — your shift is not being recorded. Turn it on to keep your time card GPS-verified.')
           : shift?.privacyPaused
             ? 'Paused — you’re in a privacy zone, so no shift points are kept here. Recording picks back up when you leave it.'
           : shift?.engine === 'native'
             ? `Shift tracking on, even with the app closed${shift.fixes ? ` · ${shift.fixes} fixes this session` : ''}`
             : shift?.engine === 'web'
               ? `Shift tracking on while the app is open${shift.fixes ? ` · ${shift.fixes} fixes this session` : ''}`
-              : 'Shift tracking starts as soon as the app has your location.'}
+              : t('Shift tracking starts as soon as the app has your location.')}
         <Link href="/timecards" className="ml-auto text-teal underline-offset-2 hover:underline whitespace-nowrap">Time card →</Link>
       </p>
 
@@ -573,7 +575,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
                       <label key={v} className="cursor-pointer">
                         <input type="radio" name={name} value={v} required={req} className="peer sr-only" />
                         <span className="flex items-center justify-center min-h-[44px] rounded-lg text-sm font-semibold border transition bg-navy-950 text-muted border-navy-700 peer-checked:bg-amber/15 peer-checked:text-amber peer-checked:border-amber/40 peer-focus-visible:ring-1 peer-focus-visible:ring-amber/60">
-                          {v === 'yes' ? 'Yes' : 'No'}
+                          {t(v === 'yes' ? 'Yes' : 'No')}
                         </span>
                       </label>
                     ))}
@@ -588,7 +590,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
                   <p className="text-[11px] text-faint mb-1">{label}{req && <span className="text-amber">*</span>}</p>
                   <select name={name} required={req} defaultValue=""
                     className="w-full bg-navy-900 border border-navy-700 rounded-lg px-3 py-3 text-sm text-ink outline-none focus:border-amber/50">
-                    <option value="" disabled={req}>{req ? 'Pick one…' : '—'}</option>
+                    <option value="" disabled={req}>{req ? t('Pick one…') : '—'}</option>
                     {(it.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </div>
@@ -672,7 +674,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
                   <img src={outPhoto.url} alt="Your clock-out photo" className="h-14 w-14 object-cover rounded-md border border-navy-700" />
                 )}
                 <label className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-navy-700 bg-navy-950 py-2.5 text-[12.5px] font-semibold text-muted cursor-pointer hover:text-ink hover:border-teal/50 transition">
-                  <Camera className="h-4 w-4 text-teal" /> {outPhoto ? 'Retake' : 'Take your photo'}
+                  <Camera className="h-4 w-4 text-teal" /> {t(outPhoto ? 'Retake' : 'Take your photo')}
                   <input type="file" accept="image/*" capture="user" hidden
                     onChange={(e) => { void pickOutPhoto(e.target.files); e.target.value = '' }} />
                 </label>
@@ -680,7 +682,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
             </div>
           )}
 
-          {error && <p className="text-[12.5px] text-alert">{error}</p>}
+          {error && <p className="text-[12.5px] text-alert">{t(error)}</p>}
           {missingPhotos.length > 0 && (
             <p className="text-[12.5px] text-amber">📷 {missingPhotos.length === 1 ? `“${missingPhotos[0]}” needs at least one photo before you clock out.` : `${missingPhotos.map((l) => `“${l}”`).join(' and ')} need at least one photo before you clock out.`}</p>
           )}
@@ -692,7 +694,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
             </button>
             <button type="submit" disabled={busy || missingPhotos.length > 0 || (policy.photoOut && !demo && !outPhoto)}
               className="flex-[2] flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold py-3.5 disabled:opacity-50 hover:brightness-110 transition">
-              <LogOut className="h-5 w-5" /> {busy ? 'Saving…' : 'Log it & clock out'}
+              <LogOut className="h-5 w-5" /> {t(busy ? 'Saving…' : 'Log it & clock out')}
             </button>
           </div>
         </form>
