@@ -63,6 +63,8 @@ export function defaultProfiles(): KidProfile[] {
     // age-norm percentiles suppressed in the report
     makeKid('brian', 'Brian', '1984-06-15', '🛠️', { tester: true, startTheta: 60 }),
     makeKid('leslie', 'Leslie', '1986-06-15', '🌻', { tester: true, startTheta: 60 }),
+    // Brian's brother (34 in Nov 2026) — a grown-up player like Brian and Leslie
+    makeKid('craig', 'Craig', '1992-06-15', '🎸', { tester: true, startTheta: 60 }),
   ]
 }
 
