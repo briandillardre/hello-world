@@ -3,11 +3,12 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock, BellRing, Plane, Lock, FileStack, Briefcase, HardHat } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock, BellRing, Plane, Lock, FileStack, Briefcase, HardHat, FlaskConical } from 'lucide-react'
 import { ViewAsPicker } from './ViewAsPicker'
 import { cn } from '@/lib/utils'
 import { navStateFor, lockedHref } from '@/lib/permissions'
 import { useUnseenAlertCount } from './unseen-alerts'
+import { useLang } from '@/lib/i18n'
 
 // ONE ordered list of every phone destination. The first 4 fill the bottom
 // bar (AskAI keeps the center seat); everything shows in the More drawer,
@@ -44,6 +45,8 @@ const allItems = [
   { href: '/settings', label: 'Settings', icon: Settings },
   { href: '/welcome', label: 'Getting started', short: 'Start', icon: Rocket },
   { href: '/help', label: 'Help', icon: HelpCircle },
+  // Tools being tried out (Nov 19) — at the tail for the same reason as the flight log.
+  { href: '/beta', label: 'Beta', icon: FlaskConical },
   // Deliberately last: the flight log is an extra, and a new page must never
   // splice itself into somebody's five-slot bottom bar over something they
   // use every day (sanitizeOrder inserts at the canonical slot).
@@ -78,7 +81,7 @@ const canonOrder = (role?: string | null): string[] => {
 const DRAWER_GROUPS: { title: string; hrefs: string[] }[] = [
   { title: 'Watch',  hrefs: ['/map', '/command', '/alerts'] },
   { title: 'Field',  hrefs: ['/clock', '/timecards', '/logs', '/photos', '/safety', '/assets', '/zones', '/plans'] },
-  { title: 'Office', hrefs: ['/jobs', '/reports', '/team'] },
+  { title: 'Office', hrefs: ['/jobs', '/reports', '/team', '/beta'] },
   // Mirrors the desktop sidebar's Setup group exactly — a page missing here
   // fell into "Other" (Hardware setup, Sep 4) or off the phone entirely
   // (Team activity).
@@ -119,6 +122,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
   canViewAs?: boolean
 }) {
   const pathname = usePathname()
+  const { t } = useLang()
   const unseen = useUnseenAlertCount(alertCount, latestAlertAt)
   const [moreOpen, setMoreOpen] = useState(false)
   // Profile order renders server-side (no flash, follows the user across
@@ -240,7 +244,8 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
             </p>
             {(() => {
               const renderTile = (item: (typeof allItems)[number]) => {
-                const { href, label, icon: Icon } = item
+                const { href, icon: Icon } = item
+                const label = t(item.label)
                 const locked = !isOpen(href)
                 const inBar = barItems.includes(item)
                 const active = !locked && pathname.startsWith(href)
@@ -299,7 +304,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                       if (!items.length) return null
                       return (
                         <div key={g.title}>
-                          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint mb-1.5">{g.title}</p>
+                          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint mb-1.5">{t(g.title)}</p>
                           <div className="grid grid-cols-3 gap-3">{items.map(renderTile)}</div>
                         </div>
                       )
@@ -373,7 +378,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                   <Icon className="h-5 w-5" />
                   {alertBadge(href)}
                 </span>
-                <span className="min-w-0 max-w-full truncate text-[10px]">{short ?? label}</span>
+                <span className="min-w-0 max-w-full truncate text-[10px]">{t(short ?? label)}</span>
               </Link>
             )
           })}
@@ -408,7 +413,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                   <Icon className="h-5 w-5" />
                   {alertBadge(href)}
                 </span>
-                <span className="min-w-0 max-w-full truncate text-[10px]">{short ?? label}</span>
+                <span className="min-w-0 max-w-full truncate text-[10px]">{t(short ?? label)}</span>
               </Link>
             )
           })}
