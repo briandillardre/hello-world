@@ -270,6 +270,7 @@ export function demoPortfolio() {
     ],
     apps,
     wip: [{ jobId: JOB_A, contract: last.contractToDate, currentBudget: roll.total.current, costToDate: roll.total.actual, billed: last.completedStored, retainageHeld: last.retTotal, eac: null }],
+    actuals: cost.actuals,
   }
 }
 

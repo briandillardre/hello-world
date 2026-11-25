@@ -8,7 +8,7 @@
 import { allRows } from '@/lib/db/paged'
 import { listJobs } from '@/lib/db/jobs'
 import { getJobCost } from '@/lib/db/jobcost'
-import { rollup } from '@/lib/jobs/cost'
+import { rollup, type CostEntry } from '@/lib/jobs/cost'
 import { lastSentByJob, type PApp, type WipInput } from '@/lib/jobs/portfolio'
 import type { AppStatus } from '@/lib/jobs/payapp'
 import type { Stage } from '@/lib/jobs/job'
@@ -29,10 +29,12 @@ export interface Portfolio {
   jobs: PortfolioJob[]
   apps: PApp[]
   wip: WipInput[]
+  /** Actual cost by type across the running jobs (the owner dashboard's money picture). */
+  actuals: { pcat: CostEntry['pcat']; amount: number }[]
 }
 
 export async function getPortfolio(companyId: string): Promise<Portfolio> {
-  const empty: Portfolio = { available: false, partial: false, jobs: [], apps: [], wip: [] }
+  const empty: Portfolio = { available: false, partial: false, jobs: [], apps: [], wip: [], actuals: [] }
   if (isMock) return demoPortfolio()
   try {
     const log = await listJobs(true)
@@ -61,6 +63,7 @@ export async function getPortfolio(companyId: string): Promise<Portfolio> {
     // Each running job's cost, four at a time (each reads time cards, the hours ledger and receipts).
     const running = log.rows.filter((r) => WIP_STAGES.includes(r.job.stage))
     const wip: WipInput[] = []
+    const actuals: Portfolio['actuals'] = []
     let partial = a.truncated || c.truncated
     for (let i = 0; i < running.length; i += 4) {
       const batch = await Promise.all(running.slice(i, i + 4).map(async (r) => {
@@ -69,13 +72,14 @@ export async function getPortfolio(companyId: string): Promise<Portfolio> {
         const data = await getJobCost(companyId, { id: j.id, zoneId: j.zoneId, from })
         if (!data.available || data.partial) partial = true
         const roll = rollup(data.budget, data.coImpacts, data.actuals)
+        actuals.push(...data.actuals)
         const sent = last.get(j.id)
         const contract = sent ? sent.contractToDate : ((r.money?.contractAmount ?? 0) * 100 + (coCents.get(j.id) ?? 0)) / 100
         return { jobId: j.id, contract, currentBudget: roll.total.current, costToDate: roll.total.actual, billed: sent?.completedStored ?? 0, retainageHeld: sent?.retTotal ?? 0, eac: data.eac }
       }))
       wip.push(...batch)
     }
-    return { available: true, partial, jobs, apps, wip }
+    return { available: true, partial, jobs, apps, wip, actuals }
   } catch {
     return empty
   }

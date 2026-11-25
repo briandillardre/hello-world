@@ -330,8 +330,13 @@ export type NavState = 'open' | 'locked' | 'hidden'
  * `role` is the EFFECTIVE role (a Master previewing a prospect passes
  * 'prospect'), so the preview is the prospect's own screen.
  */
+/** Pages that also need an ability beyond their view level — without it the page 404s, so its nav entry is hidden (never locked, never a dead tile). */
+const ALSO_NEEDS: [string, FeatureKey][] = [['/costbook', 'costs']]
+
 export function navStateFor(pathname: string, features: string[] | null | undefined, role?: string | null): NavState {
   const k = featureForPath(pathname)
+  const extra = ALSO_NEEDS.find(([p]) => pathname === p || pathname.startsWith(p + '/'))
+  if (features && extra && !features.includes(extra[1])) return 'hidden'
   if (!features || !k || features.includes(k)) return 'open'
   if (role === 'prospect' && !PROSPECT_HIDDEN.includes(k)) return 'locked'
   return 'hidden'

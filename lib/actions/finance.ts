@@ -79,9 +79,39 @@ export async function saveFinanceProfileAction(p: FinanceProfile): Promise<{ ok:
   }
   const companyId = await getCurrentCompanyId()
   const { createClient } = await import('@/lib/supabase-server')
+  // The books answers belong to the owner dashboard's own save — a stale form here never moves them.
+  const { data: cur } = await createClient().from('companies').select('finance_profile').eq('id', companyId).maybeSingle()
+  const stored = (cur?.finance_profile ?? {}) as FinanceProfile
+  for (const k of BOOKS_KEYS) if (typeof stored[k] === 'boolean') clean[k] = stored[k]
   const { error } = await createClient().from('companies')
     .update({ finance_profile: clean }).eq('id', companyId)
   if (error) return { ok: false, error: 'Save failed — run migration 048 in the Supabase SQL Editor first.' }
+  revalidatePath('/finance')
+  return { ok: true }
+}
+
+const BOOKS_KEYS = ['cpaReviewed', 'personalSeparate', 'revenueFromInvoices'] as const
+
+/** The owner dashboard's three questions about the books — merged into the stored profile, nothing else touched. */
+export async function saveBooksAnswersAction(answers: Partial<Record<(typeof BOOKS_KEYS)[number], boolean | null>>): Promise<{ ok: boolean; error?: string }> {
+  if (isMock) return { ok: false, error: 'Demo mode' }
+  const perms = await getMyPermissions()
+  if (perms.viewingAs) return { ok: false, error: 'You’re previewing another login — exit the preview to change this.' }
+  if (!perms.canManageBilling) return { ok: false, error: 'You need the Billing permission (Team page) for this.' }
+  const companyId = await getCurrentCompanyId()
+  const { createClient } = await import('@/lib/supabase-server')
+  const db = createClient()
+  const { data: cur, error: rErr } = await db.from('companies').select('finance_profile').eq('id', companyId).maybeSingle()
+  if (rErr) return { ok: false, error: 'Couldn’t read the profile — try again.' }
+  const next: FinanceProfile = { ...((cur?.finance_profile ?? {}) as FinanceProfile) }
+  for (const k of BOOKS_KEYS) {
+    if (!(k in answers)) continue
+    const v = answers[k]
+    if (v === null) delete next[k]
+    else if (typeof v === 'boolean') next[k] = v
+  }
+  const { error } = await db.from('companies').update({ finance_profile: next }).eq('id', companyId)
+  if (error) return { ok: false, error: 'Couldn’t save — try again.' }
   revalidatePath('/finance')
   return { ok: true }
 }
