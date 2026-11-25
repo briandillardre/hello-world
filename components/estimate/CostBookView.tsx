@@ -7,6 +7,7 @@ import { ArrowLeft, BookOpen, Plus, Pencil, Trash2, ClipboardPaste, MapPin } fro
 import type { CostBook, CostPrice } from '@/lib/db/estimate'
 import { PRICE_UNITS, crewKeyOf, type Markups, type Material, type PriceUnit, type Settings } from '@/lib/estimate/engine'
 import { PLACE_KIND_META } from '@/components/map/PlaceSheet'
+import { PricingNav } from './PricingNav'
 import {
   saveMaterialAction, deleteMaterialAction, savePriceAction, deletePriceAction, importPricesAction,
   saveCostSettingsAction, saveMarkupDefaultsAction,
@@ -47,6 +48,7 @@ export function CostBookView({ book, canEdit, canManage, canMargins, showMargins
           <h1 className="font-display font-bold text-xl text-ink flex items-center gap-2"><BookOpen className="h-5 w-5 text-amber" /> Cost book</h1>
           <p className="text-[12.5px] text-faint">What you buy and where, at what price on what date — the estimate prices every line from here, with the haul from each source by road.</p>
         </div>
+        <PricingNav at="book" />
         {!book.available && !demo && <p className="text-sm text-amber">The cost book isn’t ready on this database yet.</p>}
         {demo && <p className="text-sm text-faint">The demo has no cost book — sign in to a real company.</p>}
         <div className="flex gap-1.5 flex-wrap">
