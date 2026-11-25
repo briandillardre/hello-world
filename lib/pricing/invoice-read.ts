@@ -11,6 +11,49 @@ export class InvoiceReadUnavailable extends Error {
   constructor() { super('Invoice reading is not set up.'); this.name = 'InvoiceReadUnavailable' }
 }
 
+/** The reply ran out of room (a long statement): the JSON is cut off, so nothing of it is used. */
+export class InvoiceTooLong extends Error {
+  constructor() { super('Too many lines to read at once.'); this.name = 'InvoiceTooLong' }
+}
+
+/** Room for ~150 ticket lines of JSON. */
+export const READ_MAX_TOKENS = 16_000
+
+/**
+ * The outermost JSON object in a reply: from the first `{` to its matching
+ * `}`, string-aware (a brace inside a description doesn't count). Prose
+ * before or after it, or a code fence, is ignored. null when there is none
+ * or it doesn't parse.
+ */
+export function outermostObject(text: string): Record<string, unknown> | null {
+  const start = text.indexOf('{')
+  if (start < 0) return null
+  let depth = 0, inStr = false, esc = false
+  for (let i = start; i < text.length; i++) {
+    const c = text[i]
+    if (inStr) {
+      if (esc) esc = false
+      else if (c === '\\') esc = true
+      else if (c === '"') inStr = false
+      continue
+    }
+    if (c === '"') inStr = true
+    else if (c === '{') depth++
+    else if (c === '}') {
+      depth--
+      if (depth === 0) {
+        try {
+          const j = JSON.parse(text.slice(start, i + 1)) as unknown
+          return j && typeof j === 'object' && !Array.isArray(j) ? (j as Record<string, unknown>) : null
+        } catch {
+          return null
+        }
+      }
+    }
+  }
+  return null
+}
+
 /** What Claude can read: PDFs as documents, these as images (HEIC is not one). */
 export const READABLE_IMAGES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const
 
@@ -38,23 +81,19 @@ export async function readInvoice(file: { data: Buffer | Uint8Array; mediaType: 
   if (!isPdf && !(READABLE_IMAGES as readonly string[]).includes(file.mediaType)) throw new Error('unsupported type')
   const data = Buffer.from(file.data).toString('base64')
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
-  const client = new Anthropic({ apiKey, timeout: 60_000, maxRetries: 1 })
+  // Streamed: a long statement can take minutes to write out, and the SDK
+  // refuses a non-streaming call whose max_tokens could outlast its timeout.
+  const client = new Anthropic({ apiKey, timeout: 240_000, maxRetries: 1 })
   const block = isPdf
     ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data } }
     : { type: 'image' as const, source: { type: 'base64' as const, media_type: file.mediaType as 'image/jpeg', data } }
-  const res = await client.messages.create({
+  const res = await client.messages.stream({
     model: opts.model || process.env.AI_MODEL || 'claude-sonnet-5',
-    max_tokens: 4096,
+    max_tokens: READ_MAX_TOKENS,
     system: SYSTEM,
     messages: [{ role: 'user', content: [block, { type: 'text', text: 'Read this invoice.' }] }],
-  })
+  }).finalMessage()
+  if (res.stop_reason === 'max_tokens') throw new InvoiceTooLong()
   const text = res.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('')
-  const m = text.match(/\{[\s\S]*\}/)
-  if (!m) return { lines: [] }
-  try {
-    const j = JSON.parse(m[0]) as unknown
-    return j && typeof j === 'object' && !Array.isArray(j) ? (j as Record<string, unknown>) : { lines: [] }
-  } catch {
-    return { lines: [] }
-  }
+  return outermostObject(text) ?? { lines: [] }
 }

@@ -5,9 +5,10 @@
  * winning bids"). Members hold SELECT only on `bid_items` (and never its
  * `unit_cost`), so every write runs on the service role AFTER the same checks
  * as the estimate (edit + plans + COSTS), company pinned on every row. A bid's
- * lines are FROZEN here from the estimate as the server computes it — the
- * cost book, the road distances, the estimate's own markups — never from
- * numbers a device sends.
+ * lines are FROZEN here once, when it goes out, from the estimate as the
+ * server computes it — the cost book, the road distances, the estimate's own
+ * markups — never from numbers a device sends. The frozen rows carry the
+ * margins, so they read Admin-only (migration 166); these actions only write.
  */
 
 import { revalidatePath } from 'next/cache'
@@ -16,7 +17,7 @@ import { isProspect, rankOf, RANK } from '@/lib/permissions'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { keyRateLimited } from '@/lib/rate-limit'
 import { allRows } from '@/lib/db/paged'
-import { bidRowSig, fromEstimate, lowUnitFromTotal, parseBidPaste, type BidResult } from '@/lib/pricing/rates'
+import { bidRowSig, freezeStep, fromEstimate, frozenBidTotal, lowUnitFromTotal, outcomeRows, parseBidPaste, type BidResult } from '@/lib/pricing/rates'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -43,24 +44,72 @@ type W = Awaited<ReturnType<typeof writer>>
 const today = () => new Date().toISOString().slice(0, 10)
 const validDay = (s: unknown): s is string => typeof s === 'string' && DAY.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && s >= '1990-01-01' && s <= '2100-01-01'
 
-/** Freeze one estimate's lines into bid_items, replacing what it froze before. */
-async function freeze(w: W, estimateId: string): Promise<Res<{ items: number }>> {
+type LiveRow = { id: string; unit_price: number; qty: number | null }
+
+/** Soft-delete a set of rows by id (chunked). */
+async function dropIds(w: W, ids: string[]) {
+  const at = new Date().toISOString()
+  for (let i = 0; i < ids.length; i += 200) {
+    await w.svc.from('bid_items').update({ deleted_at: at }).in('id', ids.slice(i, i + 200)).eq('company_id', w.companyId).is('deleted_at', null)
+  }
+}
+
+/**
+ * An estimate's status → its frozen lines (`freezeStep` in lib/pricing/rates):
+ * frozen ONCE when it goes out (or the first time nothing is frozen yet), so
+ * Won / Lost later keep the prices that went out — those only re-mark the
+ * result and the low bidder's level from the stored lines; Draft removes
+ * them; `resend` (a revised bid) freezes again. A freeze inserts its rows
+ * stamped with one time and then removes every OLDER live row of the
+ * estimate, and stands down if a NEWER freeze landed meanwhile — the last
+ * freeze wins, never two sets.
+ */
+async function freeze(w: W, estimateId: string, opts: { resend?: boolean } = {}): Promise<Res<{ items: number }>> {
   const { companyId, userId, svc, perms } = w
   const { data: est } = await svc.from('estimates').select('id, geofence_id, status, bid_on, low_bid, lines')
     .eq('id', estimateId).eq('company_id', companyId).is('deleted_at', null).maybeSingle()
   if (!est) return { ok: false, error: 'Estimate not found' }
-  const { data: old } = await svc.from('bid_items').select('id').eq('estimate_id', estimateId).eq('company_id', companyId).is('deleted_at', null).limit(5000)
-  const oldIds = (old ?? []).map((r) => String(r.id))
-  const dropOld = async () => {
-    for (let i = 0; i < oldIds.length; i += 200) {
-      await svc.from('bid_items').update({ deleted_at: new Date().toISOString() }).in('id', oldIds.slice(i, i + 200)).eq('company_id', companyId)
-    }
-  }
+  const { data: live } = await svc.from('bid_items').select('id, unit_price, qty').eq('estimate_id', estimateId).eq('company_id', companyId).is('deleted_at', null).limit(5000)
+  const liveRows = (live ?? []) as LiveRow[]
   const status = String(est.status)
-  if (status === 'draft') { await dropOld(); return { ok: true, items: 0 } } // back to draft: not a bid any more
-
-  const [E, { getCostBook }] = await Promise.all([import('@/lib/estimate/engine'), import('@/lib/db/estimate')])
   const zoneId = String(est.geofence_id)
+  const done = (items: number): Res<{ items: number }> => {
+    revalidatePath('/costbook', 'layout')
+    revalidatePath(`/plans/${zoneId}/estimate`)
+    return { ok: true, items }
+  }
+  const step = freezeStep(status, liveRows.length, opts)
+  if (step === 'drop') { await dropIds(w, liveRows.map((r) => String(r.id))); return done(0) } // back to draft: not a bid any more
+  const lowBid = status === 'lost' && est.low_bid !== null && est.low_bid !== undefined ? Number(est.low_bid) : null
+
+  if (step === 'outcome') {
+    // Won / Lost / back to Sent: the result and the low level from the STORED prices — never re-priced.
+    const ups = outcomeRows(liveRows.map((r) => ({ id: String(r.id), unitPrice: Number(r.unit_price), qty: r.qty === null ? null : Number(r.qty) })), status, lowBid)
+    const bidOn = validDay(est.bid_on) ? String(est.bid_on) : null
+    // Rows sharing a low level go in one update (with no low bid, that is all of them).
+    const groups = new Map<string, string[]>()
+    for (const u of ups) {
+      const k = u.lowUnitPrice === null ? '' : String(u.lowUnitPrice)
+      const a = groups.get(k); if (a) a.push(u.id); else groups.set(k, [u.id])
+    }
+    const result = ups[0]?.result ?? 'pending'
+    const entries = Array.from(groups.entries())
+    for (let i = 0; i < entries.length; i += 10) {
+      const res = await Promise.all(entries.slice(i, i + 10).map(async ([k, ids]) => {
+        for (let j = 0; j < ids.length; j += 200) {
+          const { error } = await svc.from('bid_items').update({ result, low_unit_price: k === '' ? null : Number(k), ...(bidOn ? { bid_on: bidOn } : {}) })
+            .in('id', ids.slice(j, j + 200)).eq('company_id', companyId).is('deleted_at', null)
+          if (error) return false
+        }
+        return true
+      }))
+      if (res.some((x) => !x)) return { ok: false, error: 'Couldn’t record the result on the bid’s prices — try again.' }
+    }
+    return done(ups.length)
+  }
+
+  // Freeze: price the lines as the server computes them now.
+  const [E, { getCostBook }] = await Promise.all([import('@/lib/estimate/engine'), import('@/lib/db/estimate')])
   const [book, { data: dq }, { data: mk }, { data: fence }, { data: job }] = await Promise.all([
     getCostBook(rankOf(perms) >= RANK.admin),
     svc.from('site_distances').select('place_id, miles, minutes, source').eq('geofence_id', zoneId).eq('company_id', companyId).limit(500),
@@ -79,32 +128,39 @@ async function freeze(w: W, estimateId: string): Promise<Res<{ items: number }>>
   const t = E.totals(lines.map((line, i) => ({ line, cost: costs[i] })), E.cleanMarkups(mk?.data ?? {}))
   const frozen = fromEstimate({ lines, costs, totals: t })
   const result: BidResult = status === 'won' ? 'won' : status === 'lost' ? 'lost' : 'pending'
-  const lowBid = result === 'lost' && est.low_bid !== null && est.low_bid !== undefined ? Number(est.low_bid) : null
   const bidOn = validDay(est.bid_on) ? String(est.bid_on) : today()
   const jobName = String(fence?.name ?? 'Estimate').slice(0, 160) || 'Estimate'
   const customer = job?.customer ? String(job.customer).slice(0, 160) : null
   const cap = (v: number) => Math.min(10_000_000, Math.max(0, v))
-  const rows = frozen.filter((f) => f.unitPrice <= 10_000_000).map((f) => ({
+  const kept = frozen.filter((f) => f.unitPrice <= 10_000_000)
+  const ours = frozenBidTotal(kept.map((f) => ({ unitPrice: cap(f.unitPrice), qty: f.qty })))
+  const stamp = new Date().toISOString()
+  const rows = kept.map((f) => ({
     company_id: companyId, estimate_id: estimateId, source: 'estimate', bid_on: bidOn, job_name: jobName, customer,
     item_key: f.itemKey, item_name: f.itemName, unit: f.unit.slice(0, 10) || 'EA', qty: f.qty,
     unit_price: cap(f.unitPrice), unit_cost: cap(f.unitCost), result,
-    low_unit_price: lowBid !== null ? lowUnitFromTotal(f.unitPrice, t.bid, lowBid) : null,
-    created_by: userId,
+    low_unit_price: lowBid !== null ? lowUnitFromTotal(cap(f.unitPrice), ours, lowBid) : null,
+    created_by: userId, created_at: stamp,
   }))
   if (rows.length) {
     const { error } = await svc.from('bid_items').insert(rows)
     if (error) return { ok: false, error: 'Couldn’t record the bid’s prices — try again.' }
   }
-  await dropOld()
-  revalidatePath('/costbook')
-  revalidatePath(`/plans/${zoneId}/estimate`)
-  return { ok: true, items: rows.length }
+  // The last freeze wins: every older live set goes, and if a newer one landed meanwhile, this one stands down.
+  const at = new Date().toISOString()
+  await svc.from('bid_items').update({ deleted_at: at }).eq('estimate_id', estimateId).eq('company_id', companyId).is('deleted_at', null).lt('created_at', stamp)
+  const { data: newer } = await svc.from('bid_items').select('id').eq('estimate_id', estimateId).eq('company_id', companyId).is('deleted_at', null).gt('created_at', stamp).limit(1)
+  if (newer?.length) {
+    await svc.from('bid_items').update({ deleted_at: at }).eq('estimate_id', estimateId).eq('company_id', companyId).is('deleted_at', null).eq('created_at', stamp)
+    return done(0)
+  }
+  return done(rows.length)
 }
 
 /**
- * Record an estimate's priced lines as a bid — what each item went out at,
- * today's cost behind it, the result (sent → pending, won, lost) and the low
- * bidder's level when known. Called on every status change; safe to repeat.
+ * Record an estimate's priced lines as a bid when it goes out; afterwards a
+ * status change only re-marks the result (see `freeze`). Called by the
+ * estimate's autosave on every status change; safe to repeat.
  */
 export async function freezeEstimateBidAction(estimateId: string): Promise<Res<{ items: number }>> {
   if (isMock) return { ok: false, error: 'Demo mode' }
@@ -114,7 +170,19 @@ export async function freezeEstimateBidAction(estimateId: string): Promise<Res<{
   return freeze(w, estimateId)
 }
 
-/** Sent / won / lost, the day it went out, and the low bid when lost — then the bid's lines are frozen. */
+/** A revised bid went out: freeze the lines again at today's prices (the estimate must be Sent). */
+export async function resendBidAction(estimateId: string): Promise<Res<{ items: number }>> {
+  if (isMock) return { ok: false, error: 'Demo mode' }
+  if (!UUID.test(estimateId)) return { ok: false, error: 'Bad estimate' }
+  const w = await writer()
+  if (keyRateLimited(w.companyId, 'bid-freeze', 300, 60 * 60_000)) return { ok: false, error: 'That’s a lot of bids this hour — try again later.' }
+  const { data: cur } = await w.svc.from('estimates').select('status').eq('id', estimateId).eq('company_id', w.companyId).is('deleted_at', null).maybeSingle()
+  if (!cur) return { ok: false, error: 'Estimate not found' }
+  if (cur.status !== 'sent') return { ok: false, error: 'Only a bid that is out (Sent) can be re-sent.' }
+  return freeze(w, estimateId, { resend: true })
+}
+
+/** Sent / won / lost, the day it went out, and the low bid when lost — then the bid's lines are frozen (once) or re-marked. */
 export async function recordBidResultAction(estimateId: string, input: { status: string; bidOn?: string | null; lowBid?: number | null }): Promise<Res<{ items: number; bidOn: string; lowBid: number | null }>> {
   if (isMock) return { ok: false, error: 'Demo mode' }
   if (!UUID.test(estimateId)) return { ok: false, error: 'Bad estimate' }

@@ -71,6 +71,7 @@ export function UnitRatesView({ rows, canEdit, canManage, admin, demo, truncated
         <p className="text-faint">Every priced line of every bid: where you win, where you lose, and a price at your target margin checked against both. Sent, won and lost estimates record themselves; old bid sheets can be pasted in.</p>
         {demo && <p className="text-faint mt-1">Demo — a made-up sitework company&apos;s last two years of bids.</p>}
         {truncated && <p className="text-amber mt-1">Showing the first 20,000 bid lines.</p>}
+        {!admin && !demo && <p className="text-faint mt-1">Bids recorded from your estimates are an Admin’s to see (their prices carry the margins) — this shows pasted bid history.</p>}
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

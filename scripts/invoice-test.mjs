@@ -129,15 +129,42 @@ eq(I.matchVendor('PIEDMONT AGGREGATES LLC - PLANT 3', srcs)?.id, id(1), 'vendor 
 eq(I.matchVendor('Blue Ridge Asphalt Co.', srcs)?.id, id(2), 'vendor contained in the place name')
 eq(I.matchVendor('Palmetto Ready-Mix, Inc.', srcs)?.id, id(3), 'hyphen and Inc')
 eq(I.matchVendor('Carolina Sand Co', srcs), null, 'an unknown vendor is unmatched')
+{
+  const twins = [{ id: id(31), name: 'Vulcan Materials — Pelham' }, { id: id(32), name: 'Vulcan Materials — Anderson' }, ...srcs]
+  eq(I.matchVendor('Vulcan Materials Company', twins), null, 'two plants of one vendor scoring alike → no prefill (a tie)')
+  eq(I.matchVendor('Vulcan Materials — Pelham', twins)?.id, id(31), 'the plant named outright still matches')
+  eq(I.matchVendor('Piedmont Aggregates Plant 3', [...srcs, { id: id(33), name: 'Piedmont Aggregates Plant 3' }]), null, 'two sources with the same name → a tie, no prefill')
+  ok(I.VENDOR_TIE === 0.05, 'the tie margin is 0.05')
+}
+
+// ── the reader's reply never chooses ids ──
+{
+  const fromModel = I.cleanDraft({ vendorName: 'Q', placeId: id(1), zoneId: id(2), lines: [{ description: '#57', qty: 1, unit: 'TON', unitPrice: 30, materialId: id(3) }] }, { fromModel: true })
+  eq([fromModel.placeId, fromModel.zoneId, fromModel.lines[0].materialId], [null, null, null], 'fromModel drops the source, the site and every material id')
+  eq(fromModel.lines[0].unitPrice, 30, '…and keeps the numbers')
+  const typed = I.cleanDraft({ vendorName: 'Q', placeId: id(1), zoneId: id(2), lines: [{ description: '#57', qty: 1, materialId: id(3) }] })
+  eq([typed.placeId, typed.zoneId, typed.lines[0].materialId], [id(1), id(2), id(3)], 'a typed / reviewed draft keeps its picked ids')
+}
 
 // ── prices from the invoice ──
 const P = I.pricesFromInvoice(D, mats)
 eq(P.length, 2, 'one price per material')
 eq(P[0].price, 25, 'freight separate → the material price')
 eq(P[0].basis, 'pickup', 'freight separate → pickup basis')
-eq(P[0].fuelPct, 2, 'fuel % of the material')
+eq(P[0].fuelPct, null, 'freight billed separately → the fuel rides on the freight by default (no fuel % on the stone)')
 eq(P[0].quotedOn, '2026-10-15', 'dated by the invoice')
-ok(/^Invoice · freight billed \$2\.50\/TON$/.test(P[0].note), 'note names the freight per unit: ' + P[0].note)
+ok(/^Invoice · freight billed \$2\.50\/TON · fuel on freight \$0\.50\/TON$/.test(P[0].note), 'note names the freight and its fuel per unit: ' + P[0].note)
+eq(I.fuelDefault(D), 'freight', 'fuel default with separate freight = freight')
+eq(I.fuelDefault({ freight: null }), 'material', 'fuel default with no freight = material')
+{
+  const Pm = I.pricesFromInvoice(D, mats, { fuelOn: 'material' })
+  eq(Pm[0].fuelPct, 2, 'the review flips it to material → fuel % of the material')
+  ok(/^Invoice · freight billed \$2\.50\/TON$/.test(Pm[0].note), 'and the note no longer names fuel on freight: ' + Pm[0].note)
+  eq(Pm[0].price, P[0].price, 'the material price is the same either way')
+  const noFreight = I.pricesFromInvoice({ ...D, freight: 0 }, mats)
+  eq(noFreight[0].fuelPct, 2, 'no separate freight → fuel defaults onto the material')
+  eq(I.pricesFromInvoice({ ...D, freight: 0 }, mats, { fuelOn: 'bogus' })[0].fuelPct, 2, 'an unknown fuelOn falls back to the default')
+}
 const twoTickets = { ...D, freight: 0, fuel: 0, delivered: true, invoiceNo: '9001', lines: [
   { description: '#57', materialId: id(11), qty: 10, unit: 'TON', unitPrice: 30, amount: 300, ticket: '1' },
   { description: '#57', materialId: id(11), qty: 30, unit: 'TON', unitPrice: 26, amount: 780, ticket: '2' },

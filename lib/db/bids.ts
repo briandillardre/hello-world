@@ -1,6 +1,10 @@
 /**
  * Bid history reads (migration 165, pricing engine v0). `bid_items` reads go
- * through the caller's RLS (costs-only); `unit_cost` is not granted to
+ * through the caller's RLS (costs-only; since 166 a row frozen from an
+ * estimate reads Admin-only, because its unit price carries the estimate's
+ * markups — pasted rows stay readable by costs logins). RLS sees the REAL
+ * login, so a View-as preview below Admin is mirrored here from the
+ * EFFECTIVE permissions (`seesEstimateRows`). `unit_cost` is not granted to
  * members, so an Admin's copy of it is read on the service role, company
  * pinned, AFTER the caller's rank is checked by the page (`admin` = rankOf(perms)
  * >= RANK.admin, the same rule as the estimate's markups). Demo mode returns a
@@ -12,6 +16,19 @@ import { itemKey, type BidResult, type BidRow } from '@/lib/pricing/rates'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+
+/**
+ * Whether the viewer (the EFFECTIVE permissions — View as included) may read
+ * bid lines frozen from estimates: Admins only, like the markups (166).
+ */
+async function seesEstimateRows(): Promise<boolean> {
+  try {
+    const [{ getMyPermissions }, { rankOf, RANK }] = await Promise.all([import('@/lib/permissions-server'), import('@/lib/permissions')])
+    return rankOf(await getMyPermissions()) >= RANK.admin
+  } catch {
+    return false
+  }
+}
 
 const COLS = 'id, estimate_id, source, bid_on, job_name, customer, item_key, item_name, unit, qty, unit_price, result, low_unit_price'
 const MAX_ROWS = 20_000
@@ -53,11 +70,15 @@ export async function getRateLibrary(companyId: string, admin: boolean): Promise
   try {
     const { createClient } = await import('@/lib/supabase-server')
     const db = createClient()
-    const { rows, error, truncated } = await allRows<Raw>((from, to) =>
-      db.from('bid_items').select(COLS).order('id').range(from, to), { max: MAX_ROWS })
+    const estimates = await seesEstimateRows()
+    const { rows, error, truncated } = await allRows<Raw>((from, to) => {
+      let q = db.from('bid_items').select(COLS)
+      if (!estimates) q = q.eq('source', 'import')
+      return q.order('id').range(from, to)
+    }, { max: MAX_ROWS })
     if (error) return { available: false, rows: [], truncated: false }
     const costs = admin && rows.length ? await costsById(companyId, null).catch(() => new Map<string, number>()) : new Map<string, number>()
-    const out = rows.map((r) => fromRow(r, admin ? costs.get(String(r.id)) ?? null : null))
+    const out = rows.filter((r) => estimates || r.source === 'import').map((r) => fromRow(r, admin ? costs.get(String(r.id)) ?? null : null))
     out.sort((a, b) => b.bidOn.localeCompare(a.bidOn))
     return { available: true, rows: out, truncated }
   } catch {
@@ -77,12 +98,19 @@ export async function getBidHistoryFor(itemKeys: string[], opts: { excludeEstima
   try {
     const { createClient } = await import('@/lib/supabase-server')
     const db = createClient()
+    const estimates = await seesEstimateRows()
     const out: BidRow[] = []
     for (let i = 0; i < keys.length; i += 150) {
       const chunk = keys.slice(i, i + 150)
-      const { rows } = await allRows<Raw>((from, to) =>
-        db.from('bid_items').select(COLS).in('item_key', chunk).order('id').range(from, to), { max: 5000 })
-      for (const r of rows) if (!opts.excludeEstimateId || r.estimate_id !== opts.excludeEstimateId) out.push(fromRow(r, null))
+      const { rows } = await allRows<Raw>((from, to) => {
+        let q = db.from('bid_items').select(COLS).in('item_key', chunk)
+        if (!estimates) q = q.eq('source', 'import')
+        return q.order('id').range(from, to)
+      }, { max: 5000 })
+      for (const r of rows) {
+        if (!estimates && r.source !== 'import') continue
+        if (!opts.excludeEstimateId || r.estimate_id !== opts.excludeEstimateId) out.push(fromRow(r, null))
+      }
     }
     return out
   } catch {

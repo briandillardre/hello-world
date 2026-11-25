@@ -22,7 +22,7 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 import { keyRateLimited } from '@/lib/rate-limit'
 import {
   cleanDraft, invoiceChecks, invoiceRef, lineAmount, matchMaterial, matchVendor, pricesFromInvoice,
-  readDay, type InvoiceCheck, type InvoiceDraft, type Match,
+  readDay, type FuelOn, type InvoiceCheck, type InvoiceDraft, type Match,
 } from '@/lib/pricing/invoice'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -32,11 +32,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MAX_BYTES = 25 * 1024 * 1024
 /** Claude reads an image up to ~5 MB; the page shrinks photos before upload. */
 const MAX_IMAGE_READ = 5 * 1024 * 1024
+/** A PDF past this is not sent to the reader (it is still kept and can be typed in). */
+const MAX_PDF_READ = 20 * 1024 * 1024
+/** Reads per company per day, counted in invoice_reads (166) so every server instance agrees. */
+const READS_PER_DAY = 200
+/** Uploads started per company per day. */
+const UPLOADS_PER_DAY = 100
 const MIMES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic']
 const SOURCE_KINDS = ['supplier', 'quarry', 'asphalt', 'concrete', 'borrow', 'landfill', 'dump'] as const
 const MAX_JOB_COSTS = 20_000
 
-type Res<T = object> = ({ ok: true } & T) | { ok: false; error: string; typeIt?: boolean }
+type Res<T = object> = ({ ok: true } & T) | { ok: false; error: string; typeIt?: boolean; href?: string }
 const clip = (s: unknown, n: number): string => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -103,8 +109,8 @@ export async function startInvoiceUploadAction(input: { filename: string; size: 
   if (!(Number(input?.size) > 0) || Number(input.size) > MAX_BYTES) return { ok: false, error: 'Invoices go up to 25 MB.' }
   // Count uploads STARTED in a day (an unfinished one still holds space until the sweep).
   const since = Date.now() - 86_400_000
-  const { data: recent } = await svc.storage.from('invoices').list(companyId, { limit: 401, sortBy: { column: 'created_at', order: 'desc' } })
-  if ((recent ?? []).filter((o) => Date.parse(String(o.created_at ?? '')) >= since).length >= 400) return { ok: false, error: 'That’s a lot of invoices for one day — try again tomorrow.' }
+  const { data: recent } = await svc.storage.from('invoices').list(companyId, { limit: UPLOADS_PER_DAY + 1, sortBy: { column: 'created_at', order: 'desc' } })
+  if ((recent ?? []).filter((o) => Date.parse(String(o.created_at ?? '')) >= since).length >= UPLOADS_PER_DAY) return { ok: false, error: 'That’s a lot of invoices for one day — try again tomorrow.' }
   const path = `${companyId}/${crypto.randomUUID()}`
   const { data, error } = await svc.storage.from('invoices').createSignedUploadUrl(path)
   if (error || !data) return { ok: false, error: 'Couldn’t start the upload — try again.' }
@@ -127,13 +133,23 @@ export async function readInvoiceAction(input: { path: string }): Promise<Res<Re
   const { companyId, userId, svc } = await writer()
   if (!pathOk(companyId, input?.path)) return { ok: false, error: 'That file wasn’t found.' }
   if (userId && keyRateLimited(userId, 'invoice-read', 10)) return { ok: false, error: 'That’s a lot of invoices in a minute — wait a moment.' }
-  if (keyRateLimited(companyId, 'invoice-read-day', 200, 86_400_000)) return { ok: false, error: 'Your company has read 200 invoices today — type this one in, or try tomorrow.', typeIt: true }
   if (!process.env.ANTHROPIC_API_KEY) return { ok: false, error: 'Invoice reading isn’t set up — type it in below.', typeIt: true }
   const obj = await stored(svc, companyId, input.path)
   if (!obj) return { ok: false, error: 'The file didn’t finish uploading — try again.' }
+  if (obj.mime === 'application/pdf' && obj.size > MAX_PDF_READ) return { ok: false, error: 'That PDF is too big to read (over 20 MB) — type it in below.', typeIt: true }
+  // The daily cap, durable: every read is a row (166), counted over the last day.
+  const since = new Date(Date.now() - 86_400_000).toISOString()
+  const { count: readsToday, error: countErr } = await svc.from('invoice_reads').select('id', { count: 'exact', head: true }).eq('company_id', companyId).gte('at', since)
+  if (countErr) return { ok: false, error: 'The invoice couldn’t be read just now — try again, or type it in below.', typeIt: true }
+  if ((readsToday ?? 0) >= READS_PER_DAY) return { ok: false, error: `Your company has read ${READS_PER_DAY} invoices today — type this one in, or try tomorrow.`, typeIt: true }
+  const { error: logErr } = await svc.from('invoice_reads').insert({ company_id: companyId, user_id: userId })
+  if (logErr) return { ok: false, error: 'The invoice couldn’t be read just now — try again, or type it in below.', typeIt: true }
+  // Keep the log short: a week is plenty for a one-day count.
+  void svc.from('invoice_reads').delete().eq('company_id', companyId).lt('at', new Date(Date.now() - 7 * 86_400_000).toISOString()).then(() => null, () => null)
   const { data: blob, error } = await svc.storage.from('invoices').download(input.path)
   if (error || !blob) return { ok: false, error: 'Couldn’t open the file — try again.' }
   const mime = blob.type || obj.mime
+  if (mime === 'application/pdf' && blob.size > MAX_PDF_READ) return { ok: false, error: 'That PDF is too big to read (over 20 MB) — type it in below.', typeIt: true }
   if (mime === 'image/heic') return { ok: false, error: 'That photo is in Apple’s HEIC format, which can’t be read — type it in below, or take the photo from the app’s camera.', typeIt: true }
   const buf = Buffer.from(await blob.arrayBuffer())
   if (mime !== 'application/pdf' && buf.byteLength > MAX_IMAGE_READ) return { ok: false, error: 'That photo is too big to read — retake it, or type it in below.', typeIt: true }
@@ -143,13 +159,17 @@ export async function readInvoiceAction(input: { path: string }): Promise<Res<Re
     raw = await readInvoice({ data: buf, mediaType: mime })
   } catch (e) {
     if (e instanceof Error && e.name === 'InvoiceReadUnavailable') return { ok: false, error: 'Invoice reading isn’t set up — type it in below.', typeIt: true }
+    if (e instanceof Error && e.name === 'InvoiceTooLong') return { ok: false, error: 'Too many lines to read at once — split the PDF (about 150 lines per file) or type it in.', typeIt: true }
     return { ok: false, error: 'The invoice couldn’t be read just now — try again, or type it in below.', typeIt: true }
   }
-  const draft = cleanDraft(raw)
+  // The model's reply chooses no ids: no site, no source, no material — only our own matching below.
+  const draft = cleanDraft(raw, { fromModel: true })
+  draft.zoneId = null
+  draft.placeId = null
   if (!draft.lines.length && !draft.vendorName && draft.total === null) return { ok: false, error: 'Nothing on that page reads as an invoice — type it in below.', typeIt: true }
   const { materials, places } = await bookOf(svc, companyId)
   const vendorMatch = draft.vendorName ? matchVendor(draft.vendorName, places) : null
-  if (vendorMatch) draft.placeId = vendorMatch.id
+  draft.placeId = vendorMatch?.id ?? null
   const lineMatches = draft.lines.map((l) => (l.description ? matchMaterial(l.description, materials) : null))
   draft.lines = draft.lines.map((l, i) => ({ ...l, materialId: lineMatches[i]?.id ?? null }))
   return { ok: true, draft, vendorMatch, lineMatches, checks: invoiceChecks(draft) }
@@ -158,6 +178,13 @@ export async function readInvoiceAction(input: { path: string }): Promise<Res<Re
 // ── File ────────────────────────────────────────────────────────────────────
 
 export interface FileOptions {
+  /**
+   * The invoice's id, made once on the device when the review opened: a retry
+   * after a lost reply files nothing twice (the row, its job charges' key).
+   */
+  id?: string | null
+  /** What the fuel surcharge rides on (default: the freight when freight is billed separately). */
+  fuelOn?: FuelOn | null
   /** The upload's path (<company>/<uuid>) — none for a typed-in invoice. */
   filePath?: string | null
   fileName?: string | null
@@ -181,8 +208,13 @@ async function dupeOf(svc: Svc, companyId: string, vendor: string, no: string, n
   return `Invoice ${no} from ${hit.vendor_name} is already filed${on ? ` (dated ${on})` : ''}.`
 }
 
-/** Charge an invoice's lines + freight + fuel + tax to its site's job cost (pcat M). Refuses twice. */
-async function chargeToJob(svc: Svc, perms: Perms, companyId: string, userId: string | null, inv: { id: string; zoneId: string | null; draft: InvoiceDraft }): Promise<{ ok: true; rows: number } | { ok: false; error: string }> {
+/**
+ * Charge an invoice's lines + freight + fuel + tax to its site's job cost
+ * (pcat M). Refuses when the job already carries charges with this vendor +
+ * reference — an invoice removed and filed again would otherwise charge
+ * twice — and names them, with the job cost page to remove them on.
+ */
+async function chargeToJob(svc: Svc, perms: Perms, companyId: string, userId: string | null, inv: { id: string; zoneId: string | null; draft: InvoiceDraft }): Promise<{ ok: true; rows: number } | { ok: false; error: string; href?: string }> {
   if (!perms.features.includes('jobs')) return { ok: false, error: 'Jobs aren’t open for your login, so it wasn’t charged to the job.' }
   if (!inv.zoneId) return { ok: false, error: 'Pick the site it was for to charge its job.' }
   const { data: job } = await svc.from('jobs').select('id').eq('geofence_id', inv.zoneId).eq('company_id', companyId).maybeSingle()
@@ -190,8 +222,17 @@ async function chargeToJob(svc: Svc, perms: Perms, companyId: string, userId: st
   const d = inv.draft
   const vendor = clip(d.vendorName, 120)
   const reference = invoiceRef(inv.id, d.invoiceNo)
-  const { data: prior } = await svc.from('job_costs').select('id, vendor').eq('job_id', job.id).eq('company_id', companyId).eq('reference', reference).is('deleted_at', null).limit(50)
-  if ((prior ?? []).some((p) => String(p.vendor ?? '').toLowerCase() === vendor.toLowerCase())) return { ok: false, error: `Invoice ${reference} is already on this job’s cost.` }
+  const { data: prior } = await svc.from('job_costs').select('id, vendor, amount, spent_on').eq('job_id', job.id).eq('company_id', companyId).eq('reference', reference).is('deleted_at', null).limit(500)
+  const same = (prior ?? []).filter((p) => String(p.vendor ?? '').toLowerCase() === vendor.toLowerCase())
+  if (same.length) {
+    const amt = same.reduce((t, p) => t + Number(p.amount ?? 0), 0)
+    const day = same.map((p) => String(p.spent_on ?? '')).filter(Boolean).sort()[0]
+    return {
+      ok: false,
+      href: `/jobs/${inv.zoneId}/cost`,
+      error: `This job already carries ${same.length} charge${same.length === 1 ? '' : 's'} from ${vendor} with reference ${reference} ($${amt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${day ? `, dated ${day}` : ''}) — so it wasn’t charged again. If this filing should replace them, remove them on the job’s cost first, then charge it from the invoice.`,
+    }
+  }
   const spentOn = d.invoiceOn ?? today()
   const rows: Record<string, unknown>[] = []
   const add = (amount: number | null, description: string) => {
@@ -214,14 +255,23 @@ async function chargeToJob(svc: Svc, perms: Perms, companyId: string, userId: st
 }
 
 /**
- * File a reviewed invoice: the duplicate check, the source (a new Place if
- * asked), the row, then the cost book's prices and the job's cost when asked.
- * The invoice is filed even if a later step can't run — `warnings` says which.
+ * File a reviewed invoice: the duplicate check, the row (under the id the
+ * device made when the review opened — a retry after a lost reply finds it
+ * and files nothing twice), then a new source / new materials, the cost
+ * book's prices and the job's cost when asked. The invoice is filed even if
+ * a later step can't run — `warnings` says which.
  */
-export async function fileInvoiceAction(rawDraft: unknown, opts: FileOptions): Promise<Res<{ id: string; prices: number; charged: number; warnings: string[] }>> {
+export async function fileInvoiceAction(rawDraft: unknown, opts: FileOptions): Promise<Res<{ id: string; prices: number; charged: number; warnings: string[]; already?: boolean; jobCostHref?: string }>> {
   if (isMock) return { ok: false, error: 'Demo mode — filing invoices works once you sign in to your company.' }
   const { perms, companyId, userId, svc } = await writer()
   if (userId && keyRateLimited(userId, 'invoice-file', 30)) return { ok: false, error: 'That’s a lot of invoices in a minute — wait a moment.' }
+  const id = typeof opts?.id === 'string' && UUID.test(opts.id) ? opts.id.toLowerCase() : crypto.randomUUID()
+  const alreadyFiled = async (): Promise<boolean> => {
+    const { data } = await svc.from('supplier_invoices').select('id').eq('id', id).eq('company_id', companyId).is('deleted_at', null).maybeSingle()
+    return !!data
+  }
+  const already = { ok: true as const, id, prices: 0, charged: 0, warnings: ['It was already filed — nothing was added twice.'], already: true }
+  if (await alreadyFiled()) return already
   const d = cleanDraft(rawDraft)
   if (!d.vendorName) return { ok: false, error: 'Name the vendor.' }
   if (!d.lines.length && d.total === null) return { ok: false, error: 'Give at least one line or the total.' }
@@ -230,7 +280,7 @@ export async function fileInvoiceAction(rawDraft: unknown, opts: FileOptions): P
     d.total = Math.round(sum * 100) / 100
   }
   if (d.invoiceNo) {
-    const dupe = await dupeOf(svc, companyId, d.vendorName, d.invoiceNo)
+    const dupe = await dupeOf(svc, companyId, d.vendorName, d.invoiceNo, id)
     if (dupe) return { ok: false, error: dupe }
   }
   // The file: this company's, landed, and not already another invoice's.
@@ -238,35 +288,61 @@ export async function fileInvoiceAction(rawDraft: unknown, opts: FileOptions): P
   if (opts?.filePath) {
     if (!pathOk(companyId, opts.filePath)) return { ok: false, error: 'That file wasn’t found.' }
     if (!(await stored(svc, companyId, opts.filePath))) return { ok: false, error: 'The file didn’t finish uploading — try again.' }
-    const { data: used } = await svc.from('supplier_invoices').select('id').eq('file_path', opts.filePath).is('deleted_at', null).limit(1)
+    const { data: used } = await svc.from('supplier_invoices').select('id').eq('file_path', opts.filePath).is('deleted_at', null).neq('id', id).limit(1)
     if (used?.length) return { ok: false, error: 'That file is already filed as an invoice.' }
     filePath = opts.filePath
   }
   // The site.
   if (d.zoneId && !(await ownSite(svc, companyId, d.zoneId))) return { ok: false, error: 'That site wasn’t found.' }
   const warnings: string[] = []
-  // The source: a place of this company, or a new one.
+  // The source: a place of this company, or a new one (checked now, made after the row exists).
   if (d.placeId) {
     const { data: p } = await svc.from('places').select('id').eq('id', d.placeId).eq('company_id', companyId).eq('active', true).maybeSingle()
     if (!p) d.placeId = null
   }
+  let newSource: { name: string; kind: string; lat: number; lng: number } | null = null
   if (!d.placeId && opts?.newSource) {
     const ns = opts.newSource
-    const name = clip(ns.name, 80) || clip(d.vendorName, 80)
-    const kind = (SOURCE_KINDS as readonly string[]).includes(ns.kind) ? ns.kind : 'supplier'
     const lat = Number(ns.lat), lng = Number(ns.lng)
     if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 85 || Math.abs(lng) > 180 || (lat === 0 && lng === 0)) {
       return { ok: false, error: 'A new source needs its location — use this phone’s location at the plant, or type its lat, lng.' }
     }
-    const { data: p, error } = await svc.from('places').insert({ company_id: companyId, name, kind, lat, lng, created_by: userId }).select('id').single()
-    if (error || !p) return { ok: false, error: 'Couldn’t add the source — try again.' }
-    d.placeId = String(p.id)
+    newSource = {
+      name: clip(ns.name, 80) || clip(d.vendorName, 80),
+      kind: (SOURCE_KINDS as readonly string[]).includes(ns.kind) ? ns.kind : 'supplier',
+      lat, lng,
+    }
   }
-  // Materials: the book's own, plus any added here.
+  // Materials: the book's own (new ones are added after the row exists).
   const { materials } = await bookOf(svc, companyId)
   const known = new Set(materials.map((m) => m.id))
   d.lines = d.lines.map((l) => ({ ...l, materialId: l.materialId && known.has(l.materialId) ? l.materialId : null }))
+
+  // The row first: everything after it hangs off its id, so a retry stops at the check above.
+  const { error: insErr } = await svc.from('supplier_invoices').insert({
+    id, company_id: companyId, place_id: d.placeId, geofence_id: d.zoneId, vendor_name: d.vendorName, invoice_no: d.invoiceNo,
+    invoice_on: d.invoiceOn, due_on: d.dueOn, freight: d.freight, fuel: d.fuel, tax: d.tax, total: d.total, lines: d.lines,
+    status: 'filed', file_path: filePath, file_name: filePath ? clip(opts.fileName, 200) || null : null,
+    read_by: opts?.readByAi && filePath ? 'ai' : 'typed', note: clip(opts?.note, 500) || null, created_by: userId,
+  })
+  if (insErr) {
+    if (insErr.code === '23505') {
+      // Our own id (a double tap, or a retry racing the first) = already filed; else the vendor + number.
+      if (await alreadyFiled()) return already
+      return { ok: false, error: `Invoice ${d.invoiceNo ?? ''} from ${d.vendorName} is already filed.` }
+    }
+    return { ok: false, error: 'Couldn’t file it — try again.' }
+  }
+
+  // The new source and the new materials, now that the invoice exists.
+  let rowPatch: Record<string, unknown> | null = null
+  if (newSource) {
+    const { data: p, error } = await svc.from('places').insert({ company_id: companyId, ...newSource, created_by: userId }).select('id').single()
+    if (error || !p) warnings.push('Couldn’t add the source — add it on the map, then date its prices from the cost book.')
+    else { d.placeId = String(p.id); rowPatch = { place_id: d.placeId } }
+  }
   const byName = new Map(materials.map((m) => [m.name.toLowerCase(), m.id]))
+  let linesChanged = false
   for (const nm of (Array.isArray(opts?.newMaterials) ? opts.newMaterials : []).slice(0, 200)) {
     const i = Number(nm?.line)
     const line = Number.isInteger(i) ? d.lines[i] : undefined
@@ -282,25 +358,18 @@ export async function fileInvoiceAction(rawDraft: unknown, opts: FileOptions): P
       materials.push({ id: mid, name, unit: line.unit })
     }
     line.materialId = mid
+    linesChanged = true
   }
-  const id = crypto.randomUUID()
-  const { error: insErr } = await svc.from('supplier_invoices').insert({
-    id, company_id: companyId, place_id: d.placeId, geofence_id: d.zoneId, vendor_name: d.vendorName, invoice_no: d.invoiceNo,
-    invoice_on: d.invoiceOn, due_on: d.dueOn, freight: d.freight, fuel: d.fuel, tax: d.tax, total: d.total, lines: d.lines,
-    status: 'filed', file_path: filePath, file_name: filePath ? clip(opts.fileName, 200) || null : null,
-    read_by: opts?.readByAi && filePath ? 'ai' : 'typed', note: clip(opts?.note, 500) || null, created_by: userId,
-  })
-  if (insErr) {
-    if (insErr.code === '23505') return { ok: false, error: `Invoice ${d.invoiceNo ?? ''} from ${d.vendorName} is already filed.` }
-    return { ok: false, error: 'Couldn’t file it — try again.' }
-  }
+  if (linesChanged) rowPatch = { ...(rowPatch ?? {}), lines: d.lines }
+  if (rowPatch) await svc.from('supplier_invoices').update({ ...rowPatch, updated_at: new Date().toISOString() }).eq('id', id).eq('company_id', companyId)
+
   // (a) The cost book's dated prices.
   let prices = 0
   if (opts?.updatePrices) {
     if (!d.placeId) warnings.push('No source picked, so the cost book wasn’t updated.')
     else if (!d.invoiceOn) warnings.push('No invoice date, so the cost book wasn’t updated.')
     else {
-      const rows = pricesFromInvoice(d, materials)
+      const rows = pricesFromInvoice(d, materials, { fuelOn: opts.fuelOn ?? null })
       if (!rows.length) warnings.push('No line is matched to a material with a quantity and unit, so the cost book wasn’t updated.')
       else {
         const { error } = await svc.from('cost_prices').insert(rows.map((r) => ({
@@ -314,13 +383,14 @@ export async function fileInvoiceAction(rawDraft: unknown, opts: FileOptions): P
   }
   // (b) The job's cost.
   let charged = 0
+  let jobCostHref: string | undefined
   if (opts?.chargeJob && d.zoneId) {
     const c = await chargeToJob(svc, perms, companyId, userId, { id, zoneId: d.zoneId, draft: d })
     if (c.ok) charged = c.rows
-    else warnings.push(c.error)
+    else { warnings.push(c.error); jobCostHref = c.href }
   }
   refresh(d.zoneId)
-  return { ok: true, id, prices, charged, warnings }
+  return { ok: true, id, prices, charged, warnings, ...(jobCostHref ? { jobCostHref } : {}) }
 }
 
 /** Charge an invoice filed earlier to its site's job (once). */
@@ -335,7 +405,7 @@ export async function chargeInvoiceAction(id: string): Promise<Res<{ charged: nu
     fuel: r.fuel === null ? null : Number(r.fuel), tax: r.tax === null ? null : Number(r.tax), total: r.total === null ? null : Number(r.total), lines: r.lines,
   })
   const c = await chargeToJob(svc, perms, companyId, userId, { id: String(r.id), zoneId: (r.geofence_id as string | null) ?? null, draft })
-  if (!c.ok) return { ok: false, error: c.error }
+  if (!c.ok) return { ok: false, error: c.error, ...(c.href ? { href: c.href } : {}) }
   refresh(r.geofence_id as string | null)
   return { ok: true, charged: c.rows }
 }

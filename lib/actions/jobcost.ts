@@ -15,6 +15,7 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 import { budgetFromEstimate, isBudgetPcat, isPcat, parseCosts, toIso } from '@/lib/jobs/cost'
 import { readDollars } from '@/lib/jobs/payapp'
 import { MAX_JOB_COSTS } from '@/lib/db/jobcost'
+import { allRows } from '@/lib/db/paged'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -166,18 +167,34 @@ export async function deleteCostAction(zoneId: string, id: string): Promise<Res>
 }
 
 /** Paste from accounting: date, type (L M S E F R O), amount, vendor, reference, description. */
-export async function importCostsAction(zoneId: string, text: string): Promise<Res<{ added: number; skipped: { line: number; why: string }[] }>> {
+export async function importCostsAction(zoneId: string, text: string): Promise<Res<{ added: number; duplicates: number; skipped: { line: number; why: string }[] }>> {
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { companyId, userId, svc } = await writer()
   const job = await jobId(svc, companyId, zoneId)
   if (!job) return { ok: false, error: 'That job wasn’t found.' }
-  const { rows, skipped } = parseCosts(String(text ?? ''))
-  if (rows.length && (await costCount(svc, job)) + rows.length > MAX_JOB_COSTS) return { ok: false, error: `That would take the job past ${MAX_JOB_COSTS.toLocaleString()} entered costs.` }
-  if (!rows.length) return { ok: false, error: skipped.length ? `Nothing could be read — ${skipped.slice(0, 3).map((s) => `line ${s.line}: ${s.why}`).join(' · ')}` : 'Paste the costs first.' }
+  const parsed = parseCosts(String(text ?? ''))
+  const { skipped } = parsed
+  if (!parsed.rows.length) return { ok: false, error: skipped.length ? `Nothing could be read — ${skipped.slice(0, 3).map((s) => `line ${s.line}: ${s.why}`).join(' · ')}` : 'Paste the costs first.' }
+  // A row whose vendor + reference is already on the job (a filed supplier invoice, an earlier paste) is not added again.
+  const sig = (vendor: string | null, reference: string) => `${String(vendor ?? '').trim().toLowerCase()}|${reference.trim().toLowerCase()}`
+  const have = new Set<string>()
+  if (parsed.rows.some((r) => r.reference)) {
+    const { rows: on, error: readErr } = await allRows<{ id: string; vendor: string | null; reference: string | null }>((from, to) =>
+      svc.from('job_costs').select('id, vendor, reference').eq('job_id', job).eq('company_id', companyId).is('deleted_at', null).not('reference', 'is', null).order('id').range(from, to), { max: MAX_JOB_COSTS })
+    if (readErr) return { ok: false, error: 'Couldn’t check what’s already on the job — try again.' }
+    for (const r of on) if (r.reference) have.add(sig(r.vendor, r.reference))
+  }
+  const rows = parsed.rows.filter((r) => !r.reference || !have.has(sig(r.vendor, r.reference)))
+  const duplicates = parsed.rows.length - rows.length
+  if (!rows.length) return { ok: false, error: `All ${duplicates} row${duplicates === 1 ? ' is' : 's are'} already on this job (same vendor + reference) — nothing added.` }
+  if ((await costCount(svc, job)) + rows.length > MAX_JOB_COSTS) return { ok: false, error: `That would take the job past ${MAX_JOB_COSTS.toLocaleString()} entered costs.` }
   const { error } = await svc.from('job_costs').insert(rows.map((r) => ({
     company_id: companyId, job_id: job, spent_on: r.spentOn, pcat: r.pcat, amount: r.amount, vendor: r.vendor, reference: r.reference, description: r.description, source: 'import', created_by: userId,
   })))
   if (error) return { ok: false, error: 'Couldn’t add them — try again.' }
   refresh(zoneId)
-  return { ok: true, added: rows.length, skipped }
+  return {
+    ok: true, added: rows.length, duplicates,
+    skipped,
+  }
 }
