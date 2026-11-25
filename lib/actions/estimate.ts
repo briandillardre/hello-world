@@ -320,7 +320,7 @@ export async function saveEstimateAction(id: string, patch: { name?: string; sta
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { companyId, svc } = await writer()
   if (!UUID.test(id)) return { ok: false, error: 'Bad estimate' }
-  const { data: cur } = await svc.from('estimates').select('id, geofence_id').eq('id', id).eq('company_id', companyId).is('deleted_at', null).maybeSingle()
+  const { data: cur } = await svc.from('estimates').select('id, geofence_id, status').eq('id', id).eq('company_id', companyId).is('deleted_at', null).maybeSingle()
   if (!cur) return { ok: false, error: 'Estimate not found' }
   const savedAt = new Date().toISOString()
   const upd: Record<string, unknown> = { updated_at: savedAt }
@@ -343,6 +343,11 @@ export async function saveEstimateAction(id: string, patch: { name?: string; sta
   }
   const { error } = await svc.from('estimates').update(upd).eq('id', id).eq('company_id', companyId)
   if (error) return { ok: false, error: 'Couldn’t save — try again.' }
+  // A status change records the bid's priced lines (migration 165) — best-effort, never fails the save.
+  if (upd.status !== undefined && upd.status !== cur.status) {
+    const { freezeEstimateBidAction } = await import('@/lib/actions/bids')
+    await freezeEstimateBidAction(id).catch(() => null)
+  }
   refreshSite(String(cur.geofence_id))
   return { ok: true, savedAt }
 }

@@ -15,6 +15,8 @@ import {
 } from '@/lib/actions/estimate'
 import { MarkupFields } from './CostBookView'
 import { winEstimateAction } from '@/lib/actions/jobs'
+import { recordBidResultAction } from '@/lib/actions/bids'
+import { bandWords, fromEstimate, lineKey, rateBands, suggest, winChance, type BidRow, type RateBand } from '@/lib/pricing/rates'
 
 const money = (v: number) => v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 const money2 = (v: number) => v.toLocaleString(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -31,12 +33,16 @@ const newId = () => Math.random().toString(36).slice(2, 12)
  * markups. Every number is computed here from the choices (the engine the
  * server would run), and the choices save themselves.
  */
-export function EstimateView({ zone, book, estimate, markups, distances, snapshots, canEdit, canManage, canMargins, showMargins, demo }: {
+export function EstimateView({ zone, book, estimate, markups, distances, history = [], outcome = { bidOn: null, lowBid: null }, snapshots, canEdit, canManage, canMargins, showMargins, demo }: {
   zone: { id: string; name: string }
   book: CostBook
   estimate: EstimateRow | null
   markups: Markups | null
   distances: Record<string, Distance>
+  /** Bid history for this estimate's item keys (migration 165), without unit costs. */
+  history?: BidRow[]
+  /** The bid's outcome stored on the estimate: when it went out, the low bid when lost. */
+  outcome?: { bidOn: string | null; lowBid: number | null }
   snapshots: { id: string; name: string; createdAt: string }[]
   canEdit: boolean
   canManage: boolean
@@ -51,6 +57,8 @@ export function EstimateView({ zone, book, estimate, markups, distances, snapsho
   const [name, setName] = useState(estimate?.name ?? '')
   const [status, setStatus] = useState(estimate?.status ?? 'draft')
   const [mk, setMk] = useState<Markups | null>(markups)
+  const [bidOn, setBidOn] = useState(outcome.bidOn ?? '')
+  const [lowBid, setLowBid] = useState(outcome.lowBid === null ? '' : String(outcome.lowBid))
   const [saved, setSaved] = useState<'saved' | 'saving' | 'dirty' | 'error'>('saved')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // The save waiting on the timer, so leaving the page (or switching estimates)
@@ -72,6 +80,7 @@ export function EstimateView({ zone, book, estimate, markups, distances, snapsho
   useEffect(() => {
     flush.current()
     setLines(estimate?.lines ?? []); setName(estimate?.name ?? ''); setStatus(estimate?.status ?? 'draft')
+    setBidOn(outcome.bidOn ?? ''); setLowBid(outcome.lowBid === null ? '' : String(outcome.lowBid))
     // The markups come with the estimate: a new one's (or the next one's after a delete) — never the last one's.
     setMk(markups)
   }, [estimate?.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -90,6 +99,25 @@ export function EstimateView({ zone, book, estimate, markups, distances, snapsho
     return Array.from(g.entries())
   }, [costs])
   const warnings = costs.reduce((n, c) => n + c.cost.warnings.length, 0)
+
+  // Bid history (165): per item, where we won and lost before — under the item's first line.
+  const bands = useMemo(() => new Map(rateBands(history).map((b) => [b.itemKey, b])), [history])
+  const histBy = useMemo(() => {
+    const g = new Map<string, BidRow[]>()
+    for (const r of history) { const a = g.get(r.itemKey); if (a) a.push(r); else g.set(r.itemKey, [r]) }
+    return g
+  }, [history])
+  const items = useMemo(() => new Map(fromEstimate({ lines: costs.map((c) => c.line), costs: costs.map((c) => c.cost), totals: mk ? t : { bid: 0, direct: t.direct } }).map((f) => [f.itemKey, f])), [costs, t, mk])
+  const firstOfKey = useMemo(() => {
+    const seen = new Set<string>()
+    const out = new Set<string>()
+    for (const l of lines) { const k = lineKey(l); if (!seen.has(k)) { seen.add(k); out.add(l.id) } }
+    return out
+  }, [lines])
+  const [margin, setMargin] = useState(15)
+  useEffect(() => {
+    try { const v = window.localStorage.getItem('ht_rate_margin'); const x = Number(v); if (v !== null && Number.isFinite(x) && x >= 0 && x < 90) setMargin(x) } catch { /* private window */ }
+  }, [])
   const distAge = Object.keys(distances).length
 
   // Save the choices a moment after the last change.
@@ -121,6 +149,41 @@ export function EstimateView({ zone, book, estimate, markups, distances, snapsho
     setBusy(null)
     if (!r?.ok) { setErr(r && !r.ok ? r.error : 'Couldn’t set up the job — try again.'); return }
     setJobDone(true)
+  }
+
+  const hintFor = (key: string): LineHint | null => {
+    const band = bands.get(key)
+    if (!band) return null
+    const item = items.get(key) ?? null
+    const sug = suggest({ cost: item?.unitCost ?? null, targetMarginPct: margin, band })
+    const rows = histBy.get(key) ?? []
+    return { band, words: bandWords(band), sug, margin, wc: sug.price !== null ? winChance(rows, sug.price) : null, ours: mk && item ? item.unitPrice : null }
+  }
+
+  // Sent / Won / Lost (165): the result, the bid date and the low bid go to the server, which records
+  // the bid's line prices. Any autosave still waiting goes first so it can't put the old status back.
+  async function setOutcome(next: 'draft' | 'sent' | 'won' | 'lost', o: { bidOn?: string; lowBid?: string } = {}) {
+    if (!estimate || !canEdit) return
+    setErr(null)
+    if (next === 'draft') { setStatus('draft'); return }
+    const p = pending.current
+    if (p) {
+      pending.current = null
+      if (timer.current) clearTimeout(timer.current)
+      await saveEstimateAction(p.id, p.data).catch(() => null)
+    }
+    const day = o.bidOn ?? bidOn
+    const lowTxt = (o.lowBid ?? lowBid).replace(/[$,\s]/g, '')
+    const low = next === 'lost' && lowTxt !== '' ? Number(lowTxt) : null
+    if (low !== null && !(Number.isFinite(low) && low >= 0)) { setErr('The low bid should be a dollar amount.'); return }
+    setBusy('outcome')
+    const r = await recordBidResultAction(estimate.id, { status: next, bidOn: day || null, lowBid: low }).catch(() => null)
+    setBusy(null)
+    if (!r?.ok) { setErr(r && !r.ok ? r.error : 'Couldn’t save the result — check signal and try again.'); return }
+    setBidOn(r.bidOn)
+    setLowBid(r.lowBid === null ? '' : String(r.lowBid))
+    setStatus(next)
+    router.refresh()
   }
 
   const edit = (id: string, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)))
@@ -194,11 +257,39 @@ export function EstimateView({ zone, book, estimate, markups, distances, snapsho
           <>
             <div className="flex items-center gap-2 flex-wrap text-[12.5px]">
               <input value={name} disabled={!canEdit} onChange={(e) => setName(e.target.value.slice(0, 120))} aria-label="Estimate name" className={input + ' flex-1 min-w-[12rem] font-semibold'} />
-              <select value={status} disabled={!canEdit} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label="Status" className={input}>
-                <option value="draft">Draft</option><option value="sent">Sent</option><option value="won">Won</option><option value="lost">Lost</option>
-              </select>
               <span className={'text-[11.5px] ' + (saved === 'error' ? 'text-red-400' : 'text-faint')}>{saved === 'saving' ? 'Saving…' : saved === 'dirty' ? 'Changes…' : saved === 'error' ? 'Not saved' : 'Saved'}</span>
               {canManage && <button type="button" aria-label="Delete estimate" onClick={() => void drop()} className="rounded-lg p-1.5 text-faint hover:text-red-400"><Trash2 className="h-4 w-4" /></button>}
+            </div>
+            <div className="rounded-xl border border-navy-800 bg-navy-900 px-3 py-2 text-[12.5px] flex items-center gap-2 flex-wrap" role="group" aria-label="Bid result">
+              <span className="text-faint">The bid</span>
+              <div className="flex gap-1">
+                {(['draft', 'sent', 'won', 'lost'] as const).map((st) => (
+                  <button key={st} type="button" disabled={!canEdit || busy === 'outcome'} aria-pressed={status === st} onClick={() => void setOutcome(st)}
+                    className={'rounded-full px-3 py-1 text-[12px] font-semibold border disabled:opacity-60 ' + (status === st
+                      ? st === 'won' ? 'bg-teal/15 border-teal/50 text-teal' : st === 'lost' ? 'bg-red-500/10 border-red-400/50 text-red-300' : st === 'sent' ? 'bg-amber/15 border-amber/50 text-amber' : 'bg-navy-800 border-navy-600 text-ink'
+                      : 'border-navy-700 text-muted')}>
+                    {st === 'draft' ? 'Draft' : st === 'sent' ? 'Sent' : st === 'won' ? 'Won' : 'Lost'}
+                  </button>
+                ))}
+              </div>
+              {status !== 'draft' && (
+                <label className="flex items-center gap-1 text-faint">bid on
+                  <input type="date" value={bidOn} disabled={!canEdit || busy === 'outcome'} aria-label="Bid date"
+                    onChange={(e) => { setBidOn(e.target.value); if (e.target.value) void setOutcome(status as 'sent' | 'won' | 'lost', { bidOn: e.target.value }) }} className={input} />
+                </label>
+              )}
+              {status === 'lost' && (
+                <label className="flex items-center gap-1 text-faint">Low bid $
+                  <input value={lowBid} inputMode="decimal" disabled={!canEdit || busy === 'outcome'} placeholder="if known" aria-label="Low bid total"
+                    onChange={(e) => setLowBid(e.target.value.slice(0, 16))}
+                    onBlur={(e) => { if (e.target.value.replace(/[$,\s]/g, '') !== (outcome.lowBid === null ? '' : String(outcome.lowBid))) void setOutcome('lost', { lowBid: e.target.value }) }}
+                    className={input + ' w-28'} />
+                </label>
+              )}
+              {status === 'lost' && mk && lowBid && Number(lowBid.replace(/[$,\s]/g, '')) > 0 && t.bid > 0 && (
+                <span className="text-faint">{Math.round(((t.bid - Number(lowBid.replace(/[$,\s]/g, ''))) / t.bid) * 1000) / 10}% under ours</span>
+              )}
+              {busy === 'outcome' && <span className="text-faint">Saving…</span>}
             </div>
             {status === 'won' && estimate && (
               <div className="rounded-xl border border-teal/40 bg-teal/5 px-3 py-2 text-[12.5px] flex items-center gap-2 flex-wrap">
@@ -216,7 +307,8 @@ export function EstimateView({ zone, book, estimate, markups, distances, snapsho
               <section key={sec}>
                 <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-1.5 flex items-center gap-2">{sec}<span className="normal-case tracking-normal text-muted">{money(cs.reduce((s, c) => s + c.cost.total, 0))}</span></h2>
                 <div className="space-y-2">
-                  {cs.map(({ line, cost }) => <LineCard key={line.id} line={line} cost={cost} book={book} dist={dist} canEdit={canEdit} onEdit={(p) => edit(line.id, p)} onDelete={() => setLines((ls) => ls.filter((l) => l.id !== line.id))} />)}
+                  {cs.map(({ line, cost }) => <LineCard key={line.id} line={line} cost={cost} book={book} dist={dist} canEdit={canEdit}
+                    hint={firstOfKey.has(line.id) ? hintFor(lineKey(line)) : null} onEdit={(p) => edit(line.id, p)} onDelete={() => setLines((ls) => ls.filter((l) => l.id !== line.id))} />)}
                 </div>
               </section>
             ))}
@@ -259,8 +351,11 @@ function Row({ label, v, bold, big, muted }: { label: string; v: number; bold?: 
   )
 }
 
-function LineCard({ line, cost, book, dist, canEdit, onEdit, onDelete }: {
+interface LineHint { band: RateBand; words: string; sug: ReturnType<typeof suggest>; margin: number; wc: ReturnType<typeof winChance>; ours: number | null }
+
+function LineCard({ line, cost, book, dist, canEdit, hint, onEdit, onDelete }: {
   line: Line
+  hint?: LineHint | null
   cost: ReturnType<typeof lineCost>
   book: CostBook
   dist: Map<string, Distance>
@@ -299,6 +394,17 @@ function LineCard({ line, cost, book, dist, canEdit, onEdit, onDelete }: {
         <span className="font-mono font-bold text-ink whitespace-nowrap">{money(cost.total)}</span>
       </div>
       {cost.warnings.map((w, i) => <p key={i} className="text-amber text-[11.5px] pl-6">{w}</p>)}
+      {hint && (
+        <p className="pl-6 text-[11.5px] text-faint" title={hint.sug.why.join(' ')}>
+          <span className="text-muted">{hint.words}</span>
+          {hint.sug.price !== null && (
+            <> · suggest <b className={'font-mono ' + (hint.sug.underCost ? 'text-amber' : 'text-ink')}>{money2(hint.sug.price)}</b>{hint.sug.marginPct !== null ? ` (${hint.sug.marginPct}% margin)` : ''}</>
+          )}
+          {hint.wc && <> · won {hint.wc.won} of {hint.wc.n} at or under, likely {Math.round(hint.wc.lo * 100)}–{Math.round(hint.wc.hi * 100)}%</>}
+          {hint.ours !== null && <> · bidding {money2(hint.ours)}/{hint.band.unit}</>}
+          {hint.sug.underCost && <span className="text-amber"> · your wins sit under today&apos;s cost</span>}
+        </p>
+      )}
       {open && (
         <div className="pl-6 space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
