@@ -8,8 +8,8 @@ import { ArrowLeft, Camera, FileText, Keyboard, Loader2, Plus, Receipt, Trash2, 
 import { createClient } from '@/lib/supabase'
 import type { InvoiceRow, InvoiceSite } from '@/lib/db/invoices'
 import {
-  AP_BUCKETS, INVOICE_UNITS, apAging, cleanDraft, daysLate, invoiceChecks, lineAmount, matchMaterial, owedOn, paidUnitCost,
-  type InvoiceDraft, type Match,
+  AP_BUCKETS, INVOICE_UNITS, apAging, cleanDraft, daysLate, fuelDefault, invoiceChecks, lineAmount, matchMaterial, owedOn, paidUnitCost,
+  type FuelOn, type InvoiceDraft, type Match,
 } from '@/lib/pricing/invoice'
 import {
   chargeInvoiceAction, deleteInvoiceAction, fileInvoiceAction, invoiceFileUrlAction, markInvoicePaidAction,
@@ -32,6 +32,16 @@ const input = 'rounded-lg bg-navy-950 border border-navy-700 px-2 py-1.5 text-in
 const NO_REPLY = 'No answer from the server — check the connection and try again.'
 const NEW = '__new'
 const SOURCE_KINDS = ['supplier', 'quarry', 'asphalt', 'concrete', 'borrow', 'landfill', 'dump'] as const
+/** The invoice's id, made once when its review opens — a retry after a lost reply files it once. */
+const newInvoiceId = (): string => {
+  try { if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID() } catch { /* older WebView */ }
+  const b = new Uint8Array(16)
+  crypto.getRandomValues(b)
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
+}
+type Done = { text: string; href?: string }
 const kindLabel = (k: string) => (PLACE_KIND_META as Record<string, { label: string; emoji: string }>)[k] ?? { label: k, emoji: '📍' }
 
 /**
@@ -50,8 +60,8 @@ export function InvoicesView({ invoices, materials, sources, sites, canEdit, can
   canManage: boolean
   demo: boolean
 }) {
-  const [review, setReview] = useState<{ form: Form; filePath: string | null; fileName: string | null; byAi: boolean; note: string | null } | null>(null)
-  const [done, setDone] = useState<string | null>(null)
+  const [review, setReview] = useState<{ id: string; form: Form; filePath: string | null; fileName: string | null; byAi: boolean; note: string | null } | null>(null)
+  const [done, setDone] = useState<Done | null>(null)
   const today = todayLocal()
   const ap = useMemo(() => apAging(invoices, today), [invoices, today])
   return (
@@ -67,16 +77,21 @@ export function InvoicesView({ invoices, materials, sources, sites, canEdit, can
 
         <ApStrip ap={ap} />
 
-        {done && <p className="text-[12.5px] text-teal rounded-xl border border-teal/30 bg-teal/5 px-3 py-2">{done}</p>}
+        {done && (
+          <p className="text-[12.5px] text-teal rounded-xl border border-teal/30 bg-teal/5 px-3 py-2">
+            {done.text}{done.href && <> <Link href={done.href} className="underline font-semibold">Open the job’s cost →</Link></>}
+          </p>
+        )}
         {canEdit && !review && (
           <AddInvoice
             materials={materials} sources={sources}
-            onReview={(r) => { setDone(null); setReview(r) }}
+            onReview={(r) => { setDone(null); setReview({ ...r, id: newInvoiceId() }) }}
           />
         )}
         {review && (
           <Review
-            key={review.filePath ?? 'typed'}
+            key={review.id}
+            invoiceId={review.id}
             initial={review.form} filePath={review.filePath} fileName={review.fileName} byAi={review.byAi} readNote={review.note}
             materials={materials} sources={sources} sites={sites}
             onCancel={() => setReview(null)}
@@ -233,7 +248,8 @@ function AddInvoice({ materials, sources, onReview }: {
 
 // ── Review ──────────────────────────────────────────────────────────────────
 
-function Review({ initial, filePath, fileName, byAi, readNote, materials, sources, sites, onCancel, onFiled }: {
+function Review({ invoiceId, initial, filePath, fileName, byAi, readNote, materials, sources, sites, onCancel, onFiled }: {
+  invoiceId: string
   initial: Form
   filePath: string | null
   fileName: string | null
@@ -243,10 +259,12 @@ function Review({ initial, filePath, fileName, byAi, readNote, materials, source
   sources: InvoiceSource[]
   sites: InvoiceSite[]
   onCancel: () => void
-  onFiled: (msg: string) => void
+  onFiled: (msg: Done) => void
 }) {
   const router = useRouter()
   const [f, setF] = useState<Form>(initial)
+  /** null = the default (freight when freight is billed separately). */
+  const [fuelPick, setFuelPick] = useState<FuelOn | null>(null)
   const [updatePrices, setUpdatePrices] = useState(true)
   const [chargeJob, setChargeJob] = useState(() => !!sites.find((x) => x.id === initial.zoneId)?.hasJob)
   const [busy, setBusy] = useState(false)
@@ -254,6 +272,7 @@ function Review({ initial, filePath, fileName, byAi, readNote, materials, source
   const draft = useMemo(() => draftFrom(f), [f])
   const checks = useMemo(() => invoiceChecks(draft), [draft])
   const site = sites.find((x) => x.id === f.zoneId) ?? null
+  const fuelOn: FuelOn = fuelPick ?? fuelDefault(draft)
 
   const set = (patch: Partial<Form>) => setF((cur) => ({ ...cur, ...patch }))
   const setLine = (i: number, patch: Partial<FormLine>) => setF((cur) => ({ ...cur, lines: cur.lines.map((l, k) => (k === i ? { ...l, ...patch } : l)) }))
@@ -279,7 +298,7 @@ function Review({ initial, filePath, fileName, byAi, readNote, materials, source
     if (newMaterials.some((m) => !m.name.trim())) { setErr('Name each new material.'); return }
     setBusy(true)
     const r = await fileInvoiceAction(draft, {
-      filePath, fileName, readByAi: byAi, updatePrices, chargeJob: chargeJob && !!site?.hasJob, newSource, newMaterials,
+      id: invoiceId, filePath, fileName, readByAi: byAi, updatePrices, chargeJob: chargeJob && !!site?.hasJob, newSource, newMaterials, fuelOn,
     }).catch(() => null)
     setBusy(false)
     if (!r?.ok) { setErr(r && !r.ok ? r.error : NO_REPLY); return }
@@ -287,7 +306,7 @@ function Review({ initial, filePath, fileName, byAi, readNote, materials, source
     if (r.prices) bits.push(`${r.prices} cost-book price${r.prices === 1 ? '' : 's'} dated ${fmtDay(draft.invoiceOn)}.`)
     if (r.charged) bits.push(`${r.charged} cost${r.charged === 1 ? '' : 's'} charged to ${site?.name ?? 'the job'}.`)
     bits.push(...r.warnings)
-    onFiled(bits.join(' '))
+    onFiled({ text: bits.join(' '), href: r.jobCostHref })
     router.refresh()
   }
 
@@ -391,6 +410,18 @@ function Review({ initial, filePath, fileName, byAi, readNote, materials, source
         <label className="flex flex-col gap-1 text-faint">Total<input value={f.total} onChange={(e) => set({ total: numText(e.target.value) })} inputMode="decimal" className={input} /></label>
       </div>
       <p className="text-faint">Lines add to <span className="font-mono text-ink">{money(sum)}</span>.</p>
+      {(draft.fuel ?? 0) > 0 && (
+        <div className="flex items-center gap-2 flex-wrap text-muted" role="group" aria-label="What the fuel surcharge is on">
+          <span>Fuel surcharge is on:</span>
+          {(['material', 'freight'] as const).map((k) => (
+            <button key={k} type="button" aria-pressed={fuelOn === k} onClick={() => setFuelPick(k)}
+              className={'rounded-full px-3 py-1 text-[12px] font-semibold border ' + (fuelOn === k ? 'bg-teal/15 border-teal/40 text-teal' : 'border-navy-700 text-muted')}>
+              {k === 'material' ? 'Material' : 'Freight'}
+            </button>
+          ))}
+          <span className="text-faint text-[11.5px]">{fuelOn === 'material' ? 'Goes into the cost book as a fuel % on the price.' : 'Left out of the material price (your haul is priced from your own trucks).'}</span>
+        </div>
+      )}
       <label className="flex items-center gap-2 text-muted"><input type="checkbox" checked={f.delivered} onChange={(e) => set({ delivered: e.target.checked })} /> Prices are delivered (no separate freight)</label>
 
       {checks.filter((c) => c.line === null).map((c, k) => <p key={k} className="text-amber">{c.text}</p>)}
@@ -475,14 +506,20 @@ function Detail({ inv, site, sourceName, canEdit, canManage, onGone }: {
   const [confirm, setConfirm] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  const [errHref, setErrHref] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const draft: InvoiceDraft = { ...inv, delivered: false }
 
   async function run<T extends { ok: boolean }>(p: Promise<T>, after: (r: T) => void) {
-    setErr(null); setMsg(null); setBusy(true)
+    setErr(null); setErrHref(null); setMsg(null); setBusy(true)
     const r = await p.catch(() => null)
     setBusy(false)
-    if (!r?.ok) { setErr(r && !r.ok ? (r as unknown as { error: string }).error : NO_REPLY); return }
+    if (!r?.ok) {
+      const bad = r && !r.ok ? (r as unknown as { error: string; href?: string }) : null
+      setErr(bad ? bad.error : NO_REPLY)
+      setErrHref(bad?.href ?? null)
+      return
+    }
     after(r)
   }
   const openFile = () => run(invoiceFileUrlAction(inv.id), (r) => { if (r.ok) window.open(r.url, '_blank', 'noopener') })
@@ -550,7 +587,7 @@ function Detail({ inv, site, sourceName, canEdit, canManage, onGone }: {
         </div>
       )}
       {msg && <p className="text-teal">{msg}</p>}
-      {err && <p className="text-red-400">{err}</p>}
+      {err && <p className="text-red-400">{err}{errHref && <> <Link href={errHref} className="underline font-semibold">Open the job’s cost →</Link></>}</p>}
     </div>
   )
 }

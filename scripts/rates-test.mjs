@@ -70,6 +70,48 @@ eq(R.normUnit('Acres'), 'AC', 'Acres → AC')
   near(none.find((x) => x.itemName === 'Curb & gutter')?.unitPrice, 18.5, 1e-6, 'no bid total (no margins) → priced at cost')
 }
 
+// ── folding lines that share a key ──
+{
+  const L = (o) => ({ id: o.id, section: o.section ?? 'Paving', code: o.code ?? null, name: o.name, unit: o.unit ?? 'SY', qty: o.qty, depthIn: null, materialId: null, placeId: null, wastePct: null, crewKey: null, perDay: null, subUnit: null, lowboyTrips: null, note: null })
+  const C = (total) => ({ total, unitCost: null, warnings: [] })
+  const T = { bid: 0, direct: 0 }
+  // Layers of one item whose areas were rounded differently still add per unit over the item's area.
+  const layered = R.fromEstimate({ lines: [L({ id: 'a', code: 'P-HD', name: 'Heavy duty — top 3″', qty: 1000 }), L({ id: 'b', code: 'P-HD', name: 'Heavy duty — base 8″', qty: 998 })], costs: [C(9000), C(5988)], totals: T })
+  eq(layered.length, 1, 'two layers → one item')
+  near(layered[0].unitCost, 15, 1e-6, 'layers add per unit even when the areas differ a little (9 + 6)')
+  eq(layered[0].qty, 1000, '…over the item’s area, never the sum of the layers’ areas')
+  // The same item in two sections: quantities and costs add — even if the two quantities happen to match.
+  const twice = R.fromEstimate({ lines: [L({ id: 'a', name: 'Curb & gutter', unit: 'LF', qty: 400, section: 'Phase 1' }), L({ id: 'b', name: 'Curb & gutter', unit: 'LF', qty: 400, section: 'Phase 2' })], costs: [C(8000), C(7200)], totals: T })
+  eq(twice[0].qty, 800, 'same item in two sections with equal quantities → the quantities add (not one 400 LF line at 37/LF)')
+  near(twice[0].unitCost, 19, 1e-6, '…and the unit cost is the blend (15,200 ÷ 800)')
+  // A layered item in two sections: each section's layers add per unit, the sections add up.
+  const twoSec = R.fromEstimate({ lines: [
+    L({ id: 'a', code: 'P-HD', name: 'Heavy duty — top 3″', qty: 500, section: 'Lot A' }), L({ id: 'b', code: 'P-HD', name: 'Heavy duty — base 8″', qty: 500, section: 'Lot A' }),
+    L({ id: 'c', code: 'P-HD', name: 'Heavy duty — top 3″', qty: 300, section: 'Lot B' }), L({ id: 'd', code: 'P-HD', name: 'Heavy duty — base 8″', qty: 300, section: 'Lot B' }),
+  ], costs: [C(4500), C(3000), C(2700), C(1800)], totals: T })
+  eq(twoSec[0].qty, 800, 'a layered item in two sections → its two areas add')
+  near(twoSec[0].unitCost, 15, 1e-6, '…at 9 + 6 per unit')
+}
+
+// ── freezing a bid: once, at Sent ──
+eq(R.freezeStep('sent', 0), 'freeze', 'Sent with nothing frozen → freeze')
+eq(R.freezeStep('won', 0), 'freeze', 'straight to Won with nothing frozen → freeze (first freeze)')
+eq(R.freezeStep('won', 12), 'outcome', 'Sent → Won → only the result, never re-priced from today’s book')
+eq(R.freezeStep('lost', 12), 'outcome', 'Sent → Lost → only the result and the low level')
+eq(R.freezeStep('sent', 12), 'outcome', 'Won → back to Sent → only the result')
+eq(R.freezeStep('draft', 12), 'drop', 'back to Draft → removed')
+eq(R.freezeStep('sent', 12, { resend: true }), 'freeze', 'a revised bid → frozen again')
+{
+  const frozen = [{ id: 'a', unitPrice: 12, qty: 1000 }, { id: 'b', unitPrice: 20, qty: 400 }, { id: 'c', unitPrice: 5000, qty: 1 }]
+  eq(R.frozenBidTotal(frozen), 25000, 'our bid = Σ stored unit price × qty')
+  const lost = R.outcomeRows(frozen, 'lost', 22500)
+  eq(lost.map((r) => r.result), ['lost', 'lost', 'lost'], 'every line marked lost')
+  eq(lost.map((r) => r.lowUnitPrice), [10.8, 18, 4500], 'low level = stored price × low ÷ our stored total')
+  eq(R.outcomeRows(frozen, 'lost', null).map((r) => r.lowUnitPrice), [null, null, null], 'lost with no low total → no low level')
+  eq(R.outcomeRows(frozen, 'won', 22500).map((r) => [r.result, r.lowUnitPrice]), [['won', null], ['won', null], ['won', null]], 'won → no low level')
+  eq(R.outcomeRows(frozen, 'sent', null)[0].result, 'pending', 'sent → pending')
+}
+
 // ── the low bidder, spread evenly ──
 near(R.lowUnitFromTotal(20, 1_000_000, 900_000), 18, 1e-9, 'low 10% under → unit 10% under')
 eq(R.lowUnitFromTotal(20, 1_000_000, null), null, 'no low bid → null')

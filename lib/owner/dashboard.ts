@@ -177,6 +177,12 @@ export function moneySankey(jobs: { name: string; earned: number }[], costs: Cos
   }
   const margin = r2(earned - cost)
   if (margin > 0) { nodes.push({ id: 'margin', label: 'Gross margin', col: 2, value: margin }); links.push({ from: 'co', to: 'margin', value: margin }) }
+  // Costs past what's earned: an inflow of its own so the middle stays balanced (a loss, said as one)
+  if (margin < 0) {
+    nodes.push({ id: 'loss', label: 'Over what’s earned', col: 0, value: -margin })
+    links.push({ from: 'loss', to: 'co', value: -margin })
+    nodes.find((n) => n.id === 'co')!.value = r2(cost)
+  }
   return { nodes, links, margin }
 }
 

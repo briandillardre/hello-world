@@ -82,26 +82,43 @@ export const lineKey = (line: Pick<Line, 'code' | 'name' | 'unit'>) => itemKey(l
  * Each priced line of an estimate at its bid level: unit cost = the line's
  * direct cost ÷ its quantity, unit price = that × (bid ÷ direct) — the markups
  * spread evenly. Lines with no quantity or no cost are skipped. Lines that
- * share a key (the layers of one paving item, the same item in two sections)
- * fold into one: same quantity → the layers add per unit; otherwise the
- * quantities add.
+ * share a key fold into one item:
+ *  - the LAYERS of one paving item ("— top 3″", "— base 8″", same section)
+ *    cover the same area, so their per-unit costs ADD (Σ costᵢ/qtyᵢ) over that
+ *    area — even when a takeoff rounds one layer's area differently;
+ *  - everything else sharing a key (the same item in two sections, two
+ *    layered items in two sections) sums quantities and costs.
  */
 export function fromEstimate(o: { lines: Line[]; costs: LineCost[]; totals: Pick<Totals, 'bid' | 'direct'> }): FrozenLine[] {
   const ratio = o.totals.direct > 0 && o.totals.bid > 0 ? o.totals.bid / o.totals.direct : 1
-  const by = new Map<string, { name: string; code: string | null; unit: string; qty: number; cost: number; parts: { qty: number; cost: number }[] }>()
+  type Part = { qty: number; cost: number }
+  const by = new Map<string, { name: string; code: string | null; unit: string; plain: Part[]; layers: Map<string, Part[]> }>()
   o.lines.forEach((line, i) => {
     const cost = o.costs[i]
     if (!cost || !(line.qty > 0) || !(cost.total > 0)) return
     const k = lineKey(line)
-    const cur = by.get(k)
-    if (!cur) by.set(k, { name: line.name.replace(LAYER_TAIL, ''), code: line.code, unit: line.unit, qty: line.qty, cost: cost.total, parts: [{ qty: line.qty, cost: cost.total }] })
-    else { cur.parts.push({ qty: line.qty, cost: cost.total }); cur.cost += cost.total }
+    let g = by.get(k)
+    if (!g) { g = { name: line.name.replace(LAYER_TAIL, ''), code: line.code, unit: line.unit, plain: [], layers: new Map() }; by.set(k, g) }
+    const part = { qty: line.qty, cost: cost.total }
+    if (LAYER_TAIL.test(line.name)) {
+      const sec = String(line.section ?? '')
+      const a = g.layers.get(sec)
+      if (a) a.push(part); else g.layers.set(sec, [part])
+    } else g.plain.push(part)
   })
   const out: FrozenLine[] = []
   for (const [k, g] of Array.from(by.entries())) {
-    const sameQty = g.parts.every((p) => Math.abs(p.qty - g.parts[0].qty) <= 1e-3 * Math.max(1, g.parts[0].qty))
-    const qty = sameQty ? g.parts[0].qty : g.parts.reduce((t, p) => t + p.qty, 0)
-    const unitCost = g.cost / qty
+    let qty = 0, cost = 0
+    for (const p of g.plain) { qty += p.qty; cost += p.cost }
+    for (const parts of Array.from(g.layers.values())) {
+      // One layered item in one section: its area once, its layers' unit costs added.
+      const area = Math.max(...parts.map((p) => p.qty))
+      const perUnit = parts.reduce((t, p) => t + p.cost / p.qty, 0)
+      qty += area
+      cost += perUnit * area
+    }
+    if (!(qty > 0)) continue
+    const unitCost = cost / qty
     out.push({ itemKey: k, itemName: g.name.slice(0, 200), code: g.code, unit: normUnit(g.unit) || 'EA', qty: r4(qty), unitCost: r4(unitCost), unitPrice: r4(unitCost * ratio) })
   }
   return out
@@ -115,6 +132,43 @@ export function fromEstimate(o: { lines: Line[]; costs: LineCost[]; totals: Pick
 export function lowUnitFromTotal(ourUnit: number, ourBid: number, lowBid: number | null | undefined): number | null {
   if (!(ourUnit >= 0) || !(ourBid > 0) || lowBid === null || lowBid === undefined || !(lowBid >= 0)) return null
   return r4((ourUnit * lowBid) / ourBid)
+}
+
+// ── Freezing a bid: once, at Sent ───────────────────────────────────────────
+
+export type FreezeStep = 'drop' | 'freeze' | 'outcome'
+
+/**
+ * What a status change does to an estimate's frozen lines. The lines are
+ * frozen ONCE — when it goes out (Sent), or on the first status past Draft
+ * when nothing is frozen yet — so a Won or Lost weeks later keeps the prices
+ * that went out, not what today's cost book would make them. Won / Lost (or
+ * back to Sent) only re-marks the result and the low bidder's level; Draft
+ * removes them (it is not a bid any more); `resend` (a revised bid) freezes
+ * again.
+ */
+export function freezeStep(status: string, liveRows: number, opts: { resend?: boolean } = {}): FreezeStep {
+  if (status !== 'sent' && status !== 'won' && status !== 'lost') return 'drop'
+  if (opts.resend || liveRows <= 0) return 'freeze'
+  return 'outcome'
+}
+
+/** Our bid as it was frozen: Σ unit price × quantity over its lines. */
+export function frozenBidTotal(rows: Pick<BidRow, 'unitPrice' | 'qty'>[]): number {
+  return r2(rows.reduce((t, r) => t + (r.qty !== null && r.qty > 0 ? r.unitPrice * r.qty : 0), 0))
+}
+
+/**
+ * The result and the low bidder's level on each frozen line, from the stored
+ * prices — never re-priced. The low level only on a loss with a low total.
+ */
+export function outcomeRows(rows: { id: string; unitPrice: number; qty: number | null }[], status: string, lowBid: number | null): { id: string; result: BidResult; lowUnitPrice: number | null }[] {
+  const result: BidResult = status === 'won' ? 'won' : status === 'lost' ? 'lost' : 'pending'
+  const ours = frozenBidTotal(rows)
+  return rows.map((r) => ({
+    id: r.id, result,
+    lowUnitPrice: result === 'lost' && lowBid !== null ? lowUnitFromTotal(r.unitPrice, ours, lowBid) : null,
+  }))
 }
 
 // ── Bands ───────────────────────────────────────────────────────────────────

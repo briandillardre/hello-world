@@ -172,7 +172,7 @@ export function CostView({ zone, data, roll, wip, canEdit, canManage, demo }: {
               <textarea className={inp + ' font-mono'} rows={5} value={paste} onChange={(e) => setPaste(e.target.value)} placeholder={'5/21/2026\tS\t12,500.00\tPaving sub\tINV-77\tCurb and gutter'} />
               <button type="button" disabled={!!busy || !paste.trim()} onClick={() => void run('paste', async () => {
                 const r = await importCostsAction(zone.id, paste)
-                if (r?.ok) setPasteResult(`${r.added} added${r.skipped.length ? ` · ${r.skipped.length} skipped: ${r.skipped.slice(0, 5).map((x) => `line ${x.line} — ${x.why}`).join(' · ')}` : ''}`)
+                if (r?.ok) setPasteResult(`${r.added} added${r.duplicates ? ` · ${r.duplicates} already on this job (same vendor + reference), not added again` : ''}${r.skipped.length ? ` · ${r.skipped.length} skipped: ${r.skipped.slice(0, 5).map((x) => `line ${x.line} — ${x.why}`).join(' · ')}` : ''}`)
                 return r
               }, 'No answer came back — they may have been added. Refresh and check the list before you paste again.', () => setPaste(null))} className="rounded-xl bg-amber px-3 py-1.5 font-semibold text-navy-950 disabled:opacity-50">{busy === 'paste' ? 'Adding…' : 'Add them'}</button>
             </div>

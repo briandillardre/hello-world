@@ -2,7 +2,10 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
 import { FinancePanel } from '@/components/finance/FinancePanel'
 import { OwnerMemoCard } from '@/components/finance/OwnerMemoCard'
-import type { FinanceProfile } from '@/lib/valuation'
+import { computeValuation, tradeByKey, type FinanceProfile } from '@/lib/valuation'
+import { OwnerDashboard } from '@/components/finance/OwnerDashboard'
+import { getOwnerDashboard } from '@/lib/db/owner'
+import { rankOf, RANK } from '@/lib/permissions'
 
 export const metadata = { title: 'HammerTrack — Financials' }
 
@@ -47,11 +50,15 @@ export default async function FinancePage() {
     teamCount = count ?? 0
     autoFleetValue = (assets ?? []).reduce((s, a) => s + (Number(a.purchase_price) || 0), 0)
   } else {
-    profile = { industry: 'sitework', industryLabel: 'Landscaping & sitework company', description: 'Residential and commercial landscaping, grading, driveways and drainage.', lastYearRevenue: 2_400_000, ytdRevenue: 1_460_000, lastYearProfit: 168_000, ownerComp: 110_000, employees: 9 }
+    profile = { cpaReviewed: false, personalSeparate: true, industry: 'sitework', industryLabel: 'Landscaping & sitework company', description: 'Residential and commercial landscaping, grading, driveways and drainage.', lastYearRevenue: 2_400_000, ytdRevenue: 1_460_000, lastYearProfit: 168_000, ownerComp: 110_000, employees: 9 }
     teamCount = 9
     autoFleetValue = 610_000
   }
 
+  const companyId = await getCurrentCompanyId()
+  const owner = await getOwnerDashboard(companyId, { admin: rankOf(perms) >= RANK.admin, today: new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) })
+  const blended = computeValuation(profile, autoFleetValue, tradeByKey(profile.industry)).blended
+  const books = { cpaReviewed: profile.cpaReviewed ?? null, personalSeparate: profile.personalSeparate ?? null, revenueFromInvoices: profile.revenueFromInvoices ?? null }
   return (
     <div className="h-full overflow-auto pb-[54px] md:pb-20"><div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
       <div>
@@ -61,6 +68,7 @@ export default async function FinancePage() {
           three appraisal methods, one honest range. Owners only.
         </p>
       </div>
+      <OwnerDashboard d={owner} blended={blended} books={books} canAnswer={perms.canManageBilling && !perms.viewingAs && !isMock} demo={isMock} />
       <OwnerMemoCard />
       <FinancePanel
         initial={profile}

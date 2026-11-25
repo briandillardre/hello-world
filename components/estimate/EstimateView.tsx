@@ -15,7 +15,7 @@ import {
 } from '@/lib/actions/estimate'
 import { MarkupFields } from './CostBookView'
 import { winEstimateAction } from '@/lib/actions/jobs'
-import { recordBidResultAction } from '@/lib/actions/bids'
+import { recordBidResultAction, resendBidAction } from '@/lib/actions/bids'
 import { bandWords, fromEstimate, lineKey, rateBands, suggest, winChance, type BidRow, type RateBand } from '@/lib/pricing/rates'
 
 const money = (v: number) => v.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -186,6 +186,29 @@ export function EstimateView({ zone, book, estimate, markups, distances, history
     router.refresh()
   }
 
+  // A revised bid went out (165/166): the lines froze when it was first Sent — this freezes them again at today's prices.
+  async function resend() {
+    if (!estimate || !canEdit || status !== 'sent') return
+    if (!window.confirm('Record a revised bid? The prices that went out before are replaced by this estimate as it stands now.')) return
+    setErr(null)
+    const p = pending.current
+    if (p) {
+      pending.current = null
+      if (timer.current) clearTimeout(timer.current)
+      await saveEstimateAction(p.id, p.data).catch(() => null)
+    }
+    setBusy('outcome')
+    const r = await resendBidAction(estimate.id).catch(() => null)
+    setBusy(null)
+    if (!r?.ok) { setErr(r && !r.ok ? r.error : 'Couldn’t record the revised bid — check signal and try again.'); return }
+    router.refresh()
+  }
+  /** The bid date commits on leaving the box or Enter — not on every keystroke of a typed date. */
+  function commitBidOn(v: string) {
+    if (!v || v === (outcome.bidOn ?? '') || status === 'draft') return
+    void setOutcome(status as 'sent' | 'won' | 'lost', { bidOn: v })
+  }
+
   const edit = (id: string, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)))
 
   async function start(snapshotId: string | null) {
@@ -275,7 +298,10 @@ export function EstimateView({ zone, book, estimate, markups, distances, history
               {status !== 'draft' && (
                 <label className="flex items-center gap-1 text-faint">bid on
                   <input type="date" value={bidOn} disabled={!canEdit || busy === 'outcome'} aria-label="Bid date"
-                    onChange={(e) => { setBidOn(e.target.value); if (e.target.value) void setOutcome(status as 'sent' | 'won' | 'lost', { bidOn: e.target.value }) }} className={input} />
+                    onChange={(e) => setBidOn(e.target.value)}
+                    onBlur={(e) => commitBidOn(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitBidOn((e.target as HTMLInputElement).value) } }}
+                    className={input} />
                 </label>
               )}
               {status === 'lost' && (
@@ -289,8 +315,15 @@ export function EstimateView({ zone, book, estimate, markups, distances, history
               {status === 'lost' && mk && lowBid && Number(lowBid.replace(/[$,\s]/g, '')) > 0 && t.bid > 0 && (
                 <span className="text-faint">{Math.round(((t.bid - Number(lowBid.replace(/[$,\s]/g, ''))) / t.bid) * 1000) / 10}% under ours</span>
               )}
+              {status === 'sent' && canEdit && (
+                <button type="button" disabled={busy === 'outcome'} onClick={() => void resend()} title="The prices froze when the bid was first sent. A revised bid records them again."
+                  className="rounded-full px-3 py-1 text-[12px] border border-navy-700 text-muted hover:text-ink disabled:opacity-60">Re-send a revised bid</button>
+              )}
               {busy === 'outcome' && <span className="text-faint">Saving…</span>}
             </div>
+            {!showMargins && history.length === 0 && (
+              <p className="text-[11.5px] text-faint">Bids recorded from estimates are an Admin’s to see (their prices carry the margins) — line hints here come from pasted bid history, and there is none for these items yet.</p>
+            )}
             {status === 'won' && estimate && (
               <div className="rounded-xl border border-teal/40 bg-teal/5 px-3 py-2 text-[12.5px] flex items-center gap-2 flex-wrap">
                 <span className="text-ink flex-1 min-w-[12rem]">Won it? The job takes it from here — the contract, the set-up checklist, contacts, pay apps.</span>

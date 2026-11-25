@@ -94,6 +94,10 @@ export interface FinanceProfile {
   fleetValueOverride?: number
   otherAssets?: number
   liabilities?: number
+  /** What a buyer asks about the books (owner dashboard): null/absent = not answered. */
+  cpaReviewed?: boolean
+  personalSeparate?: boolean
+  revenueFromInvoices?: boolean
 }
 
 export interface Range { lo: number; hi: number }

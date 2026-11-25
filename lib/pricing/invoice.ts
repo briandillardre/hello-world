@@ -142,9 +142,12 @@ function cleanLine(raw: unknown): InvoiceLine | null {
  * within bounds: ≤ 200 lines, money to the cent, days as YYYY-MM-DD, ids that
  * are ids. `termsDays` (when given and no due date) sets the due date.
  */
-export function cleanDraft(raw: unknown): InvoiceDraft {
+export function cleanDraft(raw: unknown, opts: { fromModel?: boolean } = {}): InvoiceDraft {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const lines = (Array.isArray(r.lines) ? r.lines : []).slice(0, MAX_LINES * 2).map(cleanLine).filter((l): l is InvoiceLine => !!l).slice(0, MAX_LINES)
+  let lines = (Array.isArray(r.lines) ? r.lines : []).slice(0, MAX_LINES * 2).map(cleanLine).filter((l): l is InvoiceLine => !!l).slice(0, MAX_LINES)
+  // The reader's reply never chooses an id — the source, the site and each
+  // line's material come only from our own matching or the person's pick.
+  if (opts.fromModel) lines = lines.map((l) => ({ ...l, materialId: null }))
   const invoiceOn = readDay(r.invoiceOn)
   const terms = readNumber(r.termsDays)
   const dueOn = readDay(r.dueOn) ?? (terms !== null && invoiceOn ? dueFrom(invoiceOn, terms) : null)
@@ -159,8 +162,8 @@ export function cleanDraft(raw: unknown): InvoiceDraft {
     total: money(r.total),
     delivered: r.delivered === true,
     lines,
-    placeId: typeof r.placeId === 'string' && UUID.test(r.placeId) ? r.placeId.toLowerCase() : null,
-    zoneId: typeof r.zoneId === 'string' && UUID.test(r.zoneId) ? r.zoneId.toLowerCase() : null,
+    placeId: !opts.fromModel && typeof r.placeId === 'string' && UUID.test(r.placeId) ? r.placeId.toLowerCase() : null,
+    zoneId: !opts.fromModel && typeof r.zoneId === 'string' && UUID.test(r.zoneId) ? r.zoneId.toLowerCase() : null,
   }
 }
 
@@ -322,11 +325,20 @@ export function vendorTokens(name: string): Set<string> {
   return new Set(String(name ?? '').toLowerCase().replace(/&/g, ' and ').split(/[^a-z0-9]+/).filter((w) => w && !CORP.has(w)))
 }
 
-/** The source (a Place) an invoice's vendor most likely is; null under the threshold. */
+/** Two sources scoring within this of each other are a tie: no prefill (pick it by hand). */
+export const VENDOR_TIE = 0.05
+
+/**
+ * The source (a Place) an invoice's vendor most likely is; null under the
+ * threshold, and null when the runner-up is within VENDOR_TIE of it ("Vulcan
+ * Materials — Pelham" vs "— Anderson" for "Vulcan Materials") — a wrong
+ * source dates the wrong plant's price, so a tie is left to the person.
+ */
 export function matchVendor(name: string, sources: Pick<Source, 'id' | 'name'>[]): Match | null {
   const a = vendorTokens(name)
   if (!a.size) return null
   let best: Match | null = null
+  let second = 0
   for (const s of sources) {
     const b = vendorTokens(s.name)
     if (!b.size) continue
@@ -336,9 +348,13 @@ export function matchVendor(name: string, sources: Pick<Source, 'id' | 'name'>[]
     const small = Math.min(a.size, b.size)
     const contain = small >= 2 ? (inter / small) * 0.9 : 0
     const score = round(Math.max(dice, contain), 3)
-    if (score >= VENDOR_THRESHOLD && (!best || score > best.score)) best = { id: s.id, name: s.name, score }
+    if (!best || score > best.score) {
+      if (best) second = Math.max(second, best.score)
+      best = { id: s.id, name: s.name, score }
+    } else second = Math.max(second, score)
   }
-  return best
+  if (!best || best.score < VENDOR_THRESHOLD) return null
+  return best.score - second < VENDOR_TIE ? null : best
 }
 
 // ── what filing writes to the cost book ─────────────────────────────────────
@@ -364,11 +380,24 @@ export interface PriceFromInvoice {
  * $/unit) — the estimate hauls with your own trucks' numbers.
  * Needs a source, a date and matched lines with a unit and quantity.
  */
-export function pricesFromInvoice(d: InvoiceDraft, materials: Pick<Material, 'id'>[]): PriceFromInvoice[] {
+export type FuelOn = 'material' | 'freight'
+
+/**
+ * What a fuel surcharge rides on, by default: the freight when freight is
+ * billed separately (a plant's fuel surcharge is on its trucks), else the
+ * material. The review lets the person flip it.
+ */
+export function fuelDefault(d: Pick<InvoiceDraft, 'freight'>): FuelOn {
+  return (d.freight ?? 0) > 0 ? 'freight' : 'material'
+}
+
+export function pricesFromInvoice(d: InvoiceDraft, materials: Pick<Material, 'id'>[], opts: { fuelOn?: FuelOn | null } = {}): PriceFromInvoice[] {
   if (!d.placeId || !d.invoiceOn) return []
   const known = new Set(materials.map((m) => m.id))
   const sub = materialSubtotal(d)
-  const fuelPct = d.fuel && d.fuel > 0 && sub > 0 ? Math.min(100, round((d.fuel / sub) * 100, 2)) : null
+  const fuelOn: FuelOn = opts.fuelOn === 'material' || opts.fuelOn === 'freight' ? opts.fuelOn : fuelDefault(d)
+  // Fuel on the freight is not a cost of the stone: the estimate hauls with its own numbers.
+  const fuelPct = fuelOn === 'material' && d.fuel && d.fuel > 0 && sub > 0 ? Math.min(100, round((d.fuel / sub) * 100, 2)) : null
   const freightSeparate = (d.freight ?? 0) > 0
   const basis: 'pickup' | 'delivered' = !freightSeparate && (d.delivered || d.lines.some((l) => /\bdeliver(ed|y)\b/i.test(l.description))) ? 'delivered' : 'pickup'
   const groups = new Map<string, { materialId: string; unit: InvoiceUnit; qty: number; amount: number }>()
@@ -389,6 +418,10 @@ export function pricesFromInvoice(d: InvoiceDraft, materials: Pick<Material, 'id
     if (freightSeparate && sub > 0) {
       const freightShare = ((d.freight ?? 0) * (g.amount / sub)) / g.qty
       note += ` · freight billed ${usd(freightShare)}/${g.unit}`
+    }
+    if (fuelOn === 'freight' && d.fuel && d.fuel > 0 && sub > 0) {
+      const fuelShare = (d.fuel * (g.amount / sub)) / g.qty
+      note += ` · fuel on freight ${usd(fuelShare)}/${g.unit}`
     }
     return { placeId: d.placeId!, materialId: g.materialId, price, unit: g.unit, basis, fuelPct, quotedOn: d.invoiceOn!, note: note.slice(0, 200) }
   })
