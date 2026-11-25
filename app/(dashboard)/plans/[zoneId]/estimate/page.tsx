@@ -4,6 +4,8 @@ import { rankOf, RANK } from '@/lib/permissions'
 import { getGeofence } from '@/lib/db/zones'
 import { getCostBook, getEstimate } from '@/lib/db/estimate'
 import { getSnapshots } from '@/lib/db/takeoff'
+import { getBidHistoryFor, getBidOutcome } from '@/lib/db/bids'
+import { lineKey } from '@/lib/pricing/rates'
 import { EstimateView } from '@/components/estimate/EstimateView'
 
 export const dynamic = 'force-dynamic'
@@ -24,6 +26,12 @@ export default async function Page({ params }: { params: { zoneId: string } }) {
   if (!fence || fence.kind === 'boundary' || fence.kind === 'vendor') notFound()
   const admin = rankOf(perms) >= RANK.admin
   const [book, est, snapshots] = await Promise.all([getCostBook(admin), getEstimate(fence.id, admin), getSnapshots(fence.id)])
+  // The bid history behind each line (165) — costs logins only (the page already requires it); no unit costs.
+  const keys = Array.from(new Set((est.estimate?.lines ?? []).map(lineKey)))
+  const [history, outcome] = await Promise.all([
+    getBidHistoryFor(keys, { excludeEstimateId: est.estimate?.id ?? null }),
+    getBidOutcome(est.estimate?.id),
+  ])
   const canEdit = perms.canEdit && !perms.viewingAs && !isMock
   return (
     <EstimateView
@@ -32,6 +40,8 @@ export default async function Page({ params }: { params: { zoneId: string } }) {
       estimate={est.estimate}
       markups={est.markups}
       distances={est.distances}
+      history={history}
+      outcome={outcome}
       snapshots={snapshots.map((s) => ({ id: s.id, name: s.name, createdAt: s.createdAt }))}
       canEdit={canEdit}
       canManage={canEdit && rankOf(perms) >= RANK.manager}

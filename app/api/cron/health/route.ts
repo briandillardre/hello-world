@@ -636,6 +636,13 @@ export async function GET(req: NextRequest) {
   try { out.jobDocOrphansSwept = await sweepUnfiled('jobdocs', 'job_documents') }
   catch (err) { out.jobDocSweep = err instanceof Error ? err.message : 'failed' }
 
+  // 13b — supplier invoice uploads nobody filed (165): a PDF or photo under
+  // <company>/<uuid> in the private 'invoices' bucket that no live
+  // supplier_invoices row points at (file_path), 24 hours after it landed —
+  // a day to finish the review before the upload goes.
+  try { out.invoiceOrphansSwept = await sweepUnfiled('invoices', 'supplier_invoices', 'file_path', 24 * 3_600_000) }
+  catch (err) { out.invoiceSweep = err instanceof Error ? err.message : 'failed' }
+
   // 14 — the public status page (162): one row per run, up / down only.
   // db = steps 1–2 read asset_locations; ingest = tracker data arrived inside
   // the stale window; ai = the probe answered (no key configured = no data).
@@ -663,16 +670,17 @@ export async function GET(req: NextRequest) {
 
 /**
  * Uploads under <company>/<id> in a private bucket that no live row of
- * `table` points at (its `path`), two hours after they landed: an upload
+ * `table` points at (its `column`, default `path`), `ageMs` (default two
+ * hours) after they landed: an upload
  * whose filing never finished. Pages through up to 2,000 company folders and
  * 10,000 objects each; removes at most 200 per company per run.
  */
-async function sweepUnfiled(bucket: string, table: string): Promise<number> {
+async function sweepUnfiled(bucket: string, table: string, column = 'path', ageMs = 2 * 3_600_000): Promise<number> {
   const { createServiceClient: svcClient } = await import('@/lib/supabase-server')
   const svc = svcClient()
   const U = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
   const PATH = new RegExp(`^${U}/${U}$`)
-  const old = (o: { created_at?: string | null }) => Date.parse(o.created_at ?? '') < Date.now() - 2 * 3_600_000
+  const old = (o: { created_at?: string | null }) => Date.parse(o.created_at ?? '') < Date.now() - ageMs
   let swept = 0
   const all = async (prefix: string, pageSize: number, pages: number) => {
     const out: { id: string | null; name: string; created_at?: string | null }[] = []
@@ -692,9 +700,9 @@ async function sweepUnfiled(bucket: string, table: string): Promise<number> {
     const live = new Set<string>()
     let failed = false
     for (let i = 0; i < stale.length && !failed; i += 200) {
-      const { data, error } = await svc.from(table).select('path').in('path', stale.slice(i, i + 200)).is('deleted_at', null)
+      const { data, error } = await svc.from(table).select(column).in(column, stale.slice(i, i + 200)).is('deleted_at', null)
       if (error) failed = true
-      else for (const r of data ?? []) live.add(String(r.path))
+      else for (const r of (data ?? []) as unknown as Record<string, unknown>[]) live.add(String(r[column]))
     }
     if (failed) continue
     const gone = stale.filter((p) => !live.has(p)).slice(0, 200)

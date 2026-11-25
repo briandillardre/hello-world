@@ -1,4 +1,6 @@
 # The Path: $100M, then $1B
+> **Nov 25 2026:** the outcome-service and holding-company plan in `docs/STRATEGY-OUTCOMES.md` is the newest read of this path — where they differ, that one wins.
+
 
 *Aug 1 2026. Brian: "create a clear path for me to reach $100 million then
 $1 billion with HammerTrack." This is that path — valuation milestones, the
