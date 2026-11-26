@@ -184,6 +184,8 @@ export async function getConnectionStatus(companyId?: string): Promise<{
 export async function qboFetch(conn: LiveConnection, path: string, init?: RequestInit): Promise<Record<string, unknown>> {
   const url = `${QBO_API_BASE}/v3/company/${conn.realmId}${path}${path.includes('?') ? '&' : '?'}${MINOR}`
   const res = await fetch(url, {
+    // A hung Intuit request must not hold a cron run to its limit (sec-check, Nov 26).
+    signal: AbortSignal.timeout(20_000),
     ...init,
     headers: {
       Authorization: `Bearer ${conn.accessToken}`,
