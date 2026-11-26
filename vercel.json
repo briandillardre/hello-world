@@ -53,6 +53,10 @@
       "schedule": "0 12 1 * *"
     },
     {
+      "path": "/api/cron/books",
+      "schedule": "17 7 * * *"
+    },
+    {
       "path": "/api/cron/simulator",
       "schedule": "*/5 * * * *"
     },

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Gauge } from 'lucide-react'
+import { CalendarCheck, Gauge } from 'lucide-react'
 import type { OwnerDashboardData } from '@/lib/db/owner'
 import { applyDiscounts, layoutSankey, valuationDiscounts, type BooksAnswers } from '@/lib/owner/dashboard'
 import { AGE_BUCKETS, AGE_WORDS } from '@/lib/jobs/portfolio'
@@ -7,6 +7,7 @@ import { BooksQuestions } from './BooksQuestions'
 
 const money = (v: number) => v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 const short = (v: number) => (Math.abs(v) >= 1_000_000 ? `$${(v / 1_000_000).toFixed(2)}M` : Math.abs(v) >= 10_000 ? `$${Math.round(v / 1000)}k` : money(v))
+const asOf = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })
 const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`)
 const card = 'rounded-xl border border-navy-800 bg-navy-900/60 p-3'
 
@@ -46,11 +47,25 @@ export function OwnerDashboard({ d, blended, books, canAnswer, demo }: {
     <section className="space-y-3" aria-labelledby="owner-dash">
       <div>
         <h2 id="owner-dash" className="font-display font-bold text-ink flex items-center gap-2"><Gauge className="h-4 w-4 text-amber" /> Owner dashboard</h2>
-        <p className="text-[12px] text-faint">From your pay apps, job cost, supplier invoices and bids — as of {new Date(`${d.today}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}.{demo ? ' Demo numbers.' : ''} Cash in the bank comes once QuickBooks is connected.</p>
+        <p className="text-[12px] text-faint">From your pay apps, job cost, supplier invoices and bids — as of {new Date(`${d.today}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}.{demo ? ' Demo numbers.' : ''}{d.books ? (d.books.cash && d.books.asOf ? ` Cash in the bank from QuickBooks, as of ${asOf(d.books.asOf)}.` : d.books.connected ? ' Cash in the bank shows after the first nightly QuickBooks read.' : ' Cash in the bank comes once QuickBooks is connected.') : ''}</p>
         {d.partial && <p className="text-[12px] text-amber">Some job costs or bids didn’t load in full — these totals may be short.</p>}
       </div>
 
+      {d.books && (
+        <Link href="/finance/close" className={card + ' flex items-center justify-between gap-2 hover:border-navy-700'}>
+          <span className="min-w-0 truncate text-[12.5px] text-ink"><CalendarCheck className="inline h-3.5 w-3.5 mr-1.5 text-amber" />{d.books.close.line}</span>
+          <span className={'shrink-0 text-[12px] ' + (d.books.close.status === 'late' && !d.books.close.signed ? 'text-red-300' : 'text-teal')}>{d.books.close.status === 'late' && !d.books.close.signed ? 'Late →' : 'Close →'}</span>
+        </Link>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {d.books && (
+          d.books.cash
+            ? <Tile label="Cash in the bank" value={short(d.books.cash.total)} sub={`${d.books.cash.accounts} account${d.books.cash.accounts === 1 ? '' : 's'} · as of ${d.books.asOf ? asOf(d.books.asOf) : '—'}`} tone={d.books.cash.total < 0 ? 'bad' : undefined} />
+            : d.books.connected
+              ? <Tile label="Cash in the bank" value="—" sub="after tonight’s QuickBooks read" />
+              : <Link href="/accounting" className="min-w-0"><Tile label="Cash in the bank" value="—" sub="connect QuickBooks →" /></Link>
+        )}
         <Tile label="Owed to you" value={short(d.ar.total)} sub={d.ar.pastDue > 0 ? `${short(d.ar.pastDue)} past due` : 'nothing past due'} tone={d.ar.pastDue > 0 ? 'warn' : undefined} />
         <Tile label="Over 60 days" value={pct(over60Share)} sub={`${short(d.ar.over60)} · aim under 10%`} tone={over60Share !== null && over60Share > 0.1 ? 'bad' : over60Share !== null ? 'good' : undefined} />
         <Tile label="You owe suppliers" value={d.ap.available ? short(d.ap.total) : '—'} sub={d.ap.available ? `${short(d.ap.pastDue)} past due · ${short(d.ap.dueThisWeek)} due this week` : 'supplier invoices not set up'} tone={d.ap.pastDue > 0 ? 'bad' : undefined} />
