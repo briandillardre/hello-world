@@ -77,6 +77,32 @@ this public repo.
 | Months 6–18 | Offer it as a service to 3–5 Upstate subs Brian knows: one ops person plus agents, ~$3K a month each. | 3 paying, renewing after 90 days |
 | Months 18–36 | If DCG is clean and sellable: sell it or step back and go full time on the platform. If owners keep asking "just run my back office": start the acquisitions. | A buyer's quality-of-earnings review passes; or a first acquisition closes |
 
+## The 90-day test (decided Nov 26 2026)
+
+Three independent reviews (market, where AI is headed, viability) agreed, and
+Brian said go: **narrow, don't build.** Full write-up:
+https://claude.ai/artifact/YasKii2LFjZtVY2C4dCASY
+
+- **Offer:** books closed by the 10th, job cost / WIP, and bids priced from
+  your own costs — $2,500–3,500/mo, sold by hand to sitework and paving subs
+  doing $3–15M that Brian knows. Tracking comes free with it.
+- **First 30 days:** QuickBooks pulling nightly; DCG closes November by
+  Dec 10 from `/finance/close`; a contract bookkeeper lined up to sign;
+  E&O + cyber insurance quoted; the repo private before the first client.
+- **Continue (day 90, Feb 24 2027):** 10 owner conversations · 3 signed and
+  paid (≥ $2K/mo, no free pilots) · DCG on time two months running ·
+  ≤ 15 h delivery per client per month · one client would pay more for
+  bid pricing.
+- **Kill:** < 2 paying, > 25 h per client per month, or > 10 h of Brian's
+  week. Then stop selling to outsiders, keep the app running DCG, and
+  revisit only through the holdco path.
+- **Rough 3-year value of each path** (viability review): tracking SaaS
+  ~$0.3–0.7M · the outcome service ~$1–2M · 2–3 acquisitions on the shared
+  back office ~$3–5M of added equity (only after DCG is clean; personal
+  guarantees).
+- **Biggest outside threat:** Intuit closing the books well enough inside
+  QuickBooks. What lasts is the signature and the local relationship.
+
 ## What this changes in the build order
 
 Already pointing this way: the cost book and estimates (147), job cost and WIP

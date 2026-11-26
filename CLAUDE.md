@@ -53,6 +53,9 @@ SHOWROOM COMPANY (Aug 23): a real production company driven by
 all production paths); Brian logs in and reshapes zones, trucks re-route on
 real roads via OSRM. Seed from /model (founder-gated). `docs/SHOWROOM.md`.
 
+## Focus rule — the 90-day test (Brian, Nov 26 2026: "Go")
+Three independent reviews (market, AI outlook, viability — https://claude.ai/artifact/YasKii2LFjZtVY2C4dCASY) agreed: keep HammerTrack running DCG, stop adding features, prove strangers pay. Until **Feb 24 2027** (board #247) the ONLY engineering is: QuickBooks (the nightly books pull, AP → QuickBooks bills #242), the close checklist + books audit (#241, `/finance/close`), and bugs that block DCG's close or a paying client. **No new modules, map polish, Beta tools or side projects** — say so and point at #247 when asked; Brian can lift it. Kill/continue numbers live on #247; the offer and the paths are in docs/STRATEGY-OUTCOMES.md → The 90-day test.
+
 ## Communication rule (Brian, Sep 2 2026)
 "I am busy and a human — keep the responses short and sweet." Every message
 to Brian: lead with whether he needs to do anything (yes/no), then short
